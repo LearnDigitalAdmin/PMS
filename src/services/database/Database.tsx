@@ -165,6 +165,39 @@ export interface InvoiceWithDetails extends Invoice {
   tenantEmail?: string;
 }
 
+export interface Company {
+  id: number;
+  userId: number;
+  name: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CompanyInput {
+  name: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+}
+
+export interface UserWithCompanyInput {
+  user: {
+    name: string;
+    email: string;
+    phone?: string;
+    password: string;
+  };
+  company?: CompanyInput;
+}
+
+export interface AuthResult {
+  user: User;
+  company?: Company;
+}
+
 // ==================== DATABASE MANAGER ====================
 
 export class DatabaseManager {
@@ -206,21 +239,34 @@ export class DatabaseManager {
     }
   }
 
-  private async createTables(): Promise<void> {
+    private async createTables(): Promise<void> {
     const queries = [
-      // Users table
+      // Users table (updated)
       `CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
-        email TEXT,
+        email TEXT UNIQUE NOT NULL,
         phone TEXT,
-        password_hash TEXT,
+        password_hash TEXT NOT NULL,
         is_premium INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`,
 
-      // Properties table
+      // Companies table (new)
+      `CREATE TABLE IF NOT EXISTS companies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        address TEXT,
+        phone TEXT,
+        email TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`,
+
+      // Properties table (updated with user_id reference)
       `CREATE TABLE IF NOT EXISTS properties (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
@@ -299,8 +345,16 @@ export class DatabaseManager {
     }
   }
 
+// ==================== UPDATE createIndexes METHOD ====================
+
   private async createIndexes(): Promise<void> {
     const indexes = [
+      // User indexes
+      'CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)',
+      
+      // Company indexes
+      'CREATE INDEX IF NOT EXISTS idx_companies_user_id ON companies(user_id)',
+      
       // Property indexes
       'CREATE INDEX IF NOT EXISTS idx_properties_user_id ON properties(user_id)',
       
@@ -325,6 +379,274 @@ export class DatabaseManager {
     for (const index of indexes) {
       await this.db!.run(index);
     }
+  }
+
+
+    async createUserWithCompany(data: UserWithCompanyInput): Promise<AuthResult> {
+    try {
+      // Start transaction
+      await this.db!.run('BEGIN TRANSACTION');
+
+      // Check if user already exists
+      const existingUser = await this.getUserByEmail(data.user.email);
+      if (existingUser) {
+        await this.db!.run('ROLLBACK');
+        throw new Error('User with this email already exists');
+      }
+
+      // Hash password (simple implementation - in production use bcrypt)
+      const passwordHash = await this.hashPassword(data.user.password);
+
+      // Create user
+      const userQuery = `
+        INSERT INTO users (name, email, phone, password_hash, is_premium)
+        VALUES (?, ?, ?, ?, 0)
+      `;
+      
+      const userResult = await this.db!.run(userQuery, [
+        data.user.name,
+        data.user.email,
+        data.user.phone || '',
+        passwordHash
+      ]);
+
+      const userId = userResult.changes!.lastId!;
+      const user = await this.getUserById(userId);
+      
+      if (!user) {
+        await this.db!.run('ROLLBACK');
+        throw new Error('Failed to create user');
+      }
+
+      let company: Company | undefined;
+
+      // Create company if provided
+      if (data.company && data.company.name) {
+        const companyQuery = `
+          INSERT INTO companies (user_id, name, address, phone, email)
+          VALUES (?, ?, ?, ?, ?)
+        `;
+        
+        const companyResult = await this.db!.run(companyQuery, [
+          userId,
+          data.company.name,
+          data.company.address || '',
+          data.company.phone || '',
+          data.company.email || ''
+        ]);
+
+        const companyId = companyResult.changes!.lastId!;
+        company = (await this.getCompanyById(companyId)) ?? undefined;
+      }
+
+      // Commit transaction
+      await this.db!.run('COMMIT');
+
+      return { user, company };
+    } catch (error) {
+      await this.db!.run('ROLLBACK');
+      throw error;
+    }
+  }
+
+  async authenticateUser(email: string, password: string): Promise<AuthResult | null> {
+    try {
+      const user = await this.getUserByEmail(email);
+      if (!user || !user.passwordHash) {
+        return null;
+      }
+
+      const isValidPassword = await this.verifyPassword(password, user.passwordHash);
+      if (!isValidPassword) {
+        return null;
+      }
+
+      const company = (await this.getCompanyByUserId(user.id)) ?? undefined;
+
+      return { user, company };
+    } catch (error) {
+      console.error('Authentication error:', error);
+      return null;
+    }
+  }
+
+  async getUserByEmail(email: string): Promise<User | null> {
+    const query = 'SELECT * FROM users WHERE email = ?';
+    const result = await this.db!.query(query, [email]);
+    
+    if (result.values && result.values.length > 0) {
+      return this.mapToUser(result.values[0]);
+    }
+    return null;
+  }
+
+  async getUserById(id: number): Promise<User | null> {
+    const query = 'SELECT * FROM users WHERE id = ?';
+    const result = await this.db!.query(query, [id]);
+    
+    if (result.values && result.values.length > 0) {
+      return this.mapToUser(result.values[0]);
+    }
+    return null;
+  }
+
+  async updateUser(id: number, user: Partial<{
+    name: string;
+    email: string;
+    phone: string;
+    password: string;
+    isPremium: boolean;
+  }>): Promise<void> {
+    const fields = [];
+    const values = [];
+    
+    if (user.name !== undefined) {
+      fields.push('name = ?');
+      values.push(user.name);
+    }
+    if (user.email !== undefined) {
+      fields.push('email = ?');
+      values.push(user.email);
+    }
+    if (user.phone !== undefined) {
+      fields.push('phone = ?');
+      values.push(user.phone);
+    }
+    if (user.password !== undefined) {
+      const passwordHash = await this.hashPassword(user.password);
+      fields.push('password_hash = ?');
+      values.push(passwordHash);
+    }
+    if (user.isPremium !== undefined) {
+      fields.push('is_premium = ?');
+      values.push(user.isPremium ? 1 : 0);
+    }
+    
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(id);
+    
+    const query = `UPDATE users SET ${fields.join(', ')} WHERE id = ?`;
+    await this.db!.run(query, values);
+  }
+
+  // ==================== COMPANY OPERATIONS ====================
+
+  async createCompany(userId: number, company: CompanyInput): Promise<Company> {
+    const query = `
+      INSERT INTO companies (user_id, name, address, phone, email)
+      VALUES (?, ?, ?, ?, ?)
+    `;
+    
+    const result = await this.db!.run(query, [
+      userId,
+      company.name,
+      company.address || '',
+      company.phone || '',
+      company.email || ''
+    ]);
+
+    const createdCompany = await this.getCompanyById(result.changes!.lastId!);
+    if (!createdCompany) {
+      throw new Error('Failed to retrieve created company');
+    }
+    return createdCompany;
+  }
+
+  async getCompanyByUserId(userId: number): Promise<Company | null> {
+    const query = 'SELECT * FROM companies WHERE user_id = ?';
+    const result = await this.db!.query(query, [userId]);
+    
+    if (result.values && result.values.length > 0) {
+      return this.mapToCompany(result.values[0]);
+    }
+    return null;
+  }
+
+  async getCompanyById(id: number): Promise<Company | null> {
+    const query = 'SELECT * FROM companies WHERE id = ?';
+    const result = await this.db!.query(query, [id]);
+    
+    if (result.values && result.values.length > 0) {
+      return this.mapToCompany(result.values[0]);
+    }
+    return null;
+  }
+
+  async updateCompany(id: number, company: Partial<CompanyInput>): Promise<void> {
+    const fields = [];
+    const values = [];
+    
+    if (company.name !== undefined) {
+      fields.push('name = ?');
+      values.push(company.name);
+    }
+    if (company.address !== undefined) {
+      fields.push('address = ?');
+      values.push(company.address);
+    }
+    if (company.phone !== undefined) {
+      fields.push('phone = ?');
+      values.push(company.phone);
+    }
+    if (company.email !== undefined) {
+      fields.push('email = ?');
+      values.push(company.email);
+    }
+    
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(id);
+    
+    const query = `UPDATE companies SET ${fields.join(', ')} WHERE id = ?`;
+    await this.db!.run(query, values);
+  }
+
+  async deleteCompany(id: number): Promise<void> {
+    await this.db!.run('DELETE FROM companies WHERE id = ?', [id]);
+  }
+
+  // ==================== PASSWORD UTILITIES ====================
+
+  private async hashPassword(password: string): Promise<string> {
+    // Simple hash implementation for demo purposes
+    // In production, use bcrypt or similar
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password + 'propertyflow_salt_2024');
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  private async verifyPassword(password: string, hash: string): Promise<boolean> {
+    const passwordHash = await this.hashPassword(password);
+    return passwordHash === hash;
+  }
+
+  // ==================== ADDITIONAL MAPPING FUNCTIONS ====================
+
+  private mapToUser(row: any): User {
+    return {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      phone: row.phone,
+      passwordHash: row.password_hash,
+      isPremium: Boolean(row.is_premium),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  private mapToCompany(row: any): Company {
+    return {
+      id: row.id,
+      userId: row.user_id,
+      name: row.name,
+      address: row.address,
+      phone: row.phone,
+      email: row.email,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
   }
 
   // ==================== PROPERTY OPERATIONS ====================

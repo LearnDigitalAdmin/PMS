@@ -3,22 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Home, Building, FileText, User } from 'lucide-react';
 import { database } from './services/database/Database';
 import Dashboard from './pages/Dashboard';
-
-// Navigation Context
-// interface NavigationContextType {
-//   currentPath: string;
-//   navigate: (path: string) => void;
-// }
-
-// const NavigationContext = createContext<NavigationContextType | undefined>(undefined);
-
-// const useNavigation = () => {
-//   const context = useContext(NavigationContext);
-//   if (!context) {
-//     throw new Error('useNavigation must be used within NavigationProvider');
-//   }
-//   return context;
-// };
+import AuthWrapper, { useAuth, AuthProvider } from './components/auh/AuthWrapper';
 
 // Placeholder components for other modules
 const Properties = () => (
@@ -41,15 +26,50 @@ const Invoices = () => (
   </div>
 );
 
-const Profile = () => (
-  <div className="flex items-center justify-center h-full">
-    <div className="text-center">
-      <User className="w-16 h-16 mx-auto mb-4 text-green-400" />
-      <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-2">Profile</h2>
-      <p className="text-gray-600 dark:text-gray-400">Profile module coming soon</p>
+const Profile = () => {
+  const { user, company, logout } = useAuth();
+  
+  return (
+    <div className="p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+        <div className="text-center mb-6">
+          <User className="w-16 h-16 mx-auto mb-4 text-green-400" />
+          <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-2">Profile</h2>
+        </div>
+        
+        <div className="space-y-4 mb-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Name</label>
+            <p className="text-lg text-gray-900 dark:text-white">{user?.name}</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Email</label>
+            <p className="text-lg text-gray-900 dark:text-white">{user?.email}</p>
+          </div>
+          {user?.phone && (
+            <div>
+              <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Phone</label>
+              <p className="text-lg text-gray-900 dark:text-white">{user.phone}</p>
+            </div>
+          )}
+          {company?.name && (
+            <div>
+              <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Company</label>
+              <p className="text-lg text-gray-900 dark:text-white">{company.name}</p>
+            </div>
+          )}
+        </div>
+        
+        <button
+          onClick={logout}
+          className="w-full bg-red-500 hover:bg-red-600 text-white py-3 px-4 rounded-xl transition-colors font-medium"
+        >
+          Sign Out
+        </button>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // Loading component with skeleton animation
 const LoadingSpinner = () => (
@@ -184,6 +204,41 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   );
 };
 
+// App Content Component (handles authenticated vs unauthenticated views)
+const AppContent: React.FC = () => {
+  return (
+    <AuthWrapper>
+      <Router>
+        <AppLayout>
+          <Routes>
+            <Route path="/" element={
+              <Suspense fallback={<LoadingSpinner />}>
+                <Dashboard />
+              </Suspense>
+            } />
+            <Route path="/properties" element={
+              <Suspense fallback={<LoadingSpinner />}>
+                <Properties/>
+              </Suspense>
+            } />
+            <Route path="/invoices" element={
+              <Suspense fallback={<LoadingSpinner />}>
+                <Invoices />
+              </Suspense>
+            } />
+            <Route path="/profile" element={
+              <Suspense fallback={<LoadingSpinner />}>
+                <Profile />
+              </Suspense>
+            } />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </AppLayout>
+      </Router>
+    </AuthWrapper>
+  );
+};
+
 // Main App Component
 const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -228,35 +283,11 @@ const App: React.FC = () => {
 
   return (
     <AppErrorBoundary>
-      <Router>
-        <AppLayout>
-          <Routes>
-            <Route path="/" element={
-              <Suspense fallback={<LoadingSpinner />}>
-                <Dashboard />
-              </Suspense>
-            } />
-            <Route path="/properties" element={
-              <Suspense fallback={<LoadingSpinner />}>
-                <Properties/>
-              </Suspense>
-            } />
-            <Route path="/invoices" element={
-              <Suspense fallback={<LoadingSpinner />}>
-                <Invoices />
-              </Suspense>
-            } />
-            <Route path="/profile" element={
-              <Suspense fallback={<LoadingSpinner />}>
-                <Profile />
-              </Suspense>
-            } />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </AppLayout>
-      </Router>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
     </AppErrorBoundary>
   );
 };
 
-export default App;
+export default App
