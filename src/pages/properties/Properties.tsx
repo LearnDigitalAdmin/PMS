@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
-  ArrowLeft,
   Building2,
   Edit3,
-  Trash2,
   MapPin,
   Users,
   DollarSign,
@@ -13,15 +11,17 @@ import {
   CreditCard,
   ChevronLeft,
   ChevronRight,
-  AlertTriangle
+  AlertTriangle,
+  ArrowLeft,
+  AlertCircle
 } from 'lucide-react';
 import { database, type PropertyWithTenants, type DashboardData, type MonthlyStats } from '../../services/database/Database';
 import TenantsList from '../tenants/TenantsList';
 
 interface PropertyProps {
   propertyId: number;
-  onNavigateBack: () => void;
-  onNavigateToPropertyList: () => void;
+  onCancel?: () => void;
+  isModal: boolean;
 }
 
 interface PropertyFormData {
@@ -32,9 +32,9 @@ interface PropertyFormData {
 }
 
 const Property: React.FC<PropertyProps> = ({ 
-  propertyId, 
-  onNavigateBack, 
-  onNavigateToPropertyList 
+  propertyId: propertyId,
+  onCancel,
+  isModal = false  
 }) => {
   const [property, setProperty] = useState<PropertyWithTenants | null>(null);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -44,9 +44,9 @@ const Property: React.FC<PropertyProps> = ({
     const now = new Date();
     return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
   });
-  const [selectedYear,] = useState<number>(() => new Date().getFullYear());
+  const [selectedYear] = useState<number>(() => new Date().getFullYear());
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   const [formData, setFormData] = useState<PropertyFormData>({
     name: '',
     address: '',
@@ -63,19 +63,17 @@ const Property: React.FC<PropertyProps> = ({
     try {
       setLoading(true);
 
-      // Load property with tenants
       const propertyData = await database.getPropertyById(propertyId);
       if (!propertyData) {
         console.error('Property not found');
-        onNavigateBack();
+        //onNavigateBack();
         return;
       }
 
-      // Get tenants for this property
       const tenants = await database.getTenantsByProperty(propertyId);
-      const monthlyRevenue = tenants.reduce((sum: any, tenant: { rentAmount: any; }) => sum + tenant.rentAmount, 0);
+      const monthlyRevenue = tenants.reduce((sum: number, tenant: { rentAmount: number }) => sum + tenant.rentAmount, 0);
       const occupancyRate = tenants.length > 0 ? 
-        (tenants.filter((t: { isActive: any; }) => t.isActive).length / tenants.length) * 100 : 0;
+        (tenants.filter((t: { isActive: boolean }) => t.isActive).length / tenants.length) * 100 : 0;
 
       const propertyWithTenants: PropertyWithTenants = {
         ...propertyData,
@@ -86,11 +84,9 @@ const Property: React.FC<PropertyProps> = ({
 
       setProperty(propertyWithTenants);
 
-      // Load dashboard data for current month
       const dashboard = await database.getDashboardData(propertyId, selectedMonth);
       setDashboardData(dashboard);
 
-      // Load yearly stats
       const stats = await database.getMonthlyStats(propertyId, selectedYear);
       setMonthlyStats(stats);
 
@@ -146,16 +142,16 @@ const Property: React.FC<PropertyProps> = ({
     }
   };
 
-  const handleDeleteProperty = async () => {
-    if (!property) return;
+//   const handleDeleteProperty = async () => {
+//     if (!property) return;
 
-    try {
-      await database.deleteProperty(property.id);
-      onNavigateToPropertyList();
-    } catch (error) {
-      console.error('Error deleting property:', error);
-    }
-  };
+//     try {
+//       await database.deleteProperty(property.id);
+//       onNavigateToPropertyList();
+//     } catch (error) {
+//       console.error('Error deleting property:', error);
+//     }
+//   };
 
   const openEditModal = () => {
     resetForm();
@@ -186,7 +182,6 @@ const Property: React.FC<PropertyProps> = ({
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="animate-pulse">
-          {/* Header Skeleton */}
           <div className="bg-white shadow-sm border-b border-gray-100">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex items-center h-16 gap-4">
@@ -196,7 +191,6 @@ const Property: React.FC<PropertyProps> = ({
             </div>
           </div>
 
-          {/* Content Skeleton */}
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div className="bg-white rounded-2xl p-8 mb-8">
               <div className="w-48 h-48 bg-gray-200 rounded-2xl mb-6"></div>
@@ -218,14 +212,14 @@ const Property: React.FC<PropertyProps> = ({
     (dashboardData.monthlyRevenue - commissionAmount) : 0;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className={isModal ? "h-full flex flex-col" : "min-h-screen bg-gray-50"}>
       {/* Header */}
       <div className="bg-white shadow-sm border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
               <button
-                onClick={onNavigateBack}
+                onClick={() => setShowDiscardDialog(true)}
                 className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all mr-3"
               >
                 <ArrowLeft className="w-5 h-5" />
@@ -250,13 +244,13 @@ const Property: React.FC<PropertyProps> = ({
                 <Edit3 className="w-4 h-4 mr-2" />
                 Edit
               </button>
-              <button
+              {/* <button
                 onClick={() => setShowDeleteModal(true)}
                 className="inline-flex items-center px-4 py-2 text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all"
               >
                 <Trash2 className="w-4 h-4 mr-2" />
                 Delete
-              </button>
+              </button> */}
             </div>
           </div>
         </div>
@@ -292,7 +286,7 @@ const Property: React.FC<PropertyProps> = ({
                   Total Tenants
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
-                  {property.tenants.filter((t: { isActive: any; }) => t.isActive).length} Active
+                  {property.tenants.filter((t: { isActive: boolean }) => t.isActive).length} Active
                 </div>
               </div>
 
@@ -326,7 +320,7 @@ const Property: React.FC<PropertyProps> = ({
                   Occupancy Rate
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
-                  {property.tenants.filter((t: { isActive: any; }) => t.isActive).length} / {property.tenants.length} Units
+                  {property.tenants.filter((t: { isActive: boolean }) => t.isActive).length} / {property.tenants.length} Units
                 </div>
               </div>
 
@@ -484,27 +478,12 @@ const Property: React.FC<PropertyProps> = ({
         </div>
 
         {/* Tenants Section */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 mb-8">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
           <div className="p-6 border-b border-gray-100">
             <h3 className="text-lg font-bold text-gray-900">Tenants</h3>
           </div>
           <div className="p-6">
-            {/* Integration point for TenantsList component */}
             <TenantsList propertyId={property.id} />
-            <div className="text-center py-12">
-              <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h4 className="text-lg font-medium text-gray-500 mb-2">
-                Tenants Management
-              </h4>
-              <p className="text-gray-400 mb-6">
-                The TenantsList component will be integrated here by Module 3
-              </p>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md mx-auto">
-                <p className="text-sm text-blue-800">
-                  <strong>Integration Point:</strong> &lt;TenantsList propertyId={property.id} /&gt;
-                </p>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -603,7 +582,7 @@ const Property: React.FC<PropertyProps> = ({
       )}
 
       {/* Delete Confirmation Modal */}
-      {showDeleteModal && (
+      {/* {showDeleteModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="p-6">
@@ -633,7 +612,42 @@ const Property: React.FC<PropertyProps> = ({
             </div>
           </div>
         </div>
-      )}
+      )} */}
+
+      {showDiscardDialog && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg max-w-md w-full">
+                <div className="p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                      <AlertCircle className="w-5 h-5 text-red-600" />
+                    </div>
+                    <h3 className="text-lg font-semibold">Close View?</h3>
+                  </div>
+                  <p className="text-gray-600 mb-6">
+                    Are you sure you want to close?"
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowDiscardDialog(false)}
+                      className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                    >
+                      Continue Editing
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowDiscardDialog(false);
+                        onCancel?.();
+                      }}
+                      className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                    >
+                      Discard
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
     </div>
   );
 };

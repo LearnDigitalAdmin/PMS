@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Plus, 
   Search, 
@@ -12,10 +12,10 @@ import {
   Trash2,
   RefreshCw,
   Home,
-  MapPin,
-  //Calendar
+  MapPin
 } from 'lucide-react';
 import { database, type PropertyWithTenants, type PropertyInput } from '../../services/database/Database';
+import Property from './Properties';
 
 interface PropertyListProps {
   onNavigateToProperty: (property: PropertyWithTenants) => void;
@@ -44,6 +44,8 @@ const Properties: React.FC<PropertyListProps> = ({
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<PropertyWithTenants | null>(null);
+  const [showPropModal, setShowPropModal] = useState(false);
+  const [propertyId, setPropertyId] = useState<number>(Number);
   const [formData, setFormData] = useState<PropertyFormData>({
     name: '',
     address: '',
@@ -59,7 +61,7 @@ const Properties: React.FC<PropertyListProps> = ({
     loadProperties();
   }, [currentUserId]);
 
-  const loadProperties = async () => {
+  const loadProperties = useCallback(async () => {
     try {
       setLoading(true);
       const data = await database.getPropertiesWithTenants(currentUserId);
@@ -69,7 +71,7 @@ const Properties: React.FC<PropertyListProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentUserId]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -177,20 +179,35 @@ const Properties: React.FC<PropertyListProps> = ({
     setShowDeleteModal(true);
   };
 
-  const PropertyCard: React.FC<{ property: PropertyWithTenants }> = ({ property }) => {
+  const getOccupancyColor = (rate: number) => {
+    if (rate >= 80) return 'text-green-600 bg-green-50';
+    if (rate >= 50) return 'text-yellow-600 bg-yellow-50';
+    return 'text-red-600 bg-red-50';
+  };
+
+  const handleProperty = (propertyId: number) => {
+    setPropertyId(propertyId);
+    setShowPropModal(true);
+};
+
+const handleCloseModal = () => {
+  setPropertyId(0);
+  setShowPropModal(false);
+};
+
+  const PropertyCard: React.FC<{ property: PropertyWithTenants; index: number }> = ({ property, index }) => {
     const occupancyPercentage = property.occupancyRate;
-    const occupancyColor = occupancyPercentage >= 80 ? 'text-green-600' : 
-                          occupancyPercentage >= 50 ? 'text-yellow-600' : 'text-red-600';
 
     return (
       <div 
-        className="group bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border border-gray-100 overflow-hidden cursor-pointer"
+        className="group bg-white rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100 overflow-hidden cursor-pointer animate-fade-in"
+        style={{ animationDelay: `${index * 100}ms` }}
         onClick={() => onNavigateToProperty(property)}
       >
         {/* Property Image Placeholder */}
         <div className="h-48 bg-gradient-to-br from-blue-500 via-blue-600 to-purple-600 relative overflow-hidden">
           <div className="absolute inset-0 bg-black bg-opacity-20"></div>
-          <div className="absolute top-4 right-4 flex gap-2">
+          <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -212,11 +229,11 @@ const Properties: React.FC<PropertyListProps> = ({
           </div>
           <div className="absolute bottom-4 left-4 text-white">
             <Building2 className="w-8 h-8 mb-2 opacity-80" />
-            <h3 className="text-xl font-bold">{property.name}</h3>
+            <h3 className="text-xl font-bold truncate max-w-[250px]">{property.name}</h3>
             {property.address && (
               <div className="flex items-center mt-1 opacity-90">
-                <MapPin className="w-3 h-3 mr-1" />
-                <p className="text-sm truncate">{property.address}</p>
+                <MapPin className="w-3 h-3 mr-1 flex-shrink-0" />
+                <p className="text-sm truncate max-w-[200px]">{property.address}</p>
               </div>
             )}
           </div>
@@ -240,7 +257,7 @@ const Properties: React.FC<PropertyListProps> = ({
               <div className="flex items-center justify-center mb-1">
                 <DollarSign className="w-4 h-4 text-green-600 mr-1" />
                 <span className="text-2xl font-bold text-gray-900">
-                  ${property.monthlyRevenue.toLocaleString()}
+                  ${(property.monthlyRevenue || 0).toLocaleString()}
                 </span>
               </div>
               <p className="text-xs text-gray-500 font-medium">Monthly</p>
@@ -248,8 +265,8 @@ const Properties: React.FC<PropertyListProps> = ({
             
             <div className="text-center">
               <div className="flex items-center justify-center mb-1">
-                <TrendingUp className={`w-4 h-4 mr-1 ${occupancyColor}`} />
-                <span className={`text-2xl font-bold ${occupancyColor}`}>
+                <TrendingUp className={`w-4 h-4 mr-1 ${occupancyPercentage >= 80 ? 'text-green-600' : occupancyPercentage >= 50 ? 'text-yellow-600' : 'text-red-600'}`} />
+                <span className={`text-2xl font-bold ${occupancyPercentage >= 80 ? 'text-green-600' : occupancyPercentage >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
                   {occupancyPercentage.toFixed(0)}%
                 </span>
               </div>
@@ -276,15 +293,14 @@ const Properties: React.FC<PropertyListProps> = ({
     );
   };
 
-  const PropertyListItem: React.FC<{ property: PropertyWithTenants }> = ({ property }) => {
+  const PropertyListItem: React.FC<{ property: PropertyWithTenants; index: number }> = ({ property, index }) => {
     const occupancyPercentage = property.occupancyRate;
-    const occupancyColor = occupancyPercentage >= 80 ? 'text-green-600' : 
-                          occupancyPercentage >= 50 ? 'text-yellow-600' : 'text-red-600';
 
     return (
       <div 
-        className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-200 border border-gray-100 p-4 cursor-pointer"
-        onClick={() => onNavigateToProperty(property)}
+        className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-200 border border-gray-100 p-4 cursor-pointer animate-fade-in"
+        style={{ animationDelay: `${index * 50}ms` }}
+        
       >
         <div className="flex items-center justify-between">
           <div className="flex-1 min-w-0">
@@ -294,13 +310,13 @@ const Properties: React.FC<PropertyListProps> = ({
                   {property.name}
                 </h3>
                 {property.address && (
-                  <p className="text-sm text-gray-500 truncate mt-1">
-                    <MapPin className="w-3 h-3 inline mr-1" />
+                  <p className="text-sm text-gray-500 truncate mt-1 flex items-center">
+                    <MapPin className="w-3 h-3 mr-1 flex-shrink-0" />
                     {property.address}
                   </p>
                 )}
               </div>
-              <div className="flex gap-2 ml-4">
+              <div className="flex gap-2 ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -322,7 +338,8 @@ const Properties: React.FC<PropertyListProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-6 text-sm">
+            <div className="flex items-center gap-6 text-sm"
+                onClick={() => handleProperty(property.id)}>
               <div className="flex items-center text-gray-600">
                 <Users className="w-4 h-4 mr-1" />
                 <span className="font-medium">{property.tenants.length}</span>
@@ -331,14 +348,13 @@ const Properties: React.FC<PropertyListProps> = ({
               
               <div className="flex items-center text-gray-600">
                 <DollarSign className="w-4 h-4 mr-1" />
-                <span className="font-medium">${property.monthlyRevenue.toLocaleString()}</span>
+                <span className="font-medium">${(property.monthlyRevenue || 0).toLocaleString()}</span>
                 <span className="ml-1">monthly</span>
               </div>
               
-              <div className={`flex items-center ${occupancyColor}`}>
-                <TrendingUp className="w-4 h-4 mr-1" />
-                <span className="font-medium">{occupancyPercentage.toFixed(0)}%</span>
-                <span className="ml-1">occupied</span>
+              <div className={`flex items-center px-2 py-1 rounded-full text-xs font-medium ${getOccupancyColor(occupancyPercentage)}`}>
+                <TrendingUp className="w-3 h-3 mr-1" />
+                <span>{occupancyPercentage.toFixed(0)}% occupied</span>
               </div>
             </div>
           </div>
@@ -347,21 +363,51 @@ const Properties: React.FC<PropertyListProps> = ({
     );
   };
 
-  const SkeletonCard = () => (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-pulse">
-      <div className="h-48 bg-gray-200"></div>
-      <div className="p-6">
-        <div className="grid grid-cols-3 gap-4 mb-4">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="text-center">
-              <div className="h-8 bg-gray-200 rounded mb-1"></div>
-              <div className="h-3 bg-gray-200 rounded"></div>
+  const LoadingSkeleton = () => (
+    <div className="animate-pulse">
+      {viewMode === 'grid' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="h-48 bg-gray-200"></div>
+              <div className="p-6">
+                <div className="grid grid-cols-3 gap-4 mb-4">
+                  {[...Array(3)].map((_, j) => (
+                    <div key={j} className="text-center">
+                      <div className="h-8 bg-gray-200 rounded mb-1"></div>
+                      <div className="h-3 bg-gray-200 rounded"></div>
+                    </div>
+                  ))}
+                </div>
+                <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+              </div>
             </div>
           ))}
         </div>
-        <div className="h-4 bg-gray-200 rounded mb-2"></div>
-        <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-      </div>
+      ) : (
+        <div className="space-y-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-white rounded-xl p-4 border border-gray-100">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <div className="h-6 bg-gray-200 rounded w-1/3 mb-2"></div>
+                  <div className="h-4 bg-gray-200 rounded w-1/2 mb-3"></div>
+                  <div className="flex gap-6">
+                    <div className="h-4 bg-gray-200 rounded w-20"></div>
+                    <div className="h-4 bg-gray-200 rounded w-24"></div>
+                    <div className="h-4 bg-gray-200 rounded w-20"></div>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <div className="w-8 h-8 bg-gray-200 rounded-lg"></div>
+                  <div className="w-8 h-8 bg-gray-200 rounded-lg"></div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 
@@ -434,7 +480,7 @@ const Properties: React.FC<PropertyListProps> = ({
                 value={formData.agentCommissionRate}
                 onChange={(e) => setFormData({ ...formData, agentCommissionRate: Number(e.target.value) })}
                 min="0"
-                max="100"
+                max="50"
                 step="0.1"
                 className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
                   formErrors.agentCommissionRate ? 'border-red-500' : 'border-gray-200'
@@ -474,10 +520,10 @@ const Properties: React.FC<PropertyListProps> = ({
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
               <Home className="w-6 h-6 text-blue-600 mr-3" />
-              <h1 className="text-xl font-bold text-gray-900">Properties</h1>
-              <span className="ml-3 px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">
+              <h1 className="text-xl font-bold text-gray-900">{properties.length} {properties.length === 1 ? 'Property' : 'Properties'}</h1>
+              {/* <span className="ml-3 px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">
                 {properties.length} {properties.length === 1 ? 'Property' : 'Properties'}
-              </span>
+              </span> */}
             </div>
             
             <div className="flex items-center gap-4">
@@ -533,15 +579,7 @@ const Properties: React.FC<PropertyListProps> = ({
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {loading ? (
-          <div className={`grid gap-6 ${
-            viewMode === 'grid' 
-              ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' 
-              : 'grid-cols-1'
-          }`}>
-            {[...Array(6)].map((_, i) => (
-              <SkeletonCard key={i} />
-            ))}
-          </div>
+          <LoadingSkeleton />
         ) : filteredProperties.length === 0 ? (
           <div className="text-center py-16">
             <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-blue-100 to-purple-100 rounded-2xl flex items-center justify-center">
@@ -567,33 +605,47 @@ const Properties: React.FC<PropertyListProps> = ({
             )}
           </div>
         ) : (
-          <div className={`grid gap-6 ${
+          <div className={`${
             viewMode === 'grid' 
-              ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' 
-              : 'grid-cols-1'
+              ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' 
+              : 'space-y-4'
           }`}>
-            {filteredProperties.map((property, index) => (
-              <div
-                key={property.id}
-                className="animate-fade-in-up"
-                style={{ animationDelay: `${index * 100}ms` }}
-              >
-                {viewMode === 'grid' ? (
-                  <PropertyCard property={property} />
-                ) : (
-                  <PropertyListItem property={property} />
-                )}
-              </div>
-            ))}
+            {filteredProperties.map((property, index) => 
+              viewMode === 'grid' ? (
+                <PropertyCard key={property.id} property={property} index={index} />
+              ) : (
+                <PropertyListItem key={property.id} property={property} index={index} />
+              )
+            )}
           </div>
         )}
       </div>
+
+      {showPropModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg w-full max-w-4xl max-h-[95vh] overflow-hidden">
+            <Property
+                propertyId={propertyId}
+                onCancel={handleCloseModal}
+                isModal={true}
+            />
+            </div>
+        </div>
+        )}
+
+
+
+
+
+
+
+
 
       {/* Floating Action Button */}
       {canAddProperty && (
         <button
           onClick={() => setShowAddModal(true)}
-          className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-xl hover:shadow-2xl transition-all transform hover:scale-110 flex items-center justify-center z-40"
+          className="fixed bottom-45 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-xl hover:shadow-2xl transition-all transform hover:scale-110 flex items-center justify-center z-40"
         >
           <Plus className="w-6 h-6" />
         </button>
@@ -676,30 +728,6 @@ const Properties: React.FC<PropertyListProps> = ({
           </div>
         </div>
       )}
-
-      <style>{`
-        @keyframes fade-in-up {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        .animate-fade-in-up {
-          animation: fade-in-up 0.6s ease-out forwards;
-        }
-        
-        .line-clamp-2 {
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-      `}</style>
     </div>
   );
 };
