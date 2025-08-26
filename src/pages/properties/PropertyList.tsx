@@ -30,7 +30,7 @@ interface PropertyFormData {
   agentCommissionRate: number;
 }
 
-const PropertyList: React.FC<PropertyListProps> = ({ 
+const Properties: React.FC<PropertyListProps> = ({ 
   onNavigateToProperty, 
   currentUserId,
   userPlan 
@@ -704,4 +704,4 @@ const PropertyList: React.FC<PropertyListProps> = ({
   );
 };
 
-export default PropertyList;
+export default Properties;

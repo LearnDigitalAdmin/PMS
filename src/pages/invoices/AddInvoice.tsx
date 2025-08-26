@@ -2,12 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Check, Calculator, Calendar, Zap, Droplets, FileText, Save, AlertCircle, Info } from 'lucide-react';
 import { database, type Property, type Tenant, type Invoice, type InvoiceInput } from '../../services/database/Database';
 
+// interface AddInvoiceProps {
+//   propertyId?: number;
+//   tenantId?: number;
+//   invoiceId?: number;
+//   onSave?: (invoice: Invoice) => void;
+//   onCancel?: () => void;
+// }
+
 interface AddInvoiceProps {
   propertyId?: number;
   tenantId?: number;
   invoiceId?: number;
   onSave?: (invoice: Invoice) => void;
   onCancel?: () => void;
+  isModal?: boolean; // Add this line
+  onNavigate?: (page: string, params?: any) => void;
 }
 
 interface FormData {
@@ -48,7 +58,9 @@ const AddInvoice: React.FC<AddInvoiceProps> = ({
   tenantId: initialTenantId,
   invoiceId,
   onSave,
-  onCancel
+  onCancel,
+  onNavigate,
+  isModal = false 
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [properties, setProperties] = useState<Property[]>([]);
@@ -134,7 +146,7 @@ const AddInvoice: React.FC<AddInvoiceProps> = ({
 
   const loadInvoiceForEditing = async (invoice: Invoice) => {
     const property = await database.getPropertyById(invoice.propertyId);
-    const tenant = await database.getTenantById(invoice.tenantId);
+    //const tenant = await database.getTenantById(invoice.tenantId);
     
     setFormData({
       propertyId: invoice.propertyId,
@@ -178,6 +190,51 @@ const AddInvoice: React.FC<AddInvoiceProps> = ({
       console.error('Error loading tenants:', error);
     }
   };
+
+  // Replace the existing handleSave function with this updated version:
+const handleSave = async () => {
+  if (!validateCurrentStep()) return;
+  
+  setLoading(true);
+  try {
+    const invoiceData: InvoiceInput = {
+      tenantId: formData.tenantId,
+      propertyId: formData.propertyId,
+      billingMonth: formData.billingMonth,
+      rentAmount: formData.rentAmount,
+      waterCurrentReading: formData.waterCurrentReading,
+      waterPreviousReading: formData.waterPreviousReading,
+      waterStandingFee: formData.includeWaterStanding ? formData.waterStandingFee : 0,
+      waterUnitPrice: formData.waterUnitPrice,
+      powerCurrentReading: formData.includePower ? formData.powerCurrentReading : 0,
+      powerPreviousReading: formData.includePower ? formData.powerPreviousReading : 0,
+      powerUnitPrice: formData.includePower ? formData.powerUnitPrice : 0,
+      otherCharges: formData.otherCharges,
+      otherChargesDescription: formData.otherChargesDescription,
+      dueDate: formData.dueDate
+    };
+
+    let savedInvoice: Invoice;
+    if (invoiceId) {
+      await database.updateInvoice(invoiceId, invoiceData);
+      savedInvoice = await database.getInvoiceById(invoiceId) as Invoice;
+    } else {
+      savedInvoice = await database.createInvoice(invoiceData);
+    }
+
+    // Call onSave if provided, otherwise navigate back to invoices
+    if (onSave) {
+      onSave(savedInvoice);
+    } else {
+      onNavigate?.('invoices');
+    }
+  } catch (error) {
+    console.error('Error saving invoice:', error);
+    // You might want to show an error message here
+  } finally {
+    setLoading(false);
+  }
+};
 
   const loadTenantDetails = async () => {
     if (!formData.tenantId) return;
@@ -300,44 +357,6 @@ const AddInvoice: React.FC<AddInvoiceProps> = ({
   const handlePrevious = () => {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!validateCurrentStep()) return;
-    
-    setLoading(true);
-    try {
-      const invoiceData: InvoiceInput = {
-        tenantId: formData.tenantId,
-        propertyId: formData.propertyId,
-        billingMonth: formData.billingMonth,
-        rentAmount: formData.rentAmount,
-        waterCurrentReading: formData.waterCurrentReading,
-        waterPreviousReading: formData.waterPreviousReading,
-        waterStandingFee: formData.includeWaterStanding ? formData.waterStandingFee : 0,
-        waterUnitPrice: formData.waterUnitPrice,
-        powerCurrentReading: formData.includePower ? formData.powerCurrentReading : 0,
-        powerPreviousReading: formData.includePower ? formData.powerPreviousReading : 0,
-        powerUnitPrice: formData.includePower ? formData.powerUnitPrice : 0,
-        otherCharges: formData.otherCharges,
-        otherChargesDescription: formData.otherChargesDescription,
-        dueDate: formData.dueDate
-      };
-
-      let savedInvoice: Invoice;
-      if (invoiceId) {
-        await database.updateInvoice(invoiceId, invoiceData);
-        savedInvoice = await database.getInvoiceById(invoiceId) as Invoice;
-      } else {
-        savedInvoice = await database.createInvoice(invoiceData);
-      }
-
-      onSave?.(savedInvoice);
-    } catch (error) {
-      console.error('Error saving invoice:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -912,152 +931,156 @@ const AddInvoice: React.FC<AddInvoiceProps> = ({
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowDiscardDialog(true)}
-                className="p-2 hover:bg-gray-100 rounded-lg"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <h1 className="text-xl font-semibold text-gray-900">
-                {invoiceId ? 'Edit Invoice' : 'Create New Invoice'}
-              </h1>
-            </div>
-            <div className="text-sm text-gray-500">
-              Step {currentStep + 1} of {steps.length}
-            </div>
+  // Replace the main return statement with this conditional layout:
+return (
+  <div className={isModal ? "h-full flex flex-col" : "min-h-screen bg-gray-50"}>
+    {/* Header */}
+    <div className={`bg-white shadow-sm ${isModal ? 'flex-shrink-0' : ''}`}>
+      <div className="max-w-4xl mx-auto px-4 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowDiscardDialog(true)}
+              className="p-2 hover:bg-gray-100 rounded-lg"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <h1 className="text-xl font-semibold text-gray-900">
+              {invoiceId ? 'Edit Invoice' : 'Create New Invoice'}
+            </h1>
+          </div>
+          <div className="text-sm text-gray-500">
+            Step {currentStep + 1} of {steps.length}
           </div>
         </div>
       </div>
+    </div>
 
-      {/* Progress Bar */}
-      <div className="bg-white border-b">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between mb-2">
-            {steps.map((step, index) => (
-              <div key={index} className="flex items-center">
-                <div
-                  className={`flex items-center justify-center w-8 h-8 rounded-full ${
-                    index <= currentStep
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-500'
-                  }`}
-                >
-                  {index < currentStep ? (
-                    <Check className="w-4 h-4" />
-                  ) : (
-                    <step.icon className="w-4 h-4" />
-                  )}
-                </div>
-                {index < steps.length - 1 && (
-                  <div
-                    className={`w-full h-1 mx-2 ${
-                      index < currentStep ? 'bg-blue-600' : 'bg-gray-200'
-                    }`}
-                  />
+    {/* Progress Bar */}
+    <div className={`bg-white border-b ${isModal ? 'flex-shrink-0' : ''}`}>
+      <div className="max-w-4xl mx-auto px-4 py-4">
+        <div className="flex items-center justify-between mb-2">
+          {steps.map((step, index) => (
+            <div key={index} className="flex items-center">
+              <div
+                className={`flex items-center justify-center w-8 h-8 rounded-full ${
+                  index <= currentStep
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-500'
+                }`}
+              >
+                {index < currentStep ? (
+                  <Check className="w-4 h-4" />
+                ) : (
+                  <step.icon className="w-4 h-4" />
                 )}
               </div>
-            ))}
-          </div>
-          <div className="flex justify-between text-xs text-gray-500">
-            {steps.map((step, index) => (
-              <span key={index} className={index <= currentStep ? 'text-blue-600' : ''}>
-                {step.title}
-              </span>
-            ))}
-          </div>
+              {index < steps.length - 1 && (
+                <div
+                  className={`w-full h-1 mx-2 ${
+                    index < currentStep ? 'bg-blue-600' : 'bg-gray-200'
+                  }`}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-between text-xs text-gray-500">
+          {steps.map((step, index) => (
+            <span key={index} className={index <= currentStep ? 'text-blue-600' : ''}>
+              {step.title}
+            </span>
+          ))}
         </div>
       </div>
+    </div>
 
-      {/* Content */}
+    {/* Content */}
+    <div className={`${isModal ? 'flex-1 overflow-y-auto' : 'flex-grow'}`}>
       <div className="max-w-2xl mx-auto px-4 py-8">
         <div className="bg-white rounded-lg shadow-sm p-6">
           {renderStep()}
         </div>
       </div>
+    </div>
 
-      {/* Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg">
-        <div className="max-w-2xl mx-auto px-4 py-4">
-          <div className="flex justify-between">
+    {/* Navigation */}
+    <div className={`bg-white border-t shadow-lg ${isModal ? 'flex-shrink-0' : 'fixed bottom-0 left-0 right-0'}`}>
+      <div className="max-w-2xl mx-auto px-4 py-4">
+        <div className="flex justify-between">
+          <button
+            onClick={handlePrevious}
+            disabled={currentStep === 0}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
+              currentStep === 0
+                ? 'text-gray-400 cursor-not-allowed'
+                : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Previous
+          </button>
+
+          {currentStep === steps.length - 1 ? (
             <button
-              onClick={handlePrevious}
-              disabled={currentStep === 0}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
-                currentStep === 0
-                  ? 'text-gray-400 cursor-not-allowed'
-                  : 'text-gray-600 hover:bg-gray-50'
-              }`}
+              onClick={handleSave}
+              disabled={loading}
+              className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
-              <ChevronLeft className="w-4 h-4" />
-              Previous
+              <Save className="w-4 h-4" />
+              {loading ? 'Saving...' : (invoiceId ? 'Update Invoice' : 'Create Invoice')}
             </button>
-
-            {currentStep === steps.length - 1 ? (
-              <button
-                onClick={handleSave}
-                disabled={loading}
-                className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-              >
-                <Save className="w-4 h-4" />
-                {loading ? 'Saving...' : (invoiceId ? 'Update Invoice' : 'Create Invoice')}
-              </button>
-            ) : (
-              <button
-                onClick={handleNext}
-                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-              >
-                Next
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            )}
-          </div>
+          ) : (
+            <button
+              onClick={handleNext}
+              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            >
+              Next
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
+    </div>
 
-      {/* Discard Dialog */}
-      {showDiscardDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full">
-            <div className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                  <AlertCircle className="w-5 h-5 text-red-600" />
-                </div>
-                <h3 className="text-lg font-semibold">Discard Changes?</h3>
+    {/* Discard Dialog */}
+    {showDiscardDialog && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg max-w-md w-full">
+          <div className="p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                <AlertCircle className="w-5 h-5 text-red-600" />
               </div>
-              <p className="text-gray-600 mb-6">
-                Are you sure you want to discard this invoice? All entered data will be lost.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowDiscardDialog(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-                >
-                  Continue Editing
-                </button>
-                <button
-                  onClick={() => {
-                    setShowDiscardDialog(false);
-                    onCancel?.();
-                  }}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                >
-                  Discard
-                </button>
-              </div>
+              <h3 className="text-lg font-semibold">Discard Changes?</h3>
+            </div>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to discard this invoice? All entered data will be lost.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDiscardDialog(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                Continue Editing
+              </button>
+              <button
+                onClick={() => {
+                  setShowDiscardDialog(false);
+                  onCancel?.();
+                }}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+              >
+                Discard
+              </button>
             </div>
           </div>
         </div>
-      )}
-    </div>
-  );
+      </div>
+    )}
+  </div>
+);
 };
 
 export default AddInvoice;
+

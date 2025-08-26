@@ -15,8 +15,11 @@ import {
   Clock,
   AlertCircle
 } from 'lucide-react';
-import { database, type InvoiceWithDetails, type Property, type InvoiceFilters } from '../../services/database/Database';
-
+import { database, type InvoiceWithDetails, type Property, type InvoiceFilters, type Invoice } from '../../services/database/Database';
+// Add these imports at the top of Invoices.tsx
+import { generateInvoicePDF, sharePDF, generatePDFFilename } from '../../services/pdf/PDFService';
+import { shareInvoiceSummary } from '../../services/sharing/ShareService';
+import AddInvoice from './AddInvoice';
 
 interface InvoicesProps {
   onNavigate?: (page: string, params?: any) => void;
@@ -33,6 +36,11 @@ const Invoices: React.FC<InvoicesProps> = ({ onNavigate }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [showFilters, setShowFilters] = useState(false);
   const [exportModalVisible, setExportModalVisible] = useState(false);
+  // Add these state variables after existing useState declarations
+    const [showAddInvoiceModal, setShowAddInvoiceModal] = useState(false);
+    const [editingInvoiceId, setEditingInvoiceId] = useState<number | undefined>();
+    const [prefilledPropertyId, setPrefilledPropertyId] = useState<number | undefined>();
+    const [prefilledTenantId, setPrefilledTenantId] = useState<number | undefined>();
 
   useEffect(() => {
     loadData();
@@ -60,6 +68,63 @@ const Invoices: React.FC<InvoicesProps> = ({ onNavigate }) => {
     const result = await database.getInvoices(filters);
     setInvoices(result);
   };
+
+  // Replace the existing share button onClick with this function
+const handleShareInvoice = async (invoice: InvoiceWithDetails) => {
+  try {
+    const property = properties.find(p => p.id === invoice.propertyId);
+    if (!property) {
+      throw new Error('Property not found');
+    }
+
+    // Show share options modal or directly share summary
+    await shareInvoiceSummary(invoice, property);
+    
+  } catch (error) {
+    console.error('Share failed:', error);
+    // You might want to show a toast/alert here
+  }
+};
+
+// Replace the existing PDF download button onClick with this function
+const handleDownloadPDF = async (invoice: InvoiceWithDetails) => {
+  try {
+    setLoading(true);
+    
+    // Get property details
+    const property = properties.find(p => p.id === invoice.propertyId);
+    if (!property) {
+      throw new Error('Property not found');
+    }
+
+    // Generate PDF
+    const pdfBytes = await generateInvoicePDF(invoice, property, [], companyInfo);
+    const filename = generatePDFFilename(invoice);
+    
+    // Share PDF
+    await sharePDF(pdfBytes, filename, `Invoice ${invoice.invoiceNumber}`);
+    
+  } catch (error) {
+    console.error('PDF generation failed:', error);
+    // You might want to show a toast/alert here
+  } finally {
+    setLoading(false);
+  }
+};
+
+  const handleViewInvoice = (invoiceId: number) => {
+    onNavigate?.('invoice', { invoiceId });
+  };
+
+
+  // Add this after the existing state declarations in Invoices component
+    const [companyInfo] = useState({
+        name: 'SMB KENYA LTD',
+        address: 'Naivasha, Nairobi, Kenya',
+        phone: '+254 791 286 165',
+        email: 'info@smbkenya.com',
+        website: 'www.cogvana.com'
+    });
 
   const loadProperties = async () => {
     // Assuming userId = 1 for demo
@@ -109,6 +174,34 @@ const Invoices: React.FC<InvoicesProps> = ({ onNavigate }) => {
     setCurrentDate(newDate);
   };
 
+  const handleCreateInvoice = (propertyId?: number, tenantId?: number) => {
+  setEditingInvoiceId(undefined);
+  setPrefilledPropertyId(propertyId);
+  setPrefilledTenantId(tenantId);
+  setShowAddInvoiceModal(true);
+};
+
+const handleEditInvoice = (invoiceId: number) => {
+  setEditingInvoiceId(invoiceId);
+  setPrefilledPropertyId(undefined);
+  setPrefilledTenantId(undefined);
+  setShowAddInvoiceModal(true);
+};
+
+const handleCloseModal = () => {
+  setShowAddInvoiceModal(false);
+  setEditingInvoiceId(undefined);
+  setPrefilledPropertyId(undefined);
+  setPrefilledTenantId(undefined);
+};
+
+const handleInvoiceSaved = (_savedInvoice: Invoice) => {
+  // Refresh the invoices list
+  loadData();
+  handleCloseModal();
+  // You might want to show a success message here
+};
+
   const getStatusColor = (invoice: InvoiceWithDetails) => {
     if (invoice.isPaid) return 'text-green-600 bg-green-50 border-green-200';
     
@@ -153,20 +246,6 @@ const Invoices: React.FC<InvoicesProps> = ({ onNavigate }) => {
       month: 'short',
       year: 'numeric'
     });
-  };
-
-  const handleViewInvoice = (invoiceId: number) => {
-    onNavigate?.('invoice', { invoiceId });
-  };
-
-  const handleCreateInvoice = () => {
-    onNavigate?.('add-invoice');
-  };
-
-  const handleExport = (format: 'pdf' | 'csv') => {
-    // TODO: Implement export functionality in Module 6
-    console.log(`Exporting as ${format}`);
-    setExportModalVisible(false);
   };
 
   const summary = useMemo(() => {
@@ -348,12 +427,12 @@ const Invoices: React.FC<InvoicesProps> = ({ onNavigate }) => {
             <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No invoices found</h3>
             <p className="text-gray-500 mb-6">Create your first invoice to get started</p>
-            <button
+            {/* <button
               onClick={handleCreateInvoice}
               className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
             >
               Create Invoice
-            </button>
+            </button> */}
           </div>
         ) : (
           invoices.map((invoice) => (
@@ -398,27 +477,38 @@ const Invoices: React.FC<InvoicesProps> = ({ onNavigate }) => {
                 )}
                 
                 <div className="flex space-x-2">
-                  <button
-                    onClick={() => handleViewInvoice(invoice.id)}
-                    className="flex-1 bg-blue-50 text-blue-600 py-2 px-4 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors flex items-center justify-center space-x-1"
-                  >
-                    <Eye className="w-4 h-4" />
-                    <span>View</span>
-                  </button>
-                  
-                  <button
-                    onClick={() => {/* TODO: Implement PDF download */}}
-                    className="bg-gray-50 text-gray-600 py-2 px-4 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors"
-                  >
-                    <Download className="w-4 h-4" />
-                  </button>
-                  
-                  <button
-                    onClick={() => {/* TODO: Implement share */}}
-                    className="bg-gray-50 text-gray-600 py-2 px-4 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors"
-                  >
-                    <Share className="w-4 h-4" />
-                  </button>
+                    <button
+                        onClick={() => handleViewInvoice(invoice.id)}
+                        className="flex-1 bg-blue-50 text-blue-600 py-2 px-4 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors flex items-center justify-center space-x-1"
+                    >
+                        <Eye className="w-4 h-4" />
+                        <span>View</span>
+                    </button>
+                    
+                    <button
+                        onClick={() => handleEditInvoice(invoice.id)}
+                        className="bg-gray-50 text-gray-600 py-2 px-4 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors"
+                        title="Edit Invoice"
+                    >
+                        <FileText className="w-4 h-4" />
+                    </button>
+                    
+                    <button
+                        onClick={() => handleDownloadPDF(invoice)}
+                        disabled={loading}
+                        className="bg-gray-50 text-gray-600 py-2 px-4 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors disabled:opacity-50"
+                        title="Download PDF"
+                    >
+                        <Download className="w-4 h-4" />
+                    </button>
+                    
+                    <button
+                        onClick={() => handleShareInvoice(invoice)}
+                        className="bg-gray-50 text-gray-600 py-2 px-4 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors"
+                        title="Share Invoice"
+                    >
+                        <Share className="w-4 h-4" />
+                    </button>
                 </div>
               </div>
             </div>
@@ -433,7 +523,7 @@ const Invoices: React.FC<InvoicesProps> = ({ onNavigate }) => {
             <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
             <h3 className="text-lg font-semibold text-center">Export Invoices</h3>
             
-            <div className="space-y-3">
+            {/* <div className="space-y-3">
               <button
                 onClick={() => handleExport('pdf')}
                 className="w-full bg-red-50 text-red-600 py-3 px-4 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors text-left"
@@ -447,7 +537,7 @@ const Invoices: React.FC<InvoicesProps> = ({ onNavigate }) => {
               >
                 Export as CSV
               </button>
-            </div>
+            </div> */}
             
             <button
               onClick={() => setExportModalVisible(false)}
@@ -460,12 +550,28 @@ const Invoices: React.FC<InvoicesProps> = ({ onNavigate }) => {
       )}
 
       {/* FAB */}
-      <button
-        onClick={handleCreateInvoice}
+        <button
+        onClick={() => handleCreateInvoice()}
         className="fixed bottom-6 right-6 bg-blue-600 text-white p-4 rounded-full shadow-lg hover:bg-blue-700 transition-colors z-40"
-      >
+        >
         <Plus className="w-6 h-6" />
-      </button>
+        </button>
+
+      {/* Add Invoice Modal */}
+        {showAddInvoiceModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg w-full max-w-4xl max-h-[95vh] overflow-hidden">
+            <AddInvoice
+                propertyId={prefilledPropertyId}
+                tenantId={prefilledTenantId}
+                invoiceId={editingInvoiceId}
+                onSave={handleInvoiceSaved}
+                onCancel={handleCloseModal}
+                isModal={true}
+            />
+            </div>
+        </div>
+        )}
     </div>
   );
 };

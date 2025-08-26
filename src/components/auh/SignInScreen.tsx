@@ -46,7 +46,7 @@ const SignInScreen: React.FC<SignInScreenProps> = ({ onSwitchToSignUp }) => {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 backdrop-blur-lg rounded-2xl mb-4">
             <Building className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">PropertyFlow</h1>
+          <h1 className="text-3xl font-bold text-white mb-2">Plot Yangu</h1>
           <p className="text-blue-100">Manage your properties with ease</p>
         </div>
 
@@ -131,6 +131,7 @@ const SignInScreen: React.FC<SignInScreenProps> = ({ onSwitchToSignUp }) => {
                 Sign up now
               </button>
             </p>
+            <span className="text-red-600">Powered by: SMB KENYA LTD and Cogvana Technologies</span>
           </div>
         </div>
       </div>
