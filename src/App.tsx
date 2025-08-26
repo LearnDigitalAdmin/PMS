@@ -1,31 +1,14 @@
 import React, { useState, useEffect, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+// CHANGED: Added NavLink to the import
+import { BrowserRouter as Router, Routes, Route, Navigate, NavLink } from 'react-router-dom';
 import { Home, Building, FileText, User } from 'lucide-react';
 import { database } from './services/database/Database';
 import Dashboard from './pages/Dashboard';
 import AuthWrapper, { useAuth, AuthProvider } from './components/auh/AuthWrapper';
+import Invoices from './pages/invoices/Invoices';
+import Properties from './pages/properties/PropertyList';
 
-// Placeholder components for other modules
-const Properties = () => (
-  <div className="flex items-center justify-center h-full">
-    <div className="text-center">
-      <Building className="w-16 h-16 mx-auto mb-4 text-blue-400" />
-      <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-2">Properties</h2>
-      <p className="text-gray-600 dark:text-gray-400">Properties module coming soon</p>
-    </div>
-  </div>
-);
-
-const Invoices = () => (
-  <div className="flex items-center justify-center h-full">
-    <div className="text-center">
-      <FileText className="w-16 h-16 mx-auto mb-4 text-purple-400" />
-      <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-2">Invoices</h2>
-      <p className="text-gray-600 dark:text-gray-400">Invoices module coming soon</p>
-    </div>
-  </div>
-);
-
+// Profile component (No changes needed)
 const Profile = () => {
   const { user, company, logout } = useAuth();
   
@@ -71,7 +54,7 @@ const Profile = () => {
   );
 };
 
-// Loading component with skeleton animation
+// Loading component with skeleton animation (No changes needed)
 const LoadingSpinner = () => (
   <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900">
     <div className="flex items-center justify-center h-screen">
@@ -83,7 +66,7 @@ const LoadingSpinner = () => (
   </div>
 );
 
-// Error Boundary Component
+// Error Boundary Component (No changes needed)
 class AppErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean; error?: Error }
@@ -128,15 +111,14 @@ class AppErrorBoundary extends React.Component<
   }
 }
 
-// Navigation Component with React Router integration
+// ==================================================================
+// FIXED Navigation Component with React Router integration
+// ==================================================================
 const BottomNavigation = () => {
-  const [currentPath, setCurrentPath] = useState(window.location.pathname);
-  
-  const navigate = (path: string) => {
-    setCurrentPath(path);
-    window.history.pushState({}, '', path);
-  };
-  
+  // REMOVED: State management for path is no longer needed, NavLink handles it.
+  // const [currentPath, setCurrentPath] = useState(window.location.pathname);
+  // const navigate = (path: string) => { ... };
+
   const navItems = [
     { path: '/', icon: Home, label: 'Dashboard', color: 'blue' },
     { path: '/properties', icon: Building, label: 'Properties', color: 'indigo' },
@@ -149,33 +131,45 @@ const BottomNavigation = () => {
       <div className="safe-area-inset-bottom">
         <div className="flex justify-around items-center py-2">
           {navItems.map(({ path, icon: Icon, label, color }) => {
-            const isActive = currentPath === path;
-            const colorClasses = {
-              blue: isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500',
-              indigo: isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500',
-              purple: isActive ? 'text-purple-600 dark:text-purple-400' : 'text-gray-400 dark:text-gray-500',
-              green: isActive ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500',
+            const activeColorClasses: { [key: string]: string } = {
+              blue: 'text-blue-600 dark:text-blue-400',
+              indigo: 'text-indigo-600 dark:text-indigo-400',
+              purple: 'text-purple-600 dark:text-purple-400',
+              green: 'text-green-600 dark:text-green-400',
             };
+            const inactiveColorClasses = 'text-gray-400 dark:text-gray-500';
 
             return (
-              <button
+              // CHANGED: Replaced <button> with <NavLink>
+              <NavLink
                 key={path}
-                onClick={() => navigate(path)}
-                className={`flex flex-col items-center space-y-1 px-3 py-2 rounded-xl transition-all duration-200 min-w-[44px] min-h-[44px] ${
-                  isActive ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800'
-                }`}
+                to={path}
+                // The 'end' prop ensures the root '/' link is only active on the exact path
+                end={path === '/'} 
+                // CHANGED: Use the `isActive` property from NavLink to determine classes
+                className={({ isActive }) =>
+                  `flex flex-col items-center space-y-1 px-3 py-2 rounded-xl transition-all duration-200 min-w-[44px] min-h-[44px] ${
+                    isActive ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                  }`
+                }
               >
-                <Icon 
-                  className={`w-6 h-6 transition-all duration-200 ${colorClasses[color as keyof typeof colorClasses]} ${
-                    isActive ? 'scale-110' : ''
-                  }`} 
-                />
-                <span 
-                  className={`text-xs font-medium transition-all duration-200 ${colorClasses[color as keyof typeof colorClasses]}`}
-                >
-                  {label}
-                </span>
-              </button>
+                {({ isActive }) => (
+                  <>
+                    <Icon 
+                      className={`w-6 h-6 transition-all duration-200 ${
+                        isActive ? 'scale-110' : ''
+                      } ${isActive ? activeColorClasses[color] : inactiveColorClasses}`} 
+                    />
+                    <span 
+                      className={`text-xs font-medium transition-all duration-200 ${
+                        isActive ? activeColorClasses[color] : inactiveColorClasses
+                      }`}
+                    >
+                      {label}
+                    </span>
+                  </>
+                )}
+              </NavLink>
             );
           })}
         </div>
@@ -184,7 +178,7 @@ const BottomNavigation = () => {
   );
 };
 
-// Main Layout Component
+// Main Layout Component (No changes needed)
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900 transition-colors duration-300">
@@ -204,7 +198,34 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   );
 };
 
-// App Content Component (handles authenticated vs unauthenticated views)
+// Wrapper components for the actual pages (No changes needed)
+const PropertiesWrapper = () => {
+  const { user } = useAuth();
+  
+  const handleNavigateToProperty = (property: any) => {
+    // Handle property navigation - you can implement this based on your needs
+    console.log('Navigate to property:', property);
+  };
+
+  return (
+    <Properties 
+      onNavigateToProperty={handleNavigateToProperty}
+      currentUserId={user?.id || 1}
+      userPlan="premium"
+    />
+  );
+};
+
+const InvoicesWrapper = () => {
+  const handleNavigate = (page: string, params?: any) => {
+    // Handle navigation - you can implement this based on your needs
+    console.log('Navigate to:', page, params);
+  };
+
+  return <Invoices onNavigate={handleNavigate} />;
+};
+
+// App Content Component (No changes needed)
 const AppContent: React.FC = () => {
   return (
     <AuthWrapper>
@@ -218,12 +239,12 @@ const AppContent: React.FC = () => {
             } />
             <Route path="/properties" element={
               <Suspense fallback={<LoadingSpinner />}>
-                <Properties/>
+                <PropertiesWrapper />
               </Suspense>
             } />
             <Route path="/invoices" element={
               <Suspense fallback={<LoadingSpinner />}>
-                <Invoices />
+                <InvoicesWrapper />
               </Suspense>
             } />
             <Route path="/profile" element={
@@ -239,7 +260,7 @@ const AppContent: React.FC = () => {
   );
 };
 
-// Main App Component
+// Main App Component (No changes needed)
 const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -290,4 +311,4 @@ const App: React.FC = () => {
   );
 };
 
-export default App
+export default App;
