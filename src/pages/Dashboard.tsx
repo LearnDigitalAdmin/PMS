@@ -496,7 +496,7 @@ const Dashboard: React.FC<DashboardProps> = () => {
       onTouchMove={handleTouchMove}
     >
       {/* Header */}
-      <div className="fixed top-0 flex items-center justify-between">
+      <div className="sticky top-0 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
           <p className="text-gray-600 dark:text-gray-400">Welcome back! Here's your property overview.</p>

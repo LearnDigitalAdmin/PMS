@@ -16,10 +16,31 @@ const SignInScreen: React.FC<SignInScreenProps> = ({ onSwitchToSignUp }) => {
   const [error, setError] = useState('');
   const { login } = useAuth();
 
+  const validateForm = (): boolean => {
+    if (!formData.email.trim()) {
+      setError('Please enter your email address');
+      return false;
+    }
+
+    if (!formData.password.trim()) {
+      setError('Please enter your password');
+      return false;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      setError('Please enter a valid email address');
+      return false;
+    }
+
+    return true;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.email || !formData.password) {
-      setError('Please fill in all fields');
+    
+    if (!validateForm()) {
       return;
     }
 
@@ -27,14 +48,35 @@ const SignInScreen: React.FC<SignInScreenProps> = ({ onSwitchToSignUp }) => {
     setError('');
 
     try {
-      const success = await login(formData.email, formData.password);
+      console.log('Attempting login with:', { email: formData.email });
+      
+      const success = await login(formData.email.toLowerCase().trim(), formData.password);
+      
       if (!success) {
-        setError('Invalid email or password');
+        setError('Invalid email or password. Please check your credentials and try again.');
+        console.log('Login failed for user:', formData.email);
+      } else {
+        console.log('Login successful for user:', formData.email);
+        // The AuthWrapper will handle the navigation automatically
       }
     } catch (err) {
-      setError('An error occurred. Please try again.');
+      console.error('Login error:', err);
+      setError('An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleInputChange = (field: 'email' | 'password') => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+    
+    // Clear error when user starts typing
+    if (error) {
+      setError('');
     }
   };
 
@@ -73,9 +115,13 @@ const SignInScreen: React.FC<SignInScreenProps> = ({ onSwitchToSignUp }) => {
                 <input
                   type="email"
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  onChange={handleInputChange('email')}
                   className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   placeholder="Enter your email"
+                  disabled={isLoading}
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
                   required
                 />
               </div>
@@ -90,15 +136,19 @@ const SignInScreen: React.FC<SignInScreenProps> = ({ onSwitchToSignUp }) => {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  onChange={handleInputChange('password')}
                   className="w-full pl-11 pr-11 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   placeholder="Enter your password"
+                  disabled={isLoading}
+                  autoComplete="current-password"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                  disabled={isLoading}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -107,11 +157,14 @@ const SignInScreen: React.FC<SignInScreenProps> = ({ onSwitchToSignUp }) => {
 
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || !formData.email.trim() || !formData.password.trim()}
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 px-4 rounded-xl hover:from-blue-700 hover:to-purple-700 focus:ring-4 focus:ring-blue-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-medium flex items-center justify-center space-x-2"
             >
               {isLoading ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Signing in...</span>
+                </>
               ) : (
                 <>
                   <LogIn className="w-5 h-5" />
@@ -126,12 +179,15 @@ const SignInScreen: React.FC<SignInScreenProps> = ({ onSwitchToSignUp }) => {
               Don't have an account?{' '}
               <button
                 onClick={onSwitchToSignUp}
-                className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
+                disabled={isLoading}
+                className="text-blue-600 hover:text-blue-700 font-medium transition-colors disabled:opacity-50"
               >
                 Sign up now
               </button>
             </p>
-            <span className="text-red-600">Powered by: SMB KENYA LTD and Cogvana Technologies</span>
+            <p className="text-red-600 text-sm mt-2">
+              Powered by: SMB KENYA LTD and Cogvana Technologies
+            </p>
           </div>
         </div>
       </div>

@@ -61,17 +61,37 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Check for existing session on app start
     const checkAuthState = async () => {
       try {
+        console.log('Checking authentication state...');
+        
+        // Try to get saved user data
         const savedUser = localStorage.getItem('currentUser');
         const savedCompany = localStorage.getItem('currentCompany');
         
         if (savedUser) {
-          setUser(JSON.parse(savedUser));
+          const userData = JSON.parse(savedUser);
+          console.log('Found saved user:', userData.email);
+          setUser(userData);
         }
+        
         if (savedCompany) {
-          setCompany(JSON.parse(savedCompany));
+          const companyData = JSON.parse(savedCompany);
+          console.log('Found saved company:', companyData.name);
+          setCompany(companyData);
         }
+
+        // Initialize database if not already done
+        try {
+          await database.initializeDatabase();
+          console.log('Database initialized successfully');
+        } catch (dbError) {
+          console.error('Database initialization failed:', dbError);
+        }
+        
       } catch (error) {
         console.error('Error checking auth state:', error);
+        // Clear potentially corrupted data
+        localStorage.removeItem('currentUser');
+        localStorage.removeItem('currentCompany');
       } finally {
         setIsLoading(false);
       }
@@ -82,17 +102,36 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
+      console.log('Attempting login for:', email);
+      
+      // Ensure database is initialized
+      try {
+        await database.initializeDatabase();
+      } catch (dbError) {
+        console.error('Database initialization failed during login:', dbError);
+        return false;
+      }
+      
       const result = await database.authenticateUser(email, password);
+      
       if (result) {
+        console.log('Authentication successful');
         setUser(result.user);
-        setCompany(result.company);
+        setCompany(result.company || null);
+        
+        // Save to localStorage
         localStorage.setItem('currentUser', JSON.stringify(result.user));
         if (result.company) {
           localStorage.setItem('currentCompany', JSON.stringify(result.company));
+        } else {
+          localStorage.removeItem('currentCompany');
         }
+        
         return true;
+      } else {
+        console.log('Authentication failed');
+        return false;
       }
-      return false;
     } catch (error) {
       console.error('Login error:', error);
       return false;
@@ -100,6 +139,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const logout = () => {
+    console.log('Logging out user');
     setUser(null);
     setCompany(null);
     localStorage.removeItem('currentUser');

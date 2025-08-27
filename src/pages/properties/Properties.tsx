@@ -14,7 +14,9 @@ import {
   AlertTriangle,
   ArrowLeft,
   AlertCircle,
-  Plus
+  Plus,
+  Menu,
+  X
 } from 'lucide-react';
 import { database, type PropertyWithTenants, type DashboardData, type MonthlyStats } from '../../services/database/Database';
 import TenantsList from '../tenants/TenantsList';
@@ -42,8 +44,9 @@ const Property: React.FC<PropertyProps> = ({
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [, setMonthlyStats] = useState<MonthlyStats[]>([]);
   const [loading, setLoading] = useState(true);
-    const [showAddTenant, setShowAddTenant] = useState(false);
+  const [showAddTenant, setShowAddTenant] = useState(false);
   const [showTenant, setShowTenant] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const now = new Date();
     return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
@@ -70,15 +73,16 @@ const Property: React.FC<PropertyProps> = ({
       const propertyData = await database.getPropertyById(propertyId);
       if (!propertyData) {
         console.error('Property not found');
-        //onNavigateBack();
         return;
       }
 
       const tenants = await database.getTenantsByProperty(propertyId);
       const monthlyRevenue = tenants.reduce((sum: number, tenant: { rentAmount: number }) => sum + tenant.rentAmount, 0);
       const agentIncome = (tenants.reduce((sum: number, tenant: { rentAmount: number }) => sum + tenant.rentAmount, 0)) * ((propertyData.agentCommissionRate / 100) || 1 );
-      const occupancyRate = tenants.length > 0 ? 
-        propertyData.maxUnits / ((tenants.filter((t: { isActive: boolean }) => t.isActive).length / tenants.length)) * 100 : 0;
+      
+      // Fix occupancy calculation: (occupied units / max units) * 100
+      const occupiedUnits = tenants.filter((t: { isActive: boolean }) => t.isActive).length;
+      const occupancyRate = propertyData.maxUnits > 0 ? (occupiedUnits / propertyData.maxUnits) * 100 : 0;
 
       const propertyWithTenants: PropertyWithTenants = {
         ...propertyData,
@@ -148,20 +152,10 @@ const Property: React.FC<PropertyProps> = ({
     }
   };
 
-//   const handleDeleteProperty = async () => {
-//     if (!property) return;
-
-//     try {
-//       await database.deleteProperty(property.id);
-//       onNavigateToPropertyList();
-//     } catch (error) {
-//       console.error('Error deleting property:', error);
-//     }
-//   };
-
   const openEditModal = () => {
     resetForm();
     setShowEditModal(true);
+    setShowMobileMenu(false);
   };
 
   const getMonthName = (monthStr: string) => {
@@ -188,21 +182,22 @@ const Property: React.FC<PropertyProps> = ({
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="animate-pulse">
-          <div className="bg-white shadow-sm border-b border-gray-100">
+          {/* Mobile Loading Header */}
+          <div className="bg-white shadow-sm border-b border-gray-100 sticky top-0 z-10">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex items-center h-16 gap-4">
+              <div className="flex items-center h-14 sm:h-16 gap-4">
                 <div className="w-6 h-6 bg-gray-200 rounded"></div>
-                <div className="w-32 h-6 bg-gray-200 rounded"></div>
+                <div className="w-24 sm:w-32 h-6 bg-gray-200 rounded"></div>
               </div>
             </div>
           </div>
 
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div className="bg-white rounded-2xl p-8 mb-8">
-              <div className="w-48 h-48 bg-gray-200 rounded-2xl mb-6"></div>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+            <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-8 mb-6 sm:mb-8">
+              <div className="w-full h-32 sm:h-48 bg-gray-200 rounded-xl sm:rounded-2xl mb-4 sm:mb-6"></div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6">
                 {[...Array(4)].map((_, i) => (
-                  <div key={i} className="h-20 bg-gray-200 rounded-xl"></div>
+                  <div key={i} className="h-16 sm:h-20 bg-gray-200 rounded-lg sm:rounded-xl"></div>
                 ))}
               </div>
             </div>
@@ -219,30 +214,31 @@ const Property: React.FC<PropertyProps> = ({
 
   return (
     <div className={isModal ? "h-full flex flex-col overflow-y-auto" : "min-h-screen bg-gray-50"}>
-      {/* Header */}
-      <div className="fixed top-0 bg-white shadow-sm border-b border-gray-100">
+      {/* Sticky Header */}
+      <div className="sticky top-0 bg-white shadow-sm border-b border-gray-100 z-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center">
+          <div className="flex items-center justify-between h-14 sm:h-16">
+            <div className="flex items-center flex-1 min-w-0">
               <button
                 onClick={() => setShowDiscardDialog(true)}
-                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all mr-3"
+                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all mr-2 sm:mr-3 flex-shrink-0"
               >
-                <ArrowLeft className="w-5 h-5" />
+                <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
-              <Building2 className="w-6 h-6 text-blue-600 mr-3" />
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">{property.name}</h1>
+              <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 mr-2 sm:mr-3 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{property.name}</h1>
                 {property.address && (
-                  <p className="text-sm text-gray-500 flex items-center mt-0.5">
-                    <MapPin className="w-3 h-3 mr-1" />
-                    {property.address}
+                  <p className="text-xs sm:text-sm text-gray-500 flex items-center mt-0.5 truncate">
+                    <MapPin className="w-3 h-3 mr-1 flex-shrink-0" />
+                    <span className="truncate">{property.address}</span>
                   </p>
                 )}
               </div>
             </div>
             
-            <div className="flex items-center gap-3">
+            {/* Desktop Actions */}
+            <div className="hidden sm:flex items-center gap-3">
               <button
                 onClick={openEditModal}
                 className="inline-flex items-center px-4 py-2 text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-all"
@@ -250,246 +246,256 @@ const Property: React.FC<PropertyProps> = ({
                 <Edit3 className="w-4 h-4 mr-2" />
                 Edit
               </button>
-              {/* <button
-                onClick={() => setShowDeleteModal(true)}
-                className="inline-flex items-center px-4 py-2 text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete
-              </button> */}
             </div>
+
+            {/* Mobile Menu Button */}
+            <button
+              onClick={() => setShowMobileMenu(!showMobileMenu)}
+              className="sm:hidden p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all ml-2"
+            >
+              {showMobileMenu ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
           </div>
+
+          {/* Mobile Dropdown Menu */}
+          {showMobileMenu && (
+            <div className="sm:hidden border-t border-gray-100 py-2">
+              <button
+                onClick={openEditModal}
+                className="w-full flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 transition-all"
+              >
+                <Edit3 className="w-4 h-4 mr-3" />
+                Edit Property
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Property Overview */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8">
-          {/* Property Hero */}
-          <div className="h-64 bg-gradient-to-br from-blue-500 via-blue-600 to-purple-600 relative">
-            <div className="absolute inset-0 bg-black bg-opacity-20"></div>
-            <div className="absolute bottom-6 left-6 text-white">
-              <Building2 className="w-10 h-10 mb-3 opacity-90" />
-              <h2 className="text-3xl font-bold mb-2">{property.name}</h2>
-              {property.description && (
-                <p className="text-lg opacity-90 max-w-2xl">{property.description}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Stats Grid */}
-          <div className="p-8">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              {/* Total Tenants */}
-              <div className="text-center p-6 bg-blue-50 rounded-2xl" onClick={() => setShowAddTenant(true)}>
-                <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-                  <Users className="w-6 h-6 text-white" />
-                </div>
-                <div className="text-3xl font-bold text-gray-900 mb-1">
-                  {property.tenants.length}
-                </div>
-                <div className="text-sm font-medium text-gray-600">
-                  Total Tenants
-                </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {property.tenants.filter((t: { isActive: boolean }) => t.isActive).length} Active
-                </div>
-              </div>
-
-              {/* Monthly Revenue */}
-              <div className="text-center p-6 bg-green-50 rounded-2xl">
-                <div className="w-12 h-12 bg-green-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-                  <DollarSign className="w-6 h-6 text-white" />
-                </div>
-                <div className="text-3xl font-bold text-gray-900 mb-1">
-                  ${property.monthlyRevenue.toLocaleString()}
-                </div>
-                <div className="text-sm font-medium text-gray-600">
-                  Monthly Potential
-                </div>
-                {dashboardData && (
-                  <div className="text-xs text-gray-500 mt-1">
-                    ${dashboardData.monthlyRevenue.toLocaleString()} Collected
-                  </div>
+      {/* Main Content */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+          {/* Property Overview */}
+          <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6 sm:mb-8">
+            {/* Property Hero */}
+            <div className="h-32 sm:h-48 md:h-64 bg-gradient-to-br from-blue-500 via-blue-600 to-purple-600 relative">
+              <div className="absolute inset-0 bg-black bg-opacity-20"></div>
+              <div className="absolute bottom-3 sm:bottom-6 left-3 sm:left-6 text-white">
+                <Building2 className="w-6 h-6 sm:w-8 md:w-10 sm:h-8 md:h-10 mb-2 sm:mb-3 opacity-90" />
+                <h2 className="text-xl sm:text-2xl md:text-3xl font-bold mb-1 sm:mb-2">{property.name}</h2>
+                {property.description && (
+                  <p className="text-sm sm:text-base md:text-lg opacity-90 max-w-xs sm:max-w-md md:max-w-2xl line-clamp-2">{property.description}</p>
                 )}
               </div>
+            </div>
 
-              {/* Occupancy Rate */}
-              <div className="text-center p-6 bg-purple-50 rounded-2xl">
-                <div className="w-12 h-12 bg-purple-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-                  <TrendingUp className="w-6 h-6 text-white" />
+            {/* Stats Grid */}
+            <div className="p-4 sm:p-6 md:p-8">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6">
+                {/* Total Tenants */}
+                <div 
+                  className="text-center p-3 sm:p-4 md:p-6 bg-blue-50 rounded-lg sm:rounded-xl md:rounded-2xl cursor-pointer hover:bg-blue-100 transition-colors" 
+                  onClick={() => setShowAddTenant(true)}
+                >
+                  <div className="w-8 h-8 sm:w-10 md:w-12 sm:h-10 md:h-12 bg-blue-600 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-4">
+                    <Users className="w-4 h-4 sm:w-5 md:w-6 sm:h-5 md:h-6 text-white" />
+                  </div>
+                  <div className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-1">
+                    {property.tenants.length}
+                  </div>
+                  <div className="text-xs sm:text-sm font-medium text-gray-600">
+                    Total Tenants
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {property.tenants.filter((t: { isActive: boolean }) => t.isActive).length} Active
+                  </div>
                 </div>
-                <div className="text-3xl font-bold text-gray-900 mb-1">
-                  {property.occupancyRate.toFixed(0)}%
-                </div>
-                <div className="text-sm font-medium text-gray-600">
-                  Occupancy Rate
-                </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {property.tenants.filter((t: { isActive: boolean }) => t.isActive).length} / {property.maxUnits} Units
-                </div>
-              </div>
 
-              {/* Commission */}
-              <div className="text-center p-6 bg-orange-50 rounded-2xl">
-                <div className="w-12 h-12 bg-orange-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-                  <Percent className="w-6 h-6 text-white" />
+                {/* Monthly Revenue */}
+                <div className="text-center p-3 sm:p-4 md:p-6 bg-green-50 rounded-lg sm:rounded-xl md:rounded-2xl">
+                  <div className="w-8 h-8 sm:w-10 md:w-12 sm:h-10 md:h-12 bg-green-600 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-4">
+                    <DollarSign className="w-4 h-4 sm:w-5 md:w-6 sm:h-5 md:h-6 text-white" />
+                  </div>
+                  <div className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-1">
+                    ${property.monthlyRevenue.toLocaleString()}
+                  </div>
+                  <div className="text-xs sm:text-sm font-medium text-gray-600">
+                    Monthly Potential
+                  </div>
+                  {dashboardData && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      ${dashboardData.monthlyRevenue.toLocaleString()} Collected
+                    </div>
+                  )}
                 </div>
-                <div className="text-3xl font-bold text-gray-900 mb-1">
-                  {property.agentCommissionRate}%
+
+                {/* Occupancy Rate */}
+                <div className="text-center p-3 sm:p-4 md:p-6 bg-purple-50 rounded-lg sm:rounded-xl md:rounded-2xl">
+                  <div className="w-8 h-8 sm:w-10 md:w-12 sm:h-10 md:h-12 bg-purple-600 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-4">
+                    <TrendingUp className="w-4 h-4 sm:w-5 md:w-6 sm:h-5 md:h-6 text-white" />
+                  </div>
+                  <div className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-1">
+                    {property.occupancyRate.toFixed(0)}%
+                  </div>
+                  <div className="text-xs sm:text-sm font-medium text-gray-600">
+                    Occupancy Rate
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {property.tenants.filter((t: { isActive: boolean }) => t.isActive).length} / {property.maxUnits} Units
+                  </div>
                 </div>
-                <div className="text-sm font-medium text-gray-600">
-                  Commission Rate
-                </div>
+
+                {/* Commission */}
+                <div className="text-center p-3 sm:p-4 md:p-6 bg-orange-50 rounded-lg sm:rounded-xl md:rounded-2xl">
+                  <div className="w-8 h-8 sm:w-10 md:w-12 sm:h-10 md:h-12 bg-orange-600 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-4">
+                    <Percent className="w-4 h-4 sm:w-5 md:w-6 sm:h-5 md:h-6 text-white" />
+                  </div>
+                  <div className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-1">
+                    {property.agentCommissionRate}%
+                  </div>
+                  <div className="text-xs sm:text-sm font-medium text-gray-600">
+                    Commission Rate
+                  </div>
                   <div className="text-xs text-green-700 mt-1">
                     KES {property.agentIncome} this month
                   </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Monthly Overview */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          {/* Current Month Stats */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-bold text-gray-900">Monthly Overview</h3>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => navigateMonth('prev')}
-                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <span className="text-sm font-medium text-gray-700 min-w-[120px] text-center">
-                  {getMonthName(selectedMonth)}
-                </span>
-                <button
-                  onClick={() => navigateMonth('next')}
-                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {dashboardData && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                  <div className="flex items-center">
-                    <Receipt className="w-5 h-5 text-blue-600 mr-3" />
-                    <span className="font-medium text-gray-700">Revenue Collected</span>
-                  </div>
-                  <span className="text-xl font-bold text-green-600">
-                    ${dashboardData.monthlyRevenue.toLocaleString()}
+          {/* Monthly Overview */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 lg:gap-8 mb-6 sm:mb-8">
+            {/* Current Month Stats */}
+            <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
+                <h3 className="text-base sm:text-lg font-bold text-gray-900">Monthly Overview</h3>
+                <div className="flex items-center gap-1 sm:gap-2">
+                  <button
+                    onClick={() => navigateMonth('prev')}
+                    className="p-1.5 sm:p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
+                  >
+                    <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4" />
+                  </button>
+                  <span className="text-xs sm:text-sm font-medium text-gray-700 min-w-[100px] sm:min-w-[120px] text-center">
+                    {getMonthName(selectedMonth)}
                   </span>
-                </div>
-
-                {property.agentCommissionRate > 0 && (
-                  <>
-                    <div className="flex items-center justify-between p-4 bg-orange-50 rounded-xl">
-                      <div className="flex items-center">
-                        <Percent className="w-5 h-5 text-orange-600 mr-3" />
-                        <span className="font-medium text-gray-700">Commission ({property.agentCommissionRate}%)</span>
-                      </div>
-                      <span className="text-xl font-bold text-orange-600">
-                        -${commissionAmount.toLocaleString()}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between p-4 bg-blue-50 rounded-xl">
-                      <div className="flex items-center">
-                        <CreditCard className="w-5 h-5 text-blue-600 mr-3" />
-                        <span className="font-medium text-gray-700">Net Revenue</span>
-                      </div>
-                      <span className="text-xl font-bold text-blue-600">
-                        ${netRevenue.toLocaleString()}
-                      </span>
-                    </div>
-                  </>
-                )}
-
-                <div className="flex items-center justify-between p-4 bg-red-50 rounded-xl">
-                  <div className="flex items-center">
-                    <AlertTriangle className="w-5 h-5 text-red-600 mr-3" />
-                    <span className="font-medium text-gray-700">Total Arrears</span>
-                  </div>
-                  <span className="text-xl font-bold text-red-600">
-                    ${dashboardData.totalArrears.toLocaleString()}
-                  </span>
+                  <button
+                    onClick={() => navigateMonth('next')}
+                    className="p-1.5 sm:p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
+                  >
+                    <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4" />
+                  </button>
                 </div>
               </div>
-            )}
-          </div>
 
-          {/* Bills Summary */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-6">Bills Summary</h3>
-            
-            {dashboardData && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-green-50 rounded-xl">
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
-                    <span className="font-medium text-gray-700">Paid Invoices</span>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xl font-bold text-green-600">
-                      {dashboardData.paidInvoices}
+              {dashboardData && (
+                <div className="space-y-3 sm:space-y-4">
+                  <div className="flex items-center justify-between p-3 sm:p-4 bg-gray-50 rounded-lg sm:rounded-xl">
+                    <div className="flex items-center">
+                      <Receipt className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 mr-2 sm:mr-3" />
+                      <span className="font-medium text-gray-700 text-sm sm:text-base">Revenue Collected</span>
                     </div>
-                    <div className="text-xs text-gray-500">invoices</div>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between p-4 bg-red-50 rounded-xl">
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-red-500 rounded-full mr-3"></div>
-                    <span className="font-medium text-gray-700">Unpaid Invoices</span>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xl font-bold text-red-600">
-                      {dashboardData.unpaidInvoices}
-                    </div>
-                    <div className="text-xs text-gray-500">invoices</div>
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-gray-100">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-gray-700">Payment Rate</span>
-                    <span className="text-lg font-bold text-gray-900">
-                      {dashboardData.paidInvoices + dashboardData.unpaidInvoices > 0 
-                        ? Math.round((dashboardData.paidInvoices / (dashboardData.paidInvoices + dashboardData.unpaidInvoices)) * 100)
-                        : 0}%
+                    <span className="text-lg sm:text-xl font-bold text-green-600">
+                      ${dashboardData.monthlyRevenue.toLocaleString()}
                     </span>
                   </div>
-                  
-                  <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                    <div 
-                      className="bg-green-500 h-2 rounded-full transition-all duration-300"
-                      style={{ 
-                        width: `${dashboardData.paidInvoices + dashboardData.unpaidInvoices > 0 
-                          ? (dashboardData.paidInvoices / (dashboardData.paidInvoices + dashboardData.unpaidInvoices)) * 100
-                          : 0}%` 
-                      }}
-                    ></div>
+
+                  {property.agentCommissionRate > 0 && (
+                    <>
+                      <div className="flex items-center justify-between p-3 sm:p-4 bg-orange-50 rounded-lg sm:rounded-xl">
+                        <div className="flex items-center">
+                          <Percent className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600 mr-2 sm:mr-3" />
+                          <span className="font-medium text-gray-700 text-sm sm:text-base">Commission ({property.agentCommissionRate}%)</span>
+                        </div>
+                        <span className="text-lg sm:text-xl font-bold text-orange-600">
+                          -${commissionAmount.toLocaleString()}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl">
+                        <div className="flex items-center">
+                          <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 mr-2 sm:mr-3" />
+                          <span className="font-medium text-gray-700 text-sm sm:text-base">Net Revenue</span>
+                        </div>
+                        <span className="text-lg sm:text-xl font-bold text-blue-600">
+                          ${netRevenue.toLocaleString()}
+                        </span>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="flex items-center justify-between p-3 sm:p-4 bg-red-50 rounded-lg sm:rounded-xl">
+                    <div className="flex items-center">
+                      <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-red-600 mr-2 sm:mr-3" />
+                      <span className="font-medium text-gray-700 text-sm sm:text-base">Total Arrears</span>
+                    </div>
+                    <span className="text-lg sm:text-xl font-bold text-red-600">
+                      ${dashboardData.totalArrears.toLocaleString()}
+                    </span>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+
+            {/* Bills Summary */}
+            <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-4 sm:mb-6">Bills Summary</h3>
+              
+              {dashboardData && (
+                <div className="space-y-3 sm:space-y-4">
+                  <div className="flex items-center justify-between p-3 sm:p-4 bg-green-50 rounded-lg sm:rounded-xl">
+                    <div className="flex items-center">
+                      <div className="w-3 h-3 bg-green-500 rounded-full mr-2 sm:mr-3"></div>
+                      <span className="font-medium text-gray-700 text-sm sm:text-base">Paid Invoices</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg sm:text-xl font-bold text-green-600">
+                        {dashboardData.paidInvoices}
+                      </div>
+                      <div className="text-xs text-gray-500">invoices</div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 sm:p-4 bg-red-50 rounded-lg sm:rounded-xl">
+                    <div className="flex items-center">
+                      <div className="w-3 h-3 bg-red-500 rounded-full mr-2 sm:mr-3"></div>
+                      <span className="font-medium text-gray-700 text-sm sm:text-base">Unpaid Invoices</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg sm:text-xl font-bold text-red-600">
+                        {dashboardData.unpaidInvoices}
+                      </div>
+                      <div className="text-xs text-gray-500">invoices</div>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 sm:pt-4 border-t border-gray-100">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-gray-700 text-sm sm:text-base">Payment Rate</span>
+                      <span className="text-base sm:text-lg font-bold text-gray-900">
+                        {dashboardData.paidInvoices + dashboardData.unpaidInvoices > 0 
+                          ? Math.round((dashboardData.paidInvoices / (dashboardData.paidInvoices + dashboardData.unpaidInvoices)) * 100)
+                          : 0}%
+                      </span>
+                    </div>
+                    
+                    <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                      <div 
+                        className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                        style={{ 
+                          width: `${dashboardData.paidInvoices + dashboardData.unpaidInvoices > 0 
+                            ? (dashboardData.paidInvoices / (dashboardData.paidInvoices + dashboardData.unpaidInvoices)) * 100
+                            : 0}%` 
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-
-        {/* Tenants Section */}
-        {/* <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
-          <div className="p-6 border-b border-gray-100">
-            <h3 className="text-lg font-bold text-gray-900">Tenants</h3>
-          </div>
-          <div className="p-6">
-            <TenantsList propertyId={property.id} />
-          </div>
-        </div> */}
       </div>
 
       {/* Edit Property Modal */}

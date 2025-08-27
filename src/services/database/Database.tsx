@@ -69,7 +69,18 @@ export interface UnitInput {
   rentAmount: number;
 }
 
-export interface PropertyWithUnits extends Property {
+export interface PropertyWithUnits {
+  id: number;
+  userId: number;
+  companyId?: number;
+  name: string;
+  address?: string;
+  description?: string;
+  image?: string; //extends Property  Base64 encoded image
+  agentCommissionRate: number;
+  maxUnits: number;
+  createdAt: string;
+  updatedAt: string;
   units: Unit[];
   monthlyRevenue: number;
   occupancyRate: number;
@@ -458,10 +469,159 @@ private async executeInTransaction(statements: { statement: string; values?: any
 }
 
 // Updated createUserWithCompany method
+// async createUserWithCompany(data: UserWithCompanyInput): Promise<AuthResult> {
+//   // Check if user exists first
+//   const existingUserQuery = 'SELECT * FROM users WHERE email = ?';
+//   const existingUserResult = await this.db!.query(existingUserQuery, [data.user.email]);
+  
+//   if (existingUserResult.values && existingUserResult.values.length > 0) {
+//     throw new Error('User with this email already exists');
+//   }
+
+//   const passwordHash = await this.hashPassword(data.user.password);
+
+//   const statements = [
+//     {
+//       statement: `
+//         INSERT INTO users (id, name, email, phone, password_hash, is_premium)
+//         VALUES (?, ?, ?, ?, ?, 0)
+//       `,
+//       values: [
+//         data.user.id,
+//         data.user.name,
+//         data.user.email,
+//         data.user.phone || '',
+//         passwordHash
+//       ]
+//     }
+//   ];
+
+//   if (data.company && data.company.name) {
+//     statements.push({
+//       statement: `
+//         INSERT INTO companies (user_id, name, address, phone, email)
+//         VALUES (last_insert_rowid(), ?, ?, ?, ?)
+//       `,
+//       values: [
+//         data.company.name,
+//         data.company.address || '',
+//         data.company.phone || '',
+//         data.company.email || ''
+//       ]
+//     });
+//   }
+
+//   const results = await this.executeInTransaction(statements);
+//   const userId = results.changes!.lastId!;
+
+//   const user = await this.getUserById(userId);
+//   if (!user) {
+//     throw new Error('Failed to retrieve created user');
+//   }
+
+//   // Fix the null type issue
+//   const companyResult = data.company ? await this.getCompanyByUserId(userId) : null;
+//   const company = companyResult || undefined;
+
+//   return { user, company };
+// }
+
+async authenticateUser(email: string, password: string): Promise<AuthResult | null> {
+  try {
+    console.log('Authenticating user:', email);
+    
+    // Normalize email (lowercase and trim)
+    const normalizedEmail = email.toLowerCase().trim();
+    
+    // Get user by email
+    const user = await this.getUserByEmail(normalizedEmail);
+    if (!user) {
+      console.log('User not found:', normalizedEmail);
+      return null;
+    }
+
+    console.log('User found:', user.email);
+
+    // Check if user has a password hash
+    if (!user.passwordHash) {
+      console.log('User has no password hash');
+      return null;
+    }
+
+    // Verify password
+    const isValidPassword = await this.verifyPassword(password, user.passwordHash);
+    if (!isValidPassword) {
+      console.log('Invalid password for user:', normalizedEmail);
+      return null;
+    }
+
+    console.log('Password verified successfully for user:', normalizedEmail);
+
+    // Get user's company if exists
+    const company = await this.getCompanyByUserId(user.id);
+    
+    console.log('Authentication successful for user:', normalizedEmail);
+    return { 
+      user, 
+      company: company || undefined 
+    };
+  } catch (error) {
+    console.error('Authentication error:', error);
+    return null;
+  }
+}
+
+async getUserByEmail(email: string): Promise<User | null> {
+  try {
+    // Normalize email for consistent lookup
+    const normalizedEmail = email.toLowerCase().trim();
+    
+    const query = 'SELECT * FROM users WHERE LOWER(email) = ?';
+    const result = await this.db!.query(query, [normalizedEmail]);
+    
+    if (result.values && result.values.length > 0) {
+      return this.mapToUser(result.values[0]);
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting user by email:', error);
+    return null;
+  }
+}
+
+// Enhanced password verification with better error handling
+private async verifyPassword(password: string, hash: string): Promise<boolean> {
+  try {
+    const passwordHash = await this.hashPassword(password);
+    return passwordHash === hash;
+  } catch (error) {
+    console.error('Error verifying password:', error);
+    return false;
+  }
+}
+
+// Enhanced password hashing with consistent salt
+private async hashPassword(password: string): Promise<string> {
+  try {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password + 'propertyflow_salt_2024');
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch (error) {
+    console.error('Error hashing password:', error);
+    throw new Error('Password hashing failed');
+  }
+}
+
+// Updated createUserWithCompany method with better email normalization
 async createUserWithCompany(data: UserWithCompanyInput): Promise<AuthResult> {
+  // Normalize email
+  const normalizedEmail = data.user.email.toLowerCase().trim();
+  
   // Check if user exists first
-  const existingUserQuery = 'SELECT * FROM users WHERE email = ?';
-  const existingUserResult = await this.db!.query(existingUserQuery, [data.user.email]);
+  const existingUserQuery = 'SELECT * FROM users WHERE LOWER(email) = ?';
+  const existingUserResult = await this.db!.query(existingUserQuery, [normalizedEmail]);
   
   if (existingUserResult.values && existingUserResult.values.length > 0) {
     throw new Error('User with this email already exists');
@@ -472,30 +632,29 @@ async createUserWithCompany(data: UserWithCompanyInput): Promise<AuthResult> {
   const statements = [
     {
       statement: `
-        INSERT INTO users (id, name, email, phone, password_hash, is_premium)
-        VALUES (?, ?, ?, ?, ?, 0)
+        INSERT INTO users (name, email, phone, password_hash, is_premium)
+        VALUES (?, ?, ?, ?, 0)
       `,
       values: [
-        data.user.id,
-        data.user.name,
-        data.user.email,
-        data.user.phone || '',
+        data.user.name.trim(),
+        normalizedEmail,
+        data.user.phone?.trim() || '',
         passwordHash
       ]
     }
   ];
 
-  if (data.company && data.company.name) {
+  if (data.company && data.company.name?.trim()) {
     statements.push({
       statement: `
         INSERT INTO companies (user_id, name, address, phone, email)
         VALUES (last_insert_rowid(), ?, ?, ?, ?)
       `,
       values: [
-        data.company.name,
-        data.company.address || '',
-        data.company.phone || '',
-        data.company.email || ''
+        data.company.name.trim(),
+        data.company.address?.trim() || '',
+        data.company.phone?.trim() || '',
+        data.company.email?.toLowerCase().trim() || ''
       ]
     });
   }
@@ -508,67 +667,10 @@ async createUserWithCompany(data: UserWithCompanyInput): Promise<AuthResult> {
     throw new Error('Failed to retrieve created user');
   }
 
-  // Fix the null type issue
-  const companyResult = data.company ? await this.getCompanyByUserId(userId) : null;
-  const company = companyResult || undefined;
+  const company = data.company ? await this.getCompanyByUserId(userId) : null;
 
-  return { user, company };
+  return { user, company: company || undefined };
 }
-
-// Updated createPayment method  
-async createPayment(payment: {
-  invoiceId: number;
-  amount: number;
-  paymentDate: string;
-  paymentMethod?: string;
-  notes?: string;
-}): Promise<Payment> {
-  const statements = [
-    {
-      statement: `
-        INSERT INTO payments (invoice_id, amount, payment_date, payment_method, notes)
-        VALUES (?, ?, ?, ?, ?)
-      `,
-      values: [
-        payment.invoiceId,
-        payment.amount,
-        payment.paymentDate,
-        payment.paymentMethod || '',
-        payment.notes || ''
-      ]
-    },
-    {
-      statement: `
-        UPDATE invoices 
-        SET amount_paid = amount_paid + ?,
-            is_paid = CASE WHEN amount_paid + ? >= total_amount THEN 1 ELSE 0 END,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `,
-      values: [
-        payment.amount,
-        payment.amount,
-        payment.invoiceId
-      ]
-    }
-  ];
-
-  const results = await this.executeInTransaction(statements);
-  const paymentId = results.changes!.lastId!;
-
-  const createdPayment = await this.db!.query(
-    'SELECT * FROM payments WHERE id = ?', 
-    [paymentId]
-  );
-  
-  if (!createdPayment.values || createdPayment.values.length === 0) {
-    throw new Error('Failed to retrieve created payment');
-  }
-  
-  return this.mapToPayment(createdPayment.values[0]);
-}
-
-
 
 async createProperty(property: PropertyInput): Promise<Property> {
   const query = `
@@ -822,42 +924,6 @@ async createTenant(tenant: TenantInput): Promise<Tenant> {
   return createdTenant;
 }
 
-  async authenticateUser(email: string, password: string): Promise<AuthResult | null> {
-    try {
-      const user = await this.getUserByEmail(email);
-      if (!user || !user.passwordHash) {
-        return null;
-      }
-
-      const isValidPassword = await this.verifyPassword(password, user.passwordHash);
-      if (!isValidPassword) {
-        return null;
-      }
-
-      const company = (await this.getCompanyByUserId(user.id)) ?? undefined;
-
-      return { user, company };
-    } catch (error) {
-      console.error('Authentication error:', error);
-      return null;
-    }
-  }
-
-  async getUserByEmail(email: string): Promise<User | null> {
-    try {
-      const query = 'SELECT * FROM users WHERE email = ?';
-      const result = await this.db!.query(query, [email]);
-      
-      if (result.values && result.values.length > 0) {
-        return this.mapToUser(result.values[0]);
-      }
-      return null;
-    } catch (error) {
-      console.error('Error getting user by email:', error);
-      return null;
-    }
-  }
-
   async getUserById(id: number): Promise<User | null> {
     try {
       const query = 'SELECT * FROM users WHERE id = ?';
@@ -997,45 +1063,6 @@ async createTenant(tenant: TenantInput): Promise<Tenant> {
     await this.db!.run('DELETE FROM companies WHERE id = ?', [id]);
   }
 
-  // ==================== PASSWORD UTILITIES ====================
-
-  private async hashPassword(password: string): Promise<string> {
-    // Simple hash implementation for demo purposes
-    // In production, use bcrypt or similar
-    const encoder = new TextEncoder();
-    const data = encoder.encode(password + 'propertyflow_salt_2024');
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  private async verifyPassword(password: string, hash: string): Promise<boolean> {
-    const passwordHash = await this.hashPassword(password);
-    return passwordHash === hash;
-  }
-
-  // ==================== PROPERTY OPERATIONS ====================
-
-  // async createProperty(property: PropertyInput): Promise<Property> {
-  //   const query = `
-  //     INSERT INTO properties (user_id, name, address, description, agent_commission_rate)
-  //     VALUES (?, ?, ?, ?, ?)
-  //   `;
-    
-  //   const result = await this.db!.run(query, [
-  //     property.userId,
-  //     property.name,
-  //     property.address || '',
-  //     property.description || '',
-  //     property.agentCommissionRate || 0
-  //   ]);
-
-  //   const createdProperty = await this.getPropertyById(result.changes!.lastId!);
-  //   if (!createdProperty) {
-  //     throw new Error('Failed to retrieve created property');
-  //   }
-  //   return createdProperty;
-  // }
 
   async getProperties(userId: number): Promise<Property[]> {
     try {
@@ -1263,6 +1290,39 @@ async createTenant(tenant: TenantInput): Promise<Tenant> {
   }
 
   // ==================== INVOICE OPERATIONS ====================
+  // Fixed createPayment method - ONLY create payment record, don't update invoice
+async createPayment(payment: {
+  invoiceId: number;
+  amount: number;
+  paymentDate: string;
+  paymentMethod?: string;
+  notes?: string;
+}): Promise<Payment> {
+  // ONLY insert the payment record - don't update the invoice
+  const query = `
+    INSERT INTO payments (invoice_id, amount, payment_date, payment_method, notes)
+    VALUES (?, ?, ?, ?, ?)
+  `;
+  
+  const result = await this.db!.run(query, [
+    payment.invoiceId,
+    payment.amount,
+    payment.paymentDate,
+    payment.paymentMethod || '',
+    payment.notes || ''
+  ]);
+
+  const createdPayment = await this.db!.query(
+    'SELECT * FROM payments WHERE id = ?', 
+    [result.changes!.lastId!]
+  );
+  
+  if (!createdPayment.values || createdPayment.values.length === 0) {
+    throw new Error('Failed to retrieve created payment');
+  }
+  
+  return this.mapToPayment(createdPayment.values[0]);
+}
 
   async createInvoice(invoice: InvoiceInput): Promise<Invoice> {
     const invoiceNumber = await this.generateInvoiceNumber();
@@ -1534,23 +1594,6 @@ async createTenant(tenant: TenantInput): Promise<Tenant> {
       return [];
     }
   }
-
-  // private async getPaymentById(id: number): Promise<Payment | null> {
-  //   try {
-  //     const query = 'SELECT * FROM payments WHERE id = ?';
-  //     const result = await this.db!.query(query, [id]);
-      
-  //     if (result.values && result.values.length > 0) {
-  //       return this.mapToPayment(result.values[0]);
-  //     }
-  //     return null;
-  //   } catch (error) {
-  //     console.error('Error getting payment by ID:', error);
-  //     return null;
-  //   }
-  // }
-
-  // ==================== DASHBOARD & ANALYTICS ====================
 
   async getDashboardData(propertyId?: number, month?: string): Promise<DashboardData> {
     try {
