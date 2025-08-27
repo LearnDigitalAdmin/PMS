@@ -13,10 +13,12 @@ import {
   ChevronRight,
   AlertTriangle,
   ArrowLeft,
-  AlertCircle
+  AlertCircle,
+  Plus
 } from 'lucide-react';
 import { database, type PropertyWithTenants, type DashboardData, type MonthlyStats } from '../../services/database/Database';
 import TenantsList from '../tenants/TenantsList';
+import AddTenant from '../tenants/AddTenant';
 
 interface PropertyProps {
   propertyId: number;
@@ -40,6 +42,8 @@ const Property: React.FC<PropertyProps> = ({
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [, setMonthlyStats] = useState<MonthlyStats[]>([]);
   const [loading, setLoading] = useState(true);
+    const [showAddTenant, setShowAddTenant] = useState(false);
+  const [showTenant, setShowTenant] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const now = new Date();
     return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
@@ -72,13 +76,15 @@ const Property: React.FC<PropertyProps> = ({
 
       const tenants = await database.getTenantsByProperty(propertyId);
       const monthlyRevenue = tenants.reduce((sum: number, tenant: { rentAmount: number }) => sum + tenant.rentAmount, 0);
+      const agentIncome = (tenants.reduce((sum: number, tenant: { rentAmount: number }) => sum + tenant.rentAmount, 0)) * ((propertyData.agentCommissionRate / 100) || 1 );
       const occupancyRate = tenants.length > 0 ? 
-        (tenants.filter((t: { isActive: boolean }) => t.isActive).length / tenants.length) * 100 : 0;
+        propertyData.maxUnits / ((tenants.filter((t: { isActive: boolean }) => t.isActive).length / tenants.length)) * 100 : 0;
 
       const propertyWithTenants: PropertyWithTenants = {
         ...propertyData,
         tenants,
         monthlyRevenue,
+        agentIncome,
         occupancyRate
       };
 
@@ -212,9 +218,9 @@ const Property: React.FC<PropertyProps> = ({
     (dashboardData.monthlyRevenue - commissionAmount) : 0;
 
   return (
-    <div className={isModal ? "h-full flex flex-col" : "min-h-screen bg-gray-50"}>
+    <div className={isModal ? "h-full flex flex-col overflow-y-auto" : "min-h-screen bg-gray-50"}>
       {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-100">
+      <div className="fixed top-0 bg-white shadow-sm border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
@@ -275,7 +281,7 @@ const Property: React.FC<PropertyProps> = ({
           <div className="p-8">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               {/* Total Tenants */}
-              <div className="text-center p-6 bg-blue-50 rounded-2xl">
+              <div className="text-center p-6 bg-blue-50 rounded-2xl" onClick={() => setShowAddTenant(true)}>
                 <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
                   <Users className="w-6 h-6 text-white" />
                 </div>
@@ -320,7 +326,7 @@ const Property: React.FC<PropertyProps> = ({
                   Occupancy Rate
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
-                  {property.tenants.filter((t: { isActive: boolean }) => t.isActive).length} / {property.tenants.length} Units
+                  {property.tenants.filter((t: { isActive: boolean }) => t.isActive).length} / {property.maxUnits} Units
                 </div>
               </div>
 
@@ -335,11 +341,9 @@ const Property: React.FC<PropertyProps> = ({
                 <div className="text-sm font-medium text-gray-600">
                   Commission Rate
                 </div>
-                {commissionAmount > 0 && (
-                  <div className="text-xs text-gray-500 mt-1">
-                    ${commissionAmount.toLocaleString()} this month
+                  <div className="text-xs text-green-700 mt-1">
+                    KES {property.agentIncome} this month
                   </div>
-                )}
               </div>
             </div>
           </div>
@@ -478,14 +482,14 @@ const Property: React.FC<PropertyProps> = ({
         </div>
 
         {/* Tenants Section */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+        {/* <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
           <div className="p-6 border-b border-gray-100">
             <h3 className="text-lg font-bold text-gray-900">Tenants</h3>
           </div>
           <div className="p-6">
             <TenantsList propertyId={property.id} />
           </div>
-        </div>
+        </div> */}
       </div>
 
       {/* Edit Property Modal */}
@@ -641,13 +645,40 @@ const Property: React.FC<PropertyProps> = ({
                       }}
                       className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
                     >
-                      Discard
+                      Close
                     </button>
                   </div>
                 </div>
               </div>
             </div>
           )}
+
+          <button
+          onClick={() => setShowAddTenant(true)}
+          className="fixed bottom-35 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-xl hover:shadow-2xl transition-all transform hover:scale-110 flex items-center justify-center z-40"
+        >
+          <Plus className="w-6 h-6" />
+        </button>
+          
+
+          {showAddTenant && (
+                  <AddTenant
+                    propertyId={propertyId}
+                    onClose={() => setShowAddTenant(false)}
+                    onTenantAdded={() => {
+                      setShowAddTenant(false);
+                      loadPropertyData();
+                    }}
+                  />
+                )}
+
+                {showTenant && (
+                  <TenantsList
+                    propertyId={propertyId}
+                    onClose={() => setShowTenant(false)}
+                    isModal={true}
+                  />
+                )}
     </div>
   );
 };

@@ -110,7 +110,7 @@ const PropertySelector: React.FC<{
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-gray-700 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 z-50 max-h-64 overflow-hidden">
+        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-gray-700 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 z-99 max-h-64 overflow-hidden">
           <div className="p-3 border-b border-gray-200 dark:border-gray-600">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -496,7 +496,7 @@ const Dashboard: React.FC<DashboardProps> = () => {
       onTouchMove={handleTouchMove}
     >
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="fixed top-0 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
           <p className="text-gray-600 dark:text-gray-400">Welcome back! Here's your property overview.</p>

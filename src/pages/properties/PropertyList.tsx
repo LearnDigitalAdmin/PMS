@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Plus, 
   Search, 
@@ -12,13 +12,13 @@ import {
   Trash2,
   RefreshCw,
   Home,
-  MapPin
-} from 'lucide-react';
-import { database, type PropertyWithTenants, type PropertyInput } from '../../services/database/Database';
+  MapPin} from 'lucide-react';
+import { database, type PropertyWithUnits, type PropertyInput } from '../../services/database/Database';
 import Property from './Properties';
+import PropertyModal from './PropertyModal'; // Import the fixed PropertyModal
 
 interface PropertyListProps {
-  onNavigateToProperty: (property: PropertyWithTenants) => void;
+  onNavigateToProperty: (property: PropertyWithUnits) => void;
   currentUserId: number;
   userPlan: 'free' | 'premium';
 }
@@ -28,14 +28,17 @@ interface PropertyFormData {
   address: string;
   description: string;
   agentCommissionRate: number;
+  maxUnits: number;
+  image: string;
+  companyId?: number;
 }
 
 const Properties: React.FC<PropertyListProps> = ({ 
-  onNavigateToProperty, 
   currentUserId,
   userPlan 
 }) => {
-  const [properties, setProperties] = useState<PropertyWithTenants[]>([]);
+  const [properties, setProperties] = useState<PropertyWithUnits[]>([]);
+  const [companies, setCompanies] = useState<any[]>([]);//useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -43,33 +46,57 @@ const Properties: React.FC<PropertyListProps> = ({
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [selectedProperty, setSelectedProperty] = useState<PropertyWithTenants | null>(null);
+  const [selectedProperty, setSelectedProperty] = useState<PropertyWithUnits | null>(null);
   const [showPropModal, setShowPropModal] = useState(false);
-  const [propertyId, setPropertyId] = useState<number>(Number);
+  const [propertyId, setPropertyId] = useState<number>(0);
   const [formData, setFormData] = useState<PropertyFormData>({
     name: '',
     address: '',
     description: '',
-    agentCommissionRate: 0
+    agentCommissionRate: 0,
+    maxUnits: 12,
+    image: '',
+    companyId: undefined
   });
   const [formErrors, setFormErrors] = useState<Partial<PropertyFormData>>({});
+  
+  // Image handling refs
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [imagePreview, setImagePreview] = useState<string>('');
 
-  const MAX_FREE_PROPERTIES = 3;
+  const MAX_FREE_PROPERTIES = 2;
+  const MAX_FREE_UNITS = 12;
   const canAddProperty = userPlan === 'premium' || properties.length < MAX_FREE_PROPERTIES;
 
   useEffect(() => {
     loadProperties();
+    loadCompanies();
   }, [currentUserId]);
 
   const loadProperties = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await database.getPropertiesWithTenants(currentUserId);
+      const data = await database.getPropertiesWithUnits(currentUserId);
       setProperties(data);
     } catch (error) {
       console.error('Error loading properties:', error);
     } finally {
       setLoading(false);
+    }
+  }, [currentUserId]);
+
+  const loadCompanies = useCallback(async () => {
+    try {
+      const data = localStorage.getItem('currentCompany');
+      if (data) {
+        const company = JSON.parse(data);
+        setCompanies([company]); // Set as array for consistency
+      } else {
+        setCompanies([]);
+      }
+    } catch (error) {
+      console.error('Error loading companies:', error);
+      setCompanies([]);
     }
   }, [currentUserId]);
 
@@ -89,9 +116,16 @@ const Properties: React.FC<PropertyListProps> = ({
       name: '',
       address: '',
       description: '',
-      agentCommissionRate: 0
+      agentCommissionRate: 0,
+      maxUnits: 12,
+      image: '',
+      companyId: undefined
     });
     setFormErrors({});
+    setImagePreview('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const validateForm = (): boolean => {
@@ -105,8 +139,45 @@ const Properties: React.FC<PropertyListProps> = ({
       //errors.agentCommissionRate = 'Commission rate must be between 0% and 50%';
     }
 
+    if (formData.maxUnits < 1 || formData.maxUnits > MAX_FREE_UNITS) {
+      //errors.maxUnits = `Units must be between 1 and ${MAX_FREE_UNITS}`;
+    }
+
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
+  };
+
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Image size must be less than 2MB');
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select a valid image file');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result as string;
+      setFormData({ ...formData, image: result });
+      setImagePreview(result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeImage = () => {
+    setFormData({ ...formData, image: '' });
+    setImagePreview('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleAddProperty = async () => {
@@ -115,10 +186,13 @@ const Properties: React.FC<PropertyListProps> = ({
     try {
       const propertyInput: PropertyInput = {
         userId: currentUserId,
+        companyId: formData.companyId,
         name: formData.name.trim(),
         address: formData.address.trim() || undefined,
         description: formData.description.trim() || undefined,
-        agentCommissionRate: formData.agentCommissionRate
+        image: formData.image || undefined,
+        agentCommissionRate: formData.agentCommissionRate,
+        maxUnits: formData.maxUnits
       };
 
       await database.createProperty(propertyInput);
@@ -135,10 +209,13 @@ const Properties: React.FC<PropertyListProps> = ({
 
     try {
       await database.updateProperty(selectedProperty.id, {
+        companyId: formData.companyId,
         name: formData.name.trim(),
         address: formData.address.trim() || undefined,
         description: formData.description.trim() || undefined,
-        agentCommissionRate: formData.agentCommissionRate
+        image: formData.image || undefined,
+        agentCommissionRate: formData.agentCommissionRate,
+        maxUnits: formData.maxUnits
       });
 
       await loadProperties();
@@ -163,57 +240,81 @@ const Properties: React.FC<PropertyListProps> = ({
     }
   };
 
-  const openEditModal = (property: PropertyWithTenants) => {
+  const openEditModal = (property: PropertyWithUnits) => {
     setSelectedProperty(property);
     setFormData({
       name: property.name,
       address: property.address || '',
       description: property.description || '',
-      agentCommissionRate: property.agentCommissionRate
+      agentCommissionRate: property.agentCommissionRate,
+      maxUnits: property.maxUnits,
+      image: property.image || '',
+      companyId: property.companyId
     });
+    setImagePreview(property.image || '');
     setShowEditModal(true);
   };
 
-  const openDeleteModal = (property: PropertyWithTenants) => {
+  const openDeleteModal = (property: PropertyWithUnits) => {
     setSelectedProperty(property);
     setShowDeleteModal(true);
   };
 
-  const getOccupancyColor = (rate: number) => {
-    if (rate >= 80) return 'text-green-600 bg-green-50';
-    if (rate >= 50) return 'text-yellow-600 bg-yellow-50';
-    return 'text-red-600 bg-red-50';
-  };
+  // const getOccupancyColor = (rate: number) => {
+  //   if (rate >= 80) return 'text-green-600 bg-green-50';
+  //   if (rate >= 50) return 'text-yellow-600 bg-yellow-50';
+  //   return 'text-red-600 bg-red-50';
+  // };
 
   const handleProperty = (propertyId: number) => {
     setPropertyId(propertyId);
     setShowPropModal(true);
-};
+  };
 
-const handleCloseModal = () => {
-  setPropertyId(0);
-  setShowPropModal(false);
-};
+  const handleCloseModal = () => {
+    setPropertyId(0);
+    setShowPropModal(false);
+  };
 
-  const PropertyCard: React.FC<{ property: PropertyWithTenants; index: number }> = ({ property, index }) => {
+  const handleCloseAddModal = () => {
+    setShowAddModal(false);
+    resetForm();
+  };
+
+  const handleCloseEditModal = () => {
+    setShowEditModal(false);
+    setSelectedProperty(null);
+    resetForm();
+  };
+
+  const PropertyCard: React.FC<{ property: PropertyWithUnits; index: number }> = ({ property, index }) => {
     const occupancyPercentage = property.occupancyRate;
 
     return (
       <div 
         className="group bg-white rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100 overflow-hidden cursor-pointer animate-fade-in"
         style={{ animationDelay: `${index * 100}ms` }}
-        onClick={() => onNavigateToProperty(property)}
+        onClick={() => handleProperty(property.id)}
       >
-        {/* Property Image Placeholder */}
-        <div className="h-48 bg-gradient-to-br from-blue-500 via-blue-600 to-purple-600 relative overflow-hidden">
+        {/* Property Image */}
+        <div className="h-48 bg-gradient-to-br from-white-500 via-blue-600 to-grey-600 relative overflow-hidden">
+          {property.image ? (
+            <img 
+              src={property.image} 
+              alt={property.name}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-white-500 via-white-600 to-grey-600"></div>
+          )}
           <div className="absolute inset-0 bg-black bg-opacity-20"></div>
-          <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="absolute top-4 right-4 flex gap-2 opacity-70 group-hover:opacity-100 transition-opacity">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 openEditModal(property);
               }}
-              className="p-2 bg-white bg-opacity-20 backdrop-blur-sm rounded-lg hover:bg-opacity-30 transition-all"
+              className="p-2 bg-grey bg-opacity-20 backdrop-blur-sm rounded-lg hover:bg-opacity-30 transition-all"
             >
               <Edit3 className="w-4 h-4 text-white" />
             </button>
@@ -240,14 +341,14 @@ const handleCloseModal = () => {
         </div>
 
         {/* Property Details */}
-        <div className="p-6">
+        <div className="p-6" onClick={() => handleProperty(property.id)}>
           {/* Stats Row */}
           <div className="grid grid-cols-3 gap-4 mb-4">
             <div className="text-center">
               <div className="flex items-center justify-center mb-1">
                 <Users className="w-4 h-4 text-blue-600 mr-1" />
                 <span className="text-2xl font-bold text-gray-900">
-                  {property.tenants.length}
+                  {property.units.filter(unit => unit.isOccupied).length}
                 </span>
               </div>
               <p className="text-xs text-gray-500 font-medium">Tenants</p>
@@ -274,6 +375,18 @@ const handleCloseModal = () => {
             </div>
           </div>
 
+          {/* Units Info */}
+          <div className="mb-4 text-sm text-gray-600">
+            <div className="flex justify-between">
+              <span>Units: {property.units.length}/{property.maxUnits}</span>
+              {property.companyId && (
+                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
+                  Company Property
+                </span>
+              )}
+            </div>
+          </div>
+
           {/* Description */}
           {property.description && (
             <p className="text-sm text-gray-600 mb-4 line-clamp-2">
@@ -293,68 +406,90 @@ const handleCloseModal = () => {
     );
   };
 
-  const PropertyListItem: React.FC<{ property: PropertyWithTenants; index: number }> = ({ property, index }) => {
-    const occupancyPercentage = property.occupancyRate;
+  const PropertyListItem: React.FC<{ property: PropertyWithUnits; index: number }> = ({ property, index }) => {
+    //const occupancyPercentage = property.occupancyRate;
 
     return (
       <div 
-        className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-200 border border-gray-100 p-4 cursor-pointer animate-fade-in"
+        className="group bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-200 border border-gray-100 p-4 cursor-pointer animate-fade-in"
         style={{ animationDelay: `${index * 50}ms` }}
-        
+        onClick={() => handleProperty(property.id)}
       >
         <div className="flex items-center justify-between">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between mb-2">
-              <div className="flex-1 min-w-0">
-                <h3 className="text-lg font-semibold text-gray-900 truncate">
-                  {property.name}
-                </h3>
-                {property.address && (
-                  <p className="text-sm text-gray-500 truncate mt-1 flex items-center">
-                    <MapPin className="w-3 h-3 mr-1 flex-shrink-0" />
-                    {property.address}
-                  </p>
-                )}
-              </div>
-              <div className="flex gap-2 ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openEditModal(property);
-                  }}
-                  className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                >
-                  <Edit3 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openDeleteModal(property);
-                  }}
-                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
+          <div className="flex items-center gap-4 flex-1 min-w-0">
+            {/* Property Image Thumbnail */}
+            <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0">
+              {property.image ? (
+                <img 
+                  src={property.image} 
+                  alt={property.name}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                  <Building2 className="w-6 h-6 text-white" />
+                </div>
+              )}
             </div>
 
-            <div className="flex items-center gap-6 text-sm"
-                onClick={() => handleProperty(property.id)}>
-              <div className="flex items-center text-gray-600">
-                <Users className="w-4 h-4 mr-1" />
-                <span className="font-medium">{property.tenants.length}</span>
-                <span className="ml-1">tenants</span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-lg font-semibold text-gray-900 truncate">
+                    {property.name}
+                  </h3>
+                  {property.address && (
+                    <p className="text-sm text-gray-500 truncate mt-1 flex items-center">
+                      <MapPin className="w-3 h-3 mr-1 flex-shrink-0" />
+                      {property.address}
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-2 ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openEditModal(property);
+                    }}
+                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openDeleteModal(property);
+                    }}
+                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-              
-              <div className="flex items-center text-gray-600">
-                <DollarSign className="w-4 h-4 mr-1" />
-                <span className="font-medium">${(property.monthlyRevenue || 0).toLocaleString()}</span>
-                <span className="ml-1">monthly</span>
-              </div>
-              
-              <div className={`flex items-center px-2 py-1 rounded-full text-xs font-medium ${getOccupancyColor(occupancyPercentage)}`}>
-                <TrendingUp className="w-3 h-3 mr-1" />
-                <span>{occupancyPercentage.toFixed(0)}% occupied</span>
+
+              <div className="flex items-center gap-6 text-sm">
+                <div className="flex items-center text-gray-600">
+                  <Users className="w-4 h-4 mr-1" />
+                  <span className="font-medium">{property.units.filter(unit => unit.isOccupied).length}</span>
+                  <span className="ml-1">tenants</span>
+                </div>
+                
+                <div className="flex items-center text-gray-600">
+                  <DollarSign className="w-4 h-4 mr-1" />
+                  <span className="font-medium">${(property.monthlyRevenue || 0).toLocaleString()}</span>
+                  <span className="ml-1">monthly</span>
+                </div>
+                
+                <div className="flex items-center text-gray-600">
+                  <Building2 className="w-4 h-4 mr-1" />
+                  <span className="font-medium">{property.units.length}/{property.maxUnits}</span>
+                  <span className="ml-1">units</span>
+                </div>
+                
+                {/* <div className={`flex items-center px-2 py-1 rounded-full text-xs font-medium ${getOccupancyColor(occupancyPercentage)}`}>
+                  <TrendingUp className="w-3 h-3 mr-1" />
+                  <span>{occupancyPercentage.toFixed(0)}% occupied</span>
+                </div> */}
               </div>
             </div>
           </div>
@@ -411,107 +546,6 @@ const handleCloseModal = () => {
     </div>
   );
 
-  const PropertyModal: React.FC<{ 
-    isOpen: boolean; 
-    onClose: () => void; 
-    title: string; 
-    onSubmit: () => void;
-  }> = ({ isOpen, onClose, title, onSubmit }) => {
-    if (!isOpen) return null;
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md transform transition-all">
-          <div className="p-6 border-b border-gray-100">
-            <h2 className="text-xl font-bold text-gray-900">{title}</h2>
-          </div>
-          
-          <div className="p-6 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Property Name *
-              </label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
-                  formErrors.name ? 'border-red-500' : 'border-gray-200'
-                }`}
-                placeholder="Enter property name"
-              />
-              {formErrors.name && (
-                <p className="text-red-500 text-sm mt-1">{formErrors.name}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Address
-              </label>
-              <input
-                type="text"
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                placeholder="Enter property address"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Description
-              </label>
-              <textarea
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                rows={3}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
-                placeholder="Enter property description"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Agent Commission Rate (%)
-              </label>
-              <input
-                type="number"
-                value={formData.agentCommissionRate}
-                onChange={(e) => setFormData({ ...formData, agentCommissionRate: Number(e.target.value) })}
-                min="0"
-                max="50"
-                step="0.1"
-                className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
-                  formErrors.agentCommissionRate ? 'border-red-500' : 'border-gray-200'
-                }`}
-                placeholder="0"
-              />
-              {formErrors.agentCommissionRate && (
-                <p className="text-red-500 text-sm mt-1">{formErrors.agentCommissionRate}</p>
-              )}
-            </div>
-          </div>
-
-          <div className="p-6 bg-gray-50 rounded-b-2xl flex gap-3">
-            <button
-              onClick={onClose}
-              className="flex-1 px-4 py-3 text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-all font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={onSubmit}
-              className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-medium"
-            >
-              {title.includes('Add') ? 'Add Property' : 'Save Changes'}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -520,10 +554,7 @@ const handleCloseModal = () => {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
               <Home className="w-6 h-6 text-blue-600 mr-3" />
-              <h1 className="text-xl font-bold text-gray-900">{properties.length} {properties.length === 1 ? 'Property' : 'Properties'}</h1>
-              {/* <span className="ml-3 px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">
-                {properties.length} {properties.length === 1 ? 'Property' : 'Properties'}
-              </span> */}
+              <h1 className="text-xl font-bold text-gray-900">{properties.length === 1 ? 'Property' : 'Properties'}</h1>
             </div>
             
             <div className="flex items-center gap-4">
@@ -621,25 +652,18 @@ const handleCloseModal = () => {
         )}
       </div>
 
+      {/* Property Detail Modal */}
       {showPropModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg w-full max-w-4xl max-h-[95vh] overflow-hidden">
+          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[95vh] overflow-hidden">
             <Property
-                propertyId={propertyId}
-                onCancel={handleCloseModal}
-                isModal={true}
+              propertyId={propertyId}
+              onCancel={handleCloseModal}
+              isModal={true}
             />
-            </div>
+          </div>
         </div>
-        )}
-
-
-
-
-
-
-
-
+      )}
 
       {/* Floating Action Button */}
       {canAddProperty && (
@@ -671,26 +695,43 @@ const handleCloseModal = () => {
         </div>
       )}
 
-      {/* Modals */}
+      {/* Property Form Modals */}
       <PropertyModal
         isOpen={showAddModal}
-        onClose={() => {
-          setShowAddModal(false);
-          resetForm();
-        }}
+        onClose={handleCloseAddModal}
         title="Add New Property"
         onSubmit={handleAddProperty}
+        formData={formData}
+        setFormData={setFormData}
+        formErrors={formErrors}
+        companies={companies}
+        imagePreview={imagePreview}
+        fileInputRef={fileInputRef}//Type 'RefObject<HTMLInputElement | null>' is not assignable to type 'RefObject<HTMLInputElement>'.
+        //   Type 'HTMLInputElement | null' is not assignable to type 'HTMLInputElement'.
+        //     Type 'null' is not assignable to type 'HTMLInputElement'.ts(2322)
+        // PropertyModal.tsx(24, 3): The expected type comes from property 'fileInputRef' which is declared here on type 'IntrinsicAttributes & PropertyModalProps'
+        handleImageUpload={handleImageUpload}
+        removeImage={removeImage}
+        MAX_FREE_UNITS={MAX_FREE_UNITS}
       />
 
       <PropertyModal
         isOpen={showEditModal}
-        onClose={() => {
-          setShowEditModal(false);
-          setSelectedProperty(null);
-          resetForm();
-        }}
+        onClose={handleCloseEditModal}
         title="Edit Property"
         onSubmit={handleEditProperty}
+        formData={formData}
+        setFormData={setFormData}
+        formErrors={formErrors}
+        companies={companies}
+        imagePreview={imagePreview}
+        fileInputRef={fileInputRef}//Type 'RefObject<HTMLInputElement | null>' is not assignable to type 'RefObject<HTMLInputElement>'.
+        //   Type 'HTMLInputElement | null' is not assignable to type 'HTMLInputElement'.
+        //     Type 'null' is not assignable to type 'HTMLInputElement'.ts(2322)
+        // PropertyModal.tsx(24, 3): The expected type comes from property 'fileInputRef' which is declared here on type 'IntrinsicAttributes & PropertyModalProps'
+        handleImageUpload={handleImageUpload}
+        removeImage={removeImage}
+        MAX_FREE_UNITS={MAX_FREE_UNITS}
       />
 
       {/* Delete Confirmation Modal */}

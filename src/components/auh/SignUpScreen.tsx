@@ -58,12 +58,14 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
     try {
       await database.createUserWithCompany({
         user: {
+          id: 1,
           name: formData.name,
           email: formData.email,
           phone: formData.phone,
           password: formData.password
         },
         company: {
+          //id: 1,
           name: formData.companyName,
           address: formData.companyAddress,
           phone: formData.companyPhone,

@@ -15,16 +15,66 @@ export interface User {
   updatedAt: string;
 }
 
+// export interface Property {
+//   id: number;
+//   userId: number;
+//   name: string;
+//   address?: string;
+//   description?: string;
+//   agentCommissionRate: number;
+//   createdAt: string;
+//   updatedAt: string;
+// }
+
+
 export interface Property {
   id: number;
   userId: number;
+  companyId?: number;
   name: string;
   address?: string;
   description?: string;
+  image?: string; // Base64 encoded image
   agentCommissionRate: number;
+  maxUnits: number;
   createdAt: string;
   updatedAt: string;
 }
+
+export interface Unit {
+  id: number;
+  propertyId: number;
+  unitNumber: string;
+  rentAmount: number;
+  isOccupied: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Updated input interfaces
+export interface PropertyInput {
+  userId: number;
+  companyId?: number;
+  name: string;
+  address?: string;
+  description?: string;
+  image?: string;
+  agentCommissionRate?: number;
+  maxUnits?: number;
+}
+
+export interface UnitInput {
+  propertyId: number;
+  unitNumber: string;
+  rentAmount: number;
+}
+
+export interface PropertyWithUnits extends Property {
+  units: Unit[];
+  monthlyRevenue: number;
+  occupancyRate: number;
+}
+
 
 export interface Tenant {
   id: number;
@@ -102,6 +152,7 @@ export interface TenantInput {
 }
 
 export interface InvoiceInput {
+  id: number; 
   tenantId: number;
   propertyId: number;
   billingMonth: string;
@@ -150,6 +201,7 @@ export interface InvoiceFilters {
 export interface PropertyWithTenants extends Property {
   tenants: Tenant[];
   monthlyRevenue: number;
+  agentIncome: number;
   occupancyRate: number;
 }
 
@@ -178,6 +230,7 @@ export interface Company {
 }
 
 export interface CompanyInput {
+  //id: number;
   name: string;
   address?: string;
   phone?: string;
@@ -186,6 +239,7 @@ export interface CompanyInput {
 
 export interface UserWithCompanyInput {
   user: {
+    id: number;
     name: string;
     email: string;
     phone?: string;
@@ -256,35 +310,54 @@ export class DatabaseManager {
 
       // Properties table (updated with user_id reference)
       `CREATE TABLE IF NOT EXISTS properties (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        name TEXT NOT NULL,
-        address TEXT,
-        description TEXT,
-        agent_commission_rate REAL DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-      )`,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      company_id INTEGER,
+      name TEXT NOT NULL,
+      address TEXT,
+      description TEXT,
+      image TEXT, -- Base64 encoded image
+      agent_commission_rate REAL DEFAULT 0,
+      max_units INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
+    )`,
 
-      // Tenants table
-      `CREATE TABLE IF NOT EXISTS tenants (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        property_id INTEGER NOT NULL,
-        name TEXT NOT NULL,
-        phone TEXT,
-        email TEXT,
-        unit_number TEXT,
-        rent_amount REAL NOT NULL,
-        standing_fees REAL DEFAULT 0,
-        deposit_amount REAL DEFAULT 0,
-        lease_start DATE,
-        lease_end DATE,
-        is_active INTEGER DEFAULT 1,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
-      )`,
+    // New Units table
+    `CREATE TABLE IF NOT EXISTS units (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      property_id INTEGER NOT NULL,
+      unit_number TEXT NOT NULL,
+      rent_amount REAL NOT NULL,
+      is_occupied INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
+      UNIQUE(property_id, unit_number)
+    )`,
+
+    // Updated Tenants table - add unit_id reference
+    `CREATE TABLE IF NOT EXISTS tenants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      property_id INTEGER NOT NULL,
+      unit_id INTEGER,
+      name TEXT NOT NULL,
+      phone TEXT,
+      email TEXT,
+      unit_number TEXT, -- Keep for backward compatibility
+      rent_amount REAL NOT NULL,
+      standing_fees REAL DEFAULT 0,
+      deposit_amount REAL DEFAULT 0,
+      lease_start DATE,
+      lease_end DATE,
+      is_active INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
+      FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE SET NULL
+    )`,
 
       // Invoices table
       `CREATE TABLE IF NOT EXISTS invoices (
@@ -399,10 +472,11 @@ async createUserWithCompany(data: UserWithCompanyInput): Promise<AuthResult> {
   const statements = [
     {
       statement: `
-        INSERT INTO users (name, email, phone, password_hash, is_premium)
-        VALUES (?, ?, ?, ?, 0)
+        INSERT INTO users (id, name, email, phone, password_hash, is_premium)
+        VALUES (?, ?, ?, ?, ?, 0)
       `,
       values: [
+        data.user.id,
         data.user.name,
         data.user.email,
         data.user.phone || '',
@@ -494,19 +568,23 @@ async createPayment(payment: {
   return this.mapToPayment(createdPayment.values[0]);
 }
 
-// Simpler alternative: Remove transactions for operations that don't need atomicity
+
+
 async createProperty(property: PropertyInput): Promise<Property> {
   const query = `
-    INSERT INTO properties (user_id, name, address, description, agent_commission_rate)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO properties (user_id, company_id, name, address, description, image, agent_commission_rate, max_units)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `;
   
   const result = await this.db!.run(query, [
     property.userId,
+    property.companyId || null,
     property.name,
     property.address || '',
     property.description || '',
-    property.agentCommissionRate || 0
+    property.image || '',
+    property.agentCommissionRate || 0,
+    property.maxUnits || 1
   ]);
 
   const createdProperty = await this.getPropertyById(result.changes!.lastId!);
@@ -516,82 +594,204 @@ async createProperty(property: PropertyInput): Promise<Property> {
   return createdProperty;
 }
 
-// Updated createPayment method
-// async createPayment(payment: {
-//   invoiceId: number;
-//   amount: number;
-//   paymentDate: string;
-//   paymentMethod?: string;
-//   notes?: string;
-// }): Promise<Payment> {
-//   const statements = [
-//     {
-//       statement: `
-//         INSERT INTO payments (invoice_id, amount, payment_date, payment_method, notes)
-//         VALUES (?, ?, ?, ?, ?)
-//       `,
-//       values: [
-//         payment.invoiceId,
-//         payment.amount,
-//         payment.paymentDate,
-//         payment.paymentMethod || '',
-//         payment.notes || ''
-//       ]
-//     },
-//     {
-//       statement: `
-//         UPDATE invoices 
-//         SET amount_paid = amount_paid + ?,
-//             is_paid = CASE WHEN amount_paid + ? >= total_amount THEN 1 ELSE 0 END,
-//             updated_at = CURRENT_TIMESTAMP
-//         WHERE id = ?
-//       `,
-//       values: [
-//         payment.amount,
-//         payment.amount,
-//         payment.invoiceId
-//       ]
-//     }
-//   ];
+async getPropertiesWithUnits(userId: number): Promise<PropertyWithUnits[]> {
+  try {
+    const query = `
+      SELECT 
+        p.*,
+        COUNT(u.id) as unit_count,
+        COUNT(CASE WHEN u.is_occupied = 1 THEN 1 END) as occupied_units,
+        SUM(CASE WHEN u.is_occupied = 1 THEN u.rent_amount ELSE 0 END) as monthly_revenue
+      FROM properties p
+      LEFT JOIN units u ON p.id = u.property_id
+      WHERE p.user_id = ?
+      GROUP BY p.id
+      ORDER BY p.created_at DESC
+    `;
+    
+    const result = await this.db!.query(query, [userId]);
+    const properties = result.values || [];
+    
+    const propertiesWithUnits: PropertyWithUnits[] = [];
+    
+    for (const prop of properties) {
+      const units = await this.getUnitsByProperty(prop.id);
+      propertiesWithUnits.push({
+        ...this.mapToProperty(prop),
+        units,
+        monthlyRevenue: prop.monthly_revenue || 0,
+        occupancyRate: prop.unit_count > 0 ? (prop.occupied_units / prop.unit_count) * 100 : 0
+      });
+    }
+    
+    return propertiesWithUnits;
+  } catch (error) {
+    console.error('Error getting properties with units:', error);
+    return [];
+  }
+}
 
-//   // Execute in transaction
-//   const results = await this.executeInTransaction(statements);
-//   const paymentId = results[0].changes!.lastId!;
-
-//   // Get the created payment
-//   const createdPayment = await this.db!.query(
-//     'SELECT * FROM payments WHERE id = ?', 
-//     [paymentId]
-//   );
+async updateProperty(id: number, property: Partial<PropertyInput>): Promise<void> {
+  const fields = [];
+  const values = [];
   
-//   if (!createdPayment.values || createdPayment.values.length === 0) {
-//     throw new Error('Failed to retrieve created payment');
-//   }
+  if (property.name !== undefined) {
+    fields.push('name = ?');
+    values.push(property.name);
+  }
+  if (property.address !== undefined) {
+    fields.push('address = ?');
+    values.push(property.address);
+  }
+  if (property.description !== undefined) {
+    fields.push('description = ?');
+    values.push(property.description);
+  }
+  if (property.image !== undefined) {
+    fields.push('image = ?');
+    values.push(property.image);
+  }
+  if (property.agentCommissionRate !== undefined) {
+    fields.push('agent_commission_rate = ?');
+    values.push(property.agentCommissionRate);
+  }
+  if (property.maxUnits !== undefined) {
+    fields.push('max_units = ?');
+    values.push(property.maxUnits);
+  }
   
-//   return this.mapToPayment(createdPayment.values[0]);
-// }
-
-// For simpler operations that don't need transactions, remove transaction wrapper:
-// async createProperty(property: PropertyInput): Promise<Property> {
-//   const query = `
-//     INSERT INTO properties (user_id, name, address, description, agent_commission_rate)
-//     VALUES (?, ?, ?, ?, ?)
-//   `;
+  fields.push('updated_at = CURRENT_TIMESTAMP');
+  values.push(id);
   
-//   const result = await this.db!.run(query, [
-//     property.userId,
-//     property.name,
-//     property.address || '',
-//     property.description || '',
-//     property.agentCommissionRate || 0
-//   ]);
+  const query = `UPDATE properties SET ${fields.join(', ')} WHERE id = ?`;
+  await this.db!.run(query, values);
+}
 
-//   const createdProperty = await this.getPropertyById(result.changes!.lastId!);
-//   if (!createdProperty) {
-//     throw new Error('Failed to retrieve created property');
-//   }
-//   return createdProperty;
-// }
+// ==================== UNIT OPERATIONS ====================
+
+async createUnit(unit: UnitInput): Promise<Unit> {
+  const query = `
+    INSERT INTO units (property_id, unit_number, rent_amount)
+    VALUES (?, ?, ?)
+  `;
+  
+  const result = await this.db!.run(query, [
+    unit.propertyId,
+    unit.unitNumber,
+    unit.rentAmount
+  ]);
+
+  const createdUnit = await this.getUnitById(result.changes!.lastId!);
+  if (!createdUnit) {
+    throw new Error('Failed to retrieve created unit');
+  }
+  return createdUnit;
+}
+
+async getUnitsByProperty(propertyId: number): Promise<Unit[]> {
+  try {
+    const query = `
+      SELECT * FROM units 
+      WHERE property_id = ? 
+      ORDER BY unit_number ASC
+    `;
+    
+    const result = await this.db!.query(query, [propertyId]);
+    return this.mapToUnits(result.values || []);
+  } catch (error) {
+    console.error('Error getting units by property:', error);
+    return [];
+  }
+}
+
+async getUnitById(id: number): Promise<Unit | null> {
+  try {
+    const query = 'SELECT * FROM units WHERE id = ?';
+    const result = await this.db!.query(query, [id]);
+    
+    if (result.values && result.values.length > 0) {
+      return this.mapToUnit(result.values[0]);
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting unit by ID:', error);
+    return null;
+  }
+}
+
+async updateUnit(id: number, unit: Partial<UnitInput>): Promise<void> {
+  const fields = [];
+  const values = [];
+  
+  if (unit.unitNumber !== undefined) {
+    fields.push('unit_number = ?');
+    values.push(unit.unitNumber);
+  }
+  if (unit.rentAmount !== undefined) {
+    fields.push('rent_amount = ?');
+    values.push(unit.rentAmount);
+  }
+  
+  fields.push('updated_at = CURRENT_TIMESTAMP');
+  values.push(id);
+  
+  const query = `UPDATE units SET ${fields.join(', ')} WHERE id = ?`;
+  await this.db!.run(query, values);
+}
+
+async deleteUnit(id: number): Promise<void> {
+  await this.db!.run('DELETE FROM units WHERE id = ?', [id]);
+}
+
+async setUnitOccupancy(id: number, isOccupied: boolean): Promise<void> {
+  const query = `
+    UPDATE units 
+    SET is_occupied = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `;
+  await this.db!.run(query, [isOccupied ? 1 : 0, id]);
+}
+
+// ==================== UPDATED MAPPING FUNCTIONS ====================
+
+private mapToProperty(row: any): Property {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    companyId: row.company_id,
+    name: row.name,
+    address: row.address,
+    description: row.description,
+    image: row.image,
+    agentCommissionRate: row.agent_commission_rate,
+    maxUnits: row.max_units || 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+private mapToUnit(row: any): Unit {
+  return {
+    id: row.id,
+    propertyId: row.property_id,
+    unitNumber: row.unit_number,
+    rentAmount: row.rent_amount,
+    isOccupied: Boolean(row.is_occupied),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+private mapToUnits(rows: any[]): Unit[] {
+  return rows.map(row => this.mapToUnit(row));
+}
+
+
+
+
+
+
+
 
 async createTenant(tenant: TenantInput): Promise<Tenant> {
   const query = `
@@ -894,7 +1094,8 @@ async createTenant(tenant: TenantInput): Promise<Tenant> {
           ...this.mapToProperty(prop),
           tenants,
           monthlyRevenue: prop.monthly_revenue || 0,
-          occupancyRate: tenants.length > 0 ? (prop.active_tenants / tenants.length) * 100 : 0
+          agentIncome: (prop.monthly_revenue || 0) * (prop.agent_commission_rate || 0) / 100,
+          occupancyRate: prop.max_units / (tenants.length > 0 ? (prop.active_tenants / tenants.length) * 100 : 0)
         });
       }
       
@@ -905,68 +1106,11 @@ async createTenant(tenant: TenantInput): Promise<Tenant> {
     }
   }
 
-  async updateProperty(id: number, property: Partial<PropertyInput>): Promise<void> {
-    const fields = [];
-    const values = [];
-    
-    if (property.name !== undefined) {
-      fields.push('name = ?');
-      values.push(property.name);
-    }
-    if (property.address !== undefined) {
-      fields.push('address = ?');
-      values.push(property.address);
-    }
-    if (property.description !== undefined) {
-      fields.push('description = ?');
-      values.push(property.description);
-    }
-    if (property.agentCommissionRate !== undefined) {
-      fields.push('agent_commission_rate = ?');
-      values.push(property.agentCommissionRate);
-    }
-    
-    fields.push('updated_at = CURRENT_TIMESTAMP');
-    values.push(id);
-    
-    const query = `UPDATE properties SET ${fields.join(', ')} WHERE id = ?`;
-    await this.db!.run(query, values);
-  }
-
   async deleteProperty(id: number): Promise<void> {
     await this.db!.run('DELETE FROM properties WHERE id = ?', [id]);
   }
 
   // ==================== TENANT OPERATIONS ====================
-
-  // async createTenant(tenant: TenantInput): Promise<Tenant> {
-  //   const query = `
-  //     INSERT INTO tenants (
-  //       property_id, name, phone, email, unit_number, 
-  //       rent_amount, standing_fees, deposit_amount, lease_start, lease_end
-  //     )
-  //     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  //   `;
-    
-  //   const result = await this.db!.run(query, [
-  //     tenant.propertyId,
-  //     tenant.name,
-  //     tenant.phone || '',
-  //     tenant.email || '',
-  //     tenant.unitNumber || '',
-  //     tenant.rentAmount,
-  //     tenant.standingFees || 0,
-  //     tenant.depositAmount || 0,
-  //     tenant.leaseStart || null,
-  //     tenant.leaseEnd || null
-  //   ]);
-
-  //   const createdTenant = await this.getTenantById(result.changes!.lastId!);
-  //   if (!createdTenant) {
-  //     throw new Error('Failed to retrieve created tenant');
-  //   }
-  //   return createdTenant;
-  // }
 
   async getTenantsByProperty(propertyId: number): Promise<Tenant[]> {
     try {
@@ -1529,19 +1673,6 @@ async createTenant(tenant: TenantInput): Promise<Tenant> {
       address: row.address,
       phone: row.phone,
       email: row.email,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    };
-  }
-
-  private mapToProperty(row: any): Property {
-    return {
-      id: row.id,
-      userId: row.user_id,
-      name: row.name,
-      address: row.address,
-      description: row.description,
-      agentCommissionRate: row.agent_commission_rate,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };

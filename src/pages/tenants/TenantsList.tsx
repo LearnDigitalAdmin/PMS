@@ -13,7 +13,8 @@ import {
   User, 
   AlertCircle,
   Calendar,
-  DollarSign} from 'lucide-react';
+  DollarSign,
+  ArrowLeft} from 'lucide-react';
 import { database } from '../../services/database/Database';
 import type { TenantWithInvoices } from '../../services/database/Database';
 import AddTenant from './AddTenant';
@@ -21,9 +22,11 @@ import AddTenant from './AddTenant';
 
 interface TenantsListProps {
   propertyId: number;
+  onClose?: () => void; 
+  isModal: boolean;
 }
 
-const TenantsList: React.FC<TenantsListProps> = ({ propertyId }) => {
+const TenantsList: React.FC<TenantsListProps> = ({ propertyId, onClose, isModal = false }) => {
   const [tenants, setTenants] = useState<TenantWithInvoices[]>([]);
   const [filteredTenants, setFilteredTenants] = useState<TenantWithInvoices[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -33,7 +36,7 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId }) => {
   const [showAddTenant, setShowAddTenant] = useState(false);
   const [deletingTenant, setDeletingTenant] = useState<number | null>(null);
 
-  // Get current billing month
+  //Get current billing month
   const getCurrentBillingMonth = () => {
     const now = new Date();
     return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
@@ -44,7 +47,7 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId }) => {
       setLoading(true);
       setError(null);
       const currentMonth = getCurrentBillingMonth();
-      const tenantsData = await database.getTenantsWithInvoices(propertyId, currentMonth);
+      const tenantsData = await database.getTenantsWithInvoices(propertyId, currentMonth);//
       setTenants(tenantsData);
       setFilteredTenants(tenantsData);
     } catch (err) {
@@ -163,9 +166,17 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId }) => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className={isModal ? "h-full flex flex-col" : "min-h-screen bg-gray-50"}>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-center">
+          <button
+            onClick={() => onClose?.()}
+            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all mr-3"
+            >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          </div>
         <h2 className="text-xl font-semibold text-gray-900">
           Tenants ({filteredTenants.length})
         </h2>

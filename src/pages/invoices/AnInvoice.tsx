@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ArrowLeft, 
-  Edit, 
   Trash2, 
   Download, 
   Share, 
@@ -19,12 +18,13 @@ import { database, type InvoiceWithDetails, type Payment } from '../../services/
 
 
 interface AnInvoiceProps {
-  invoiceId: number;
-  onNavigate?: (page: string, params?: any) => void;
+  invoiceId: any;
+  //onNavigate?: (page: string, params?: any) => void;
   onBack?: () => void;
+  isModal: boolean;
 }
 
-const AnInvoice: React.FC<AnInvoiceProps> = ({ invoiceId, onNavigate, onBack }) => {
+const AnInvoice: React.FC<AnInvoiceProps> = ({ invoiceId, onBack, isModal = false }) => {
   const [invoice, setInvoice] = useState<InvoiceWithDetails | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -221,7 +221,7 @@ const AnInvoice: React.FC<AnInvoiceProps> = ({ invoiceId, onNavigate, onBack }) 
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className={isModal ? "h-full flex flex-col bottom-70" : "min-h-screen bg-gray-50"}>
       {/* Header */}
       <div className="bg-white shadow-sm sticky top-0 z-30">
         <div className="flex items-center justify-between p-4">
@@ -465,13 +465,13 @@ const AnInvoice: React.FC<AnInvoiceProps> = ({ invoiceId, onNavigate, onBack }) 
             )}
             
             <div className="grid grid-cols-2 gap-3">
-              <button
+              {/* <button
                 onClick={() => onNavigate?.('edit-invoice', { invoiceId: invoice.id })}
                 className="bg-blue-50 text-blue-600 py-3 px-4 rounded-lg font-medium hover:bg-blue-100 transition-colors flex items-center justify-center space-x-2"
               >
                 <Edit className="w-4 h-4" />
                 <span>Edit</span>
-              </button>
+              </button> */}
               
               <button
                 onClick={() => setShowDeleteModal(true)}

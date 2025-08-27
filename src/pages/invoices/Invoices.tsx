@@ -20,12 +20,13 @@ import { database, type InvoiceWithDetails, type Property, type InvoiceFilters, 
 import { generateInvoicePDF, sharePDF, generatePDFFilename } from '../../services/pdf/PDFService';
 import { shareInvoiceSummary } from '../../services/sharing/ShareService';
 import AddInvoice from './AddInvoice';
+import AnInvoice from './AnInvoice';
 
 interface InvoicesProps {
   onNavigate?: (page: string, params?: any) => void;
 }
 
-const Invoices: React.FC<InvoicesProps> = ({ onNavigate }) => {
+const Invoices: React.FC<InvoicesProps> = ({ }) => {
   const [invoices, setInvoices] = useState<InvoiceWithDetails[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,6 +39,8 @@ const Invoices: React.FC<InvoicesProps> = ({ onNavigate }) => {
   const [exportModalVisible, setExportModalVisible] = useState(false);
   // Add these state variables after existing useState declarations
     const [showAddInvoiceModal, setShowAddInvoiceModal] = useState(false);
+    const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+    const [invoiceId, setInvoiceId] = useState<any>(null);
     const [editingInvoiceId, setEditingInvoiceId] = useState<number | undefined>();
     const [prefilledPropertyId, setPrefilledPropertyId] = useState<number | undefined>();
     const [prefilledTenantId, setPrefilledTenantId] = useState<number | undefined>();
@@ -112,15 +115,21 @@ const handleDownloadPDF = async (invoice: InvoiceWithDetails) => {
   }
 };
 
-  const handleViewInvoice = (invoiceId: number) => {
-    onNavigate?.('invoice', { invoiceId });
+  const handleViewInvoice = (invoiceId:any) => {
+    setInvoiceId(invoiceId);
+    setShowInvoiceModal(true);
+  };
+
+  const handleCloseInvoice = () => {
+    setInvoiceId(null);
+    setShowInvoiceModal(false);
   };
 
 
   // Add this after the existing state declarations in Invoices component
     const [companyInfo] = useState({
         name: 'SMB KENYA LTD',
-        address: 'Naivasha, Nairobi, Kenya',
+        address: 'Naivasha, Nakuru, Kenya',
         phone: '+254 791 286 165',
         email: 'info@smbkenya.com',
         website: 'www.cogvana.com'
@@ -567,6 +576,19 @@ const handleInvoiceSaved = (_savedInvoice: Invoice) => {
                 invoiceId={editingInvoiceId}
                 onSave={handleInvoiceSaved}
                 onCancel={handleCloseModal}
+                isModal={true}
+            />
+            </div>
+        </div>
+        )}
+
+
+        {showInvoiceModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg w-full max-w-4xl max-h-[95vh] overflow-hidden">
+            <AnInvoice
+                invoiceId={invoiceId}
+                onBack={handleCloseInvoice}
                 isModal={true}
             />
             </div>

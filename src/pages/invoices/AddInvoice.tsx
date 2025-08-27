@@ -198,6 +198,7 @@ const handleSave = async () => {
   setLoading(true);
   try {
     const invoiceData: InvoiceInput = {
+      id: formData.tenantId,
       tenantId: formData.tenantId,
       propertyId: formData.propertyId,
       billingMonth: formData.billingMonth,
@@ -933,7 +934,7 @@ const handleSave = async () => {
 
   // Replace the main return statement with this conditional layout:
 return (
-  <div className={isModal ? "h-full flex flex-col" : "min-h-screen bg-gray-50"}>
+  <div className={isModal ? "h-full flex flex-col bottom-70" : "min-h-screen bg-gray-50"}>
     {/* Header */}
     <div className={`bg-white shadow-sm ${isModal ? 'flex-shrink-0' : ''}`}>
       <div className="max-w-4xl mx-auto px-4 py-4">
