@@ -1,0 +1,127 @@
+{
+  "messages": [
+    {
+      "id": "digital_skills_1",
+      "category": "skills",
+      "title": "Master Digital Skills with Cogvana",
+      "message": "Transform your future with in-demand digital marketing, web development & AI skills",
+      "cta": "Download Cogvana on Play Store",
+      "color": "#4F46E5",
+      "icon": ""
+    },
+    {
+      "id": "tutors_1", 
+      "category": "tutors",
+      "title": "Share Your Expertise with Cogni Tutor",
+      "message": "Join passionate educators monetizing their knowledge across East Africa",
+      "cta": "Contact us to become a tutor",
+      "color": "#059669",
+      "icon": ""
+    },
+    {
+      "id": "community_1",
+      "category": "community", 
+      "title": "Learn Together, Grow Together",
+      "message": "Join thousands of learners in East Africa's fastest-growing educational community",
+      "cta": "Get Cogvana from Play Store",
+      "color": "#DC2626",
+      "icon": ""
+    },
+    {
+      "id": "skills_employment_1",
+      "category": "employment",
+      "title": "Skills That Lead to Employment",
+      "message": "Bridge the gap between learning and earning with job-ready digital skills",
+      "cta": "Start learning with Cogvana",
+      "color": "#7C3AED",
+      "icon": ""
+    },
+    {
+      "id": "ai_learning_1",
+      "category": "ai",
+      "title": "AI-Powered Learning Assistant",
+      "message": "Experience personalized learning with our intelligent tutoring system",
+      "cta": "Download Cogvana today",
+      "color": "#EA580C",
+      "icon": ""
+    },
+    {
+      "id": "self_employment_1",
+      "category": "entrepreneurship",
+      "title": "From Learning to Earning",
+      "message": "Acquire skills that enable self-employment and financial independence",
+      "cta": "Join Cogvana community",
+      "color": "#0891B2",
+      "icon": ""
+    },
+    {
+      "id": "content_creators_1",
+      "category": "creators",
+      "title": "Educators: Monetize Your Knowledge",
+      "message": "Turn your expertise into income with our comprehensive teaching platform",
+      "cta": "Partner with Cogni Tutor",
+      "color": "#BE185D",
+      "icon": ""
+    },
+    {
+      "id": "global_market_1",
+      "category": "global",
+      "title": "Compete in the Global Market",
+      "message": "Gain skills that make you competitive worldwide, right from East Africa",
+      "cta": "Start with Cogvana app",
+      "color": "#15803D",
+      "icon": ""
+    },
+    {
+      "id": "data_literacy_1",
+      "category": "data",
+      "title": "Master Data & Analytics",
+      "message": "Unlock the power of data literacy for career advancement",
+      "cta": "Learn on Cogvana platform",
+      "color": "#B45309",
+      "icon": ""
+    },
+    {
+      "id": "tutors_support_1",
+      "category": "support",
+      "title": "Teaching Made Simple",
+      "message": "AI-powered tools that handle the grind, so you focus on inspiring students",
+      "cta": "Discover Cogni Tutor",
+      "color": "#6366F1",
+      "icon": ""
+    },
+    {
+      "id": "social_learning_1",
+      "category": "social",
+      "title": "Learning is Social",
+      "message": "Connect, collaborate, and showcase your work in our vibrant learning community",
+      "cta": "Join Cogvana network",
+      "color": "#EC4899",
+      "icon": ""
+    },
+    {
+      "id": "skill_pathway_1",
+      "category": "pathway",
+      "title": "Your Path to Professional Growth",
+      "message": "Structured learning paths designed for East African professionals",
+      "cta": "Explore Cogvana courses",
+      "color": "#8B5CF6",
+      "icon": ""
+    }
+  ],
+  "contacts": {
+    "playstore": "https://play.google.com/store/search?q=cogvana",
+    "tutor_contact": {
+      "email": "info@smbkenya.com",
+      "phone": "+254791286165",
+      "website": "cogvana.com/tutors"
+    }
+  },
+  "branding": {
+    "primary_color": "#4F46E5",
+    "secondary_color": "#059669", 
+    "accent_color": "#DC2626",
+    "logo_text": "COGVANA",
+    "tagline": "Empowering Education Across East Africa"
+  }
+}

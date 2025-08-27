@@ -7,52 +7,8 @@ import Dashboard from './pages/Dashboard';
 import AuthWrapper, { useAuth, AuthProvider } from './components/auh/AuthWrapper';
 import Invoices from './pages/invoices/Invoices';
 import Properties from './pages/properties/PropertyList';
-
-// Profile component (No changes needed)
-const Profile = () => {
-  const { user, company, logout } = useAuth();
-  
-  return (
-    <div className="p-6">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-        <div className="text-center mb-6">
-          <User className="w-16 h-16 mx-auto mb-4 text-green-400" />
-          <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-2">Profile</h2>
-        </div>
-        
-        <div className="space-y-4 mb-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Name</label>
-            <p className="text-lg text-gray-900 dark:text-white">{user?.name}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Email</label>
-            <p className="text-lg text-gray-900 dark:text-white">{user?.email}</p>
-          </div>
-          {user?.phone && (
-            <div>
-              <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Phone</label>
-              <p className="text-lg text-gray-900 dark:text-white">{user.phone}</p>
-            </div>
-          )}
-          {company?.name && (
-            <div>
-              <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Company</label>
-              <p className="text-lg text-gray-900 dark:text-white">{company.name}</p>
-            </div>
-          )}
-        </div>
-        
-        <button
-          onClick={logout}
-          className="w-full bg-red-500 hover:bg-red-600 text-white py-3 px-4 rounded-xl transition-colors font-medium"
-        >
-          Sign Out
-        </button>
-      </div>
-    </div>
-  );
-};
+// CHANGED: Import Profile from separate file
+import Profile from './pages/Profile';
 
 // Loading component with skeleton animation (No changes needed)
 const LoadingSpinner = () => (
@@ -211,7 +167,7 @@ const PropertiesWrapper = () => {
     <Properties 
       onNavigateToProperty={handleNavigateToProperty}
       currentUserId={user?.id || 1}
-      userPlan="premium"
+      userPlan="free"
     />
   );
 };

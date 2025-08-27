@@ -45,7 +45,6 @@ const Property: React.FC<PropertyProps> = ({
   const [, setMonthlyStats] = useState<MonthlyStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddTenant, setShowAddTenant] = useState(false);
-  const [showTenant, setShowTenant] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const now = new Date();
@@ -213,7 +212,7 @@ const Property: React.FC<PropertyProps> = ({
     (dashboardData.monthlyRevenue - commissionAmount) : 0;
 
   return (
-    <div className={isModal ? "h-full flex flex-col overflow-y-auto" : "min-h-screen bg-gray-50"}>
+    <div className={isModal ? "h-screen bottom-35 flex flex-col" : "min-h-screen bg-gray-50"}>
       {/* Sticky Header */}
       <div className="sticky top-0 bg-white shadow-sm border-b border-gray-100 z-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -494,7 +493,15 @@ const Property: React.FC<PropertyProps> = ({
                 </div>
               )}
             </div>
+
+            
           </div>
+{/* Tenants List Section */}
+                <TenantsList
+                propertyId={propertyId}
+                onTenantAdded={loadPropertyData}
+                />
+
         </div>
       </div>
 
@@ -675,14 +682,6 @@ const Property: React.FC<PropertyProps> = ({
                       setShowAddTenant(false);
                       loadPropertyData();
                     }}
-                  />
-                )}
-
-                {showTenant && (
-                  <TenantsList
-                    propertyId={propertyId}
-                    onClose={() => setShowTenant(false)}
-                    isModal={true}
                   />
                 )}
     </div>

@@ -4,6 +4,7 @@ import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { formatCurrency, formatDate } from '../../utils/FormatUtils';
 import type { InvoiceWithDetails, Property, Payment } from '../database/Database';
+import cogvanaMessages from '../../assets/cogvana.json';
 
 export interface PDFGenerationOptions {
   includeCompanyLogo?: boolean;
@@ -22,9 +23,240 @@ export interface CompanyInfo {
   website?: string;
 }
 
-/**
- * Generates a professional PDF invoice
- */
+
+
+
+export interface CogvanaMessage {
+  id: string;
+  category: string;
+  title: string;
+  message: string;
+  cta: string;
+  color: string;
+  icon: string;
+}
+
+// New function to get random Cogvana message
+function getRandomCogvanaMessage(): CogvanaMessage {
+  const messages = cogvanaMessages.messages;
+  const randomIndex = Math.floor(Math.random() * messages.length);
+  return messages[randomIndex];
+}
+
+// New function to convert hex color to RGB values for pdf-lib
+function hexToRgb(hex: string): [number, number, number] {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (result) {
+    return [
+      parseInt(result[1], 16) / 255,
+      parseInt(result[2], 16) / 255,
+      parseInt(result[3], 16) / 255
+    ];
+  }
+  return [0.31, 0.27, 0.9]; // Default Cogvana blue
+}
+
+// Updated drawFooter function with Cogvana integration
+async function drawFooter(
+  page: any,
+  font: any,
+  boldFont: any,
+  _companyInfo: CompanyInfo,
+  options: PDFGenerationOptions,
+  yPosition: number,
+  width: number
+): Promise<void> {
+  // Payment instructions (moved up)
+  const instructions = options.paymentInstructions || 
+    'Payment should be made within 7 days of the due date. Late payments may incur additional charges.';
+  
+  page.drawText('PAYMENT INSTRUCTIONS:', {
+    x: 50,
+    y: yPosition + 60,
+    size: 10,
+    font: font
+  });
+  
+  const maxWidth = width - 100;
+  const words = instructions.split(' ');
+  let line = '';
+  let lineY = yPosition + 45;
+  
+  words.forEach(word => {
+    const testLine = line + word + ' ';
+    if (testLine.length * 6 < maxWidth) {
+      line = testLine;
+    } else {
+      page.drawText(line.trim(), {
+        x: 50,
+        y: lineY,
+        size: 9,
+        font: font,
+        color: rgb(0.4, 0.4, 0.4)
+      });
+      line = word + ' ';
+      lineY -= 12;
+    }
+  });
+  
+  if (line.trim()) {
+    page.drawText(line.trim(), {
+      x: 50,
+      y: lineY,
+      size: 9,
+      font: font,
+      color: rgb(0.4, 0.4, 0.4)
+    });
+  }
+
+  // Add Cogvana promotional section
+  await drawCogvanaBanner(page, font, boldFont, yPosition - 20, width);
+  
+  // Footer line (moved down)
+  page.drawLine({
+    start: { x: 50, y: yPosition - 80 },
+    end: { x: width - 50, y: yPosition - 80 },
+    thickness: 0.5,
+    color: rgb(0.8, 0.8, 0.8)
+  });
+  
+  // Thank you message (moved down)
+  page.drawText('Thank you for your business!', {
+    x: (width / 2) - 80,
+    y: yPosition - 95,
+    size: 12,
+    font: font,
+    color: rgb(0.3, 0.3, 0.3)
+  });
+}
+
+// New function to draw Cogvana promotional banner
+async function drawCogvanaBanner(
+  page: any,
+  font: any,
+  boldFont: any,
+  yPosition: number,
+  width: number
+): Promise<void> {
+  const cogvanaMsg = getRandomCogvanaMessage();
+  const [r, g, b] = hexToRgb(cogvanaMsg.color);
+  const bannerHeight = 55;
+  const bannerY = yPosition;
+  
+  // Background gradient effect using multiple rectangles
+  const gradientSteps = 3;
+  for (let i = 0; i < gradientSteps; i++) {
+    const alpha = 0.1 + (i * 0.05);
+    const stepHeight = bannerHeight / gradientSteps;
+    
+    page.drawRectangle({
+      x: 50,
+      y: bannerY - (i + 1) * stepHeight,
+      width: width - 100,
+      height: stepHeight,
+      color: rgb(r * alpha + 0.95 * (1 - alpha), 
+                 g * alpha + 0.95 * (1 - alpha), 
+                 b * alpha + 0.95 * (1 - alpha))
+    });
+  }
+  
+  // Border
+  page.drawRectangle({
+    x: 50,
+    y: bannerY - bannerHeight,
+    width: width - 100,
+    height: bannerHeight,
+    borderColor: rgb(r, g, b),
+    borderWidth: 1.5
+  });
+  
+  // Cogvana logo/brand name
+  page.drawText('COGVANA', {
+    x: 65,
+    y: bannerY - 18,
+    size: 14,
+    font: boldFont,
+    color: rgb(r, g, b)
+  });
+  
+  // Icon (using Unicode emoji)
+  page.drawText(cogvanaMsg.icon, {
+    x: 140,
+    y: bannerY - 18,
+    size: 12,
+    font: font
+  });
+  
+  // Main message title
+  page.drawText(cogvanaMsg.title, {
+    x: 160,
+    y: bannerY - 18,
+    size: 11,
+    font: boldFont,
+    color: rgb(0.1, 0.1, 0.1)
+  });
+  
+  // Message description
+  page.drawText(cogvanaMsg.message, {
+    x: 65,
+    y: bannerY - 32,
+    size: 9,
+    font: font,
+    color: rgb(0.3, 0.3, 0.3)
+  });
+  
+  // Call to action
+  page.drawText(` ${cogvanaMsg.cta}`, {
+    x: 65,
+    y: bannerY - 46,
+    size: 9,
+    font: boldFont,
+    color: rgb(r, g, b)
+  });
+  
+  // Contact info based on category
+  const contactText = cogvanaMsg.category === 'tutors' || cogvanaMsg.category === 'creators' 
+    ? 'tutors@cogvana.com | cogvana.com/tutors'
+    : 'Download on Play Store | cogvana.com';
+    
+  page.drawText(contactText, {
+    x: width - 280,
+    y: bannerY - 46,
+    size: 8,
+    font: font,
+    color: rgb(0.4, 0.4, 0.4)
+  });
+}
+
+// Updated addWatermark function to include Cogvana subtly
+async function addWatermark(
+  page: any,
+  font: any,
+  width: number,
+  height: number
+): Promise<void> {
+  // Original watermark (slightly moved)
+  page.drawText('GENERATED BY PLOT YANGU FROM SMB KENYA', {
+    x: width / 2 - 120,
+    y: height / 2 - 180,
+    size: 18,
+    font: font,
+    color: rgb(0.9, 0.9, 0.9),
+    rotate: { type: 'degrees', angle: 0 }
+  });
+  
+  // Subtle Cogvana watermark
+  page.drawText('Powered by Cogvana Education Platform', {
+    x: width / 2 - 90,
+    y: height / 2 - 220,
+    size: 12,
+    font: font,
+    color: rgb(0.95, 0.95, 0.95),
+    rotate: { type: 'degrees', angle: 0 }
+  });
+}
+
+// Updated generateInvoicePDF function signature and call
 async function generateInvoicePDF(
   invoice: InvoiceWithDetails,
   property: Property,
@@ -62,8 +294,8 @@ async function generateInvoicePDF(
     // Draw summary
     yPosition = await drawSummary(page, font, boldFont, invoice, yPosition, width);
     
-    // Draw footer
-    await drawFooter(page, font, companyInfo, options, 50, width);
+    // Draw footer with Cogvana integration (updated call)
+    await drawFooter(page, font, boldFont, companyInfo, options, Math.max(yPosition, 130), width);
     
     // Add watermark for free version
     if (options.template !== 'premium') {
@@ -76,6 +308,103 @@ async function generateInvoicePDF(
     throw new Error('Failed to generate PDF invoice. Please try again.');
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * Generates a professional PDF invoice
+ */
+// async function generateInvoicePDF(
+//   invoice: InvoiceWithDetails,
+//   property: Property,
+//   payments: Payment[] = [],
+//   companyInfo: CompanyInfo,
+//   options: PDFGenerationOptions = {}
+// ): Promise<Uint8Array> {
+//   try {
+//     const pdfDoc = await PDFDocument.create();
+//     const page = pdfDoc.addPage([595, 842]); // A4 size
+//     const { width, height } = page.getSize();
+    
+//     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+//     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    
+//     let yPosition = height - 50;
+    
+//     // Draw header
+//     yPosition = await drawHeader(page, font, boldFont, companyInfo, options, yPosition, width);
+    
+//     // Draw invoice title and number
+//     yPosition = await drawInvoiceTitle(page, boldFont, invoice, yPosition, width);
+    
+//     // Draw property and tenant info
+//     yPosition = await drawPropertyTenantInfo(page, font, boldFont, property, invoice, yPosition);
+    
+//     // Draw billing details table
+//     yPosition = await drawBillingTable(page, font, boldFont, invoice, yPosition, width);
+    
+//     // Draw payments table if any
+//     if (payments.length > 0) {
+//       yPosition = await drawPaymentsTable(page, font, boldFont, payments, yPosition, width);
+//     }
+    
+//     // Draw summary
+//     yPosition = await drawSummary(page, font, boldFont, invoice, yPosition, width);
+    
+//     // Draw footer
+//     await drawFooter(page, font, companyInfo, options, 50, width);
+    
+//     // Add watermark for free version
+//     if (options.template !== 'premium') {
+//       await addWatermark(page, font, width, height);
+//     }
+    
+//     return await pdfDoc.save();
+//   } catch (error) {
+//     console.error('PDF generation failed:', error);
+//     throw new Error('Failed to generate PDF invoice. Please try again.');
+//   }
+// }
 
 async function drawHeader(
   page: any,
@@ -550,90 +879,90 @@ async function drawSummary(
   return yPosition - 100;
 }
 
-async function drawFooter(
-  page: any,
-  font: any,
-  _companyInfo: CompanyInfo,
-  options: PDFGenerationOptions,
-  yPosition: number,
-  width: number
-): Promise<void> {
-  // Payment instructions
-  const instructions = options.paymentInstructions || 
-    'Payment should be made within 7 days of the due date. Late payments may incur additional charges.';
+// async function drawFooter(
+//   page: any,
+//   font: any,
+//   _companyInfo: CompanyInfo,
+//   options: PDFGenerationOptions,
+//   yPosition: number,
+//   width: number
+// ): Promise<void> {
+//   // Payment instructions
+//   const instructions = options.paymentInstructions || 
+//     'Payment should be made within 7 days of the due date. Late payments may incur additional charges.';
   
-  page.drawText('PAYMENT INSTRUCTIONS:', {
-    x: 50,
-    y: yPosition + 40,
-    size: 10,
-    font: font
-  });
+//   page.drawText('PAYMENT INSTRUCTIONS:', {
+//     x: 50,
+//     y: yPosition + 40,
+//     size: 10,
+//     font: font
+//   });
   
-  const maxWidth = width - 100;
-  const words = instructions.split(' ');
-  let line = '';
-  let lineY = yPosition + 25;
+//   const maxWidth = width - 100;
+//   const words = instructions.split(' ');
+//   let line = '';
+//   let lineY = yPosition + 25;
   
-  words.forEach(word => {
-    const testLine = line + word + ' ';
-    if (testLine.length * 6 < maxWidth) {
-      line = testLine;
-    } else {
-      page.drawText(line.trim(), {
-        x: 50,
-        y: lineY,
-        size: 9,
-        font: font,
-        color: rgb(0.4, 0.4, 0.4)
-      });
-      line = word + ' ';
-      lineY -= 12;
-    }
-  });
+//   words.forEach(word => {
+//     const testLine = line + word + ' ';
+//     if (testLine.length * 6 < maxWidth) {
+//       line = testLine;
+//     } else {
+//       page.drawText(line.trim(), {
+//         x: 50,
+//         y: lineY,
+//         size: 9,
+//         font: font,
+//         color: rgb(0.4, 0.4, 0.4)
+//       });
+//       line = word + ' ';
+//       lineY -= 12;
+//     }
+//   });
   
-  if (line.trim()) {
-    page.drawText(line.trim(), {
-      x: 50,
-      y: lineY,
-      size: 9,
-      font: font,
-      color: rgb(0.4, 0.4, 0.4)
-    });
-  }
+//   if (line.trim()) {
+//     page.drawText(line.trim(), {
+//       x: 50,
+//       y: lineY,
+//       size: 9,
+//       font: font,
+//       color: rgb(0.4, 0.4, 0.4)
+//     });
+//   }
   
-  // Footer line
-  page.drawLine({
-    start: { x: 50, y: yPosition - 10 },
-    end: { x: width - 50, y: yPosition - 10 },
-    thickness: 0.5,
-    color: rgb(0.8, 0.8, 0.8)
-  });
+//   // Footer line
+//   page.drawLine({
+//     start: { x: 50, y: yPosition - 10 },
+//     end: { x: width - 50, y: yPosition - 10 },
+//     thickness: 0.5,
+//     color: rgb(0.8, 0.8, 0.8)
+//   });
   
-  // Thank you message
-  page.drawText('Thank you for your business!', {
-    x: (width / 2) - 80,
-    y: yPosition - 25,
-    size: 12,
-    font: font,
-    color: rgb(0.3, 0.3, 0.3)
-  });
-}
+//   // Thank you message
+//   page.drawText('Thank you for your business!', {
+//     x: (width / 2) - 80,
+//     y: yPosition - 25,
+//     size: 12,
+//     font: font,
+//     color: rgb(0.3, 0.3, 0.3)
+//   });
+// }
 
-async function addWatermark(
-  page: any,
-  font: any,
-  width: number,
-  height: number
-): Promise<void> {
-  page.drawText('GENERATED BY PLOT YANGU FROM SMB KENYA', {
-    x: width / 2 - 100,
-    y: height / 2 - 200,
-    size: 20,
-    font: font,
-    color: rgb(0.9, 0.9, 0.9),
-    rotate: { type: 'degrees', angle: 0 }
-  });
-}
+// async function addWatermark(
+//   page: any,
+//   font: any,
+//   width: number,
+//   height: number
+// ): Promise<void> {
+//   page.drawText('GENERATED BY PLOT YANGU FROM SMB KENYA', {
+//     x: width / 2 - 100,
+//     y: height / 2 - 200,
+//     size: 20,
+//     font: font,
+//     color: rgb(0.9, 0.9, 0.9),
+//     rotate: { type: 'degrees', angle: 0 }
+//   });
+// }
 
 /**
  * Downloads the PDF to device storage

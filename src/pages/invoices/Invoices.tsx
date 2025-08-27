@@ -130,82 +130,198 @@ const Invoices: React.FC<InvoicesProps> = ({ }) => {
     setCurrentDate(newDate);
   };
 
+
+  const getStoredPaymentInstructions = () => {
+  try {
+    const stored = localStorage.getItem('defaultPaymentInstructions');
+    return stored ? JSON.parse(stored) : {};
+  } catch {
+    return {};
+  }
+};
+
+const formatPaymentInstructions = (instructions: any) => {
+  const parts = [];
+  
+  if (instructions.mpesaTillNumber) {
+    parts.push(`M-Pesa Till Number: ${instructions.mpesaTillNumber}`);
+  }
+  
+  if (instructions.bankName && instructions.accountNumber) {
+    parts.push(`Bank Transfer: ${instructions.bankName} - Account: ${instructions.accountNumber}`);
+  }
+  
+  if (instructions.customInstructions) {
+    parts.push(instructions.customInstructions);
+  }
+  
+  return parts.length > 0 
+    ? parts.join('. ') 
+    : 'Please make payment within 7 days of the due date. Contact us for payment methods.';
+};
+
+// Update the handleDownloadPDF function
+const handleDownloadPDF = async (invoice: InvoiceWithDetails) => {
+  try {
+    setProcessingPDF(invoice.id);
+    
+    // Get property details
+    const property = properties.find(p => p.id === invoice.propertyId);
+    if (!property) {
+      throw new Error('Property not found');
+    }
+
+    // Get payment history
+    const payments: Payment[] = await database.getPaymentsByInvoice(invoice.id);
+    
+    // Get stored payment instructions
+    const storedInstructions = getStoredPaymentInstructions();
+    const paymentInstructions = formatPaymentInstructions(storedInstructions);
+    
+    // Generate PDF with all details
+    const pdfBytes = await generateInvoicePDF(
+      invoice, 
+      property, 
+      payments, 
+      companyInfo,
+      {
+        template: 'standard',
+        paymentInstructions: paymentInstructions, // Use dynamic instructions
+        includeCompanyLogo: true
+      }
+    );
+    
+    const filename = generatePDFFilename(invoice);
+    
+    // Share PDF using native sharing
+    await sharePDF(pdfBytes, filename, `Invoice ${invoice.invoiceNumber}`);
+    
+  } catch (error) {
+    console.error('PDF generation failed:', error);
+    alert('Failed to generate PDF. Please try again.');
+  } finally {
+    setProcessingPDF(null);
+  }
+};
+
+// Update the handleShareOption function
+const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => {
+  if (!selectedInvoiceForShare) return;
+
+  const property = properties.find(p => p.id === selectedInvoiceForShare.propertyId);
+  if (!property) {
+    alert('Property not found');
+    return;
+  }
+
+  try {
+    // Get stored payment instructions for sharing
+    const storedInstructions = getStoredPaymentInstructions();
+    const payments: Payment[] = await database.getPaymentsByInvoice(selectedInvoiceForShare.id);
+    
+    switch (method) {
+      case 'whatsapp':
+        await shareViaWhatsApp(selectedInvoiceForShare, property, payments, companyInfo, storedInstructions);
+        break;
+      case 'email':
+        await shareViaEmail(selectedInvoiceForShare, property, payments, companyInfo, storedInstructions);
+        break;
+      case 'pdf':
+        await handleDownloadPDF(selectedInvoiceForShare);
+        break;
+      case 'summary':
+        await shareInvoiceSummary(selectedInvoiceForShare, property, storedInstructions);
+        break;
+    }
+    setShareModalVisible(false);
+    setSelectedInvoiceForShare(null);
+  } catch (error) {
+    console.error(`${method} sharing failed:`, error);
+    alert(`Failed to share via ${method}. Please try again.`);
+  }
+};
+
+
+
+
+
+
   // Share functions
   const handleShareInvoice = (invoice: InvoiceWithDetails) => {
     setSelectedInvoiceForShare(invoice);
     setShareModalVisible(true);
   };
 
-  const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => {
-    if (!selectedInvoiceForShare) return;
+  // const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => {
+  //   if (!selectedInvoiceForShare) return;
 
-    const property = properties.find(p => p.id === selectedInvoiceForShare.propertyId);
-    if (!property) {
-      alert('Property not found');
-      return;
-    }
+  //   const property = properties.find(p => p.id === selectedInvoiceForShare.propertyId);
+  //   if (!property) {
+  //     alert('Property not found');
+  //     return;
+  //   }
 
-    try {
-      switch (method) {
-        case 'whatsapp':
-          await shareViaWhatsApp(selectedInvoiceForShare, property);
-          break;
-        case 'email':
-          await shareViaEmail(selectedInvoiceForShare, property);
-          break;
-        case 'pdf':
-          await handleDownloadPDF(selectedInvoiceForShare);
-          break;
-        case 'summary':
-          await shareInvoiceSummary(selectedInvoiceForShare, property);
-          break;
-      }
-      setShareModalVisible(false);
-      setSelectedInvoiceForShare(null);
-    } catch (error) {
-      console.error(`${method} sharing failed:`, error);
-      alert(`Failed to share via ${method}. Please try again.`);
-    }
-  };
+  //   try {
+  //     switch (method) {
+  //       case 'whatsapp':
+  //         await shareViaWhatsApp(selectedInvoiceForShare, property);
+  //         break;
+  //       case 'email':
+  //         await shareViaEmail(selectedInvoiceForShare, property);
+  //         break;
+  //       case 'pdf':
+  //         await handleDownloadPDF(selectedInvoiceForShare);
+  //         break;
+  //       case 'summary':
+  //         await shareInvoiceSummary(selectedInvoiceForShare, property);
+  //         break;
+  //     }
+  //     setShareModalVisible(false);
+  //     setSelectedInvoiceForShare(null);
+  //   } catch (error) {
+  //     console.error(`${method} sharing failed:`, error);
+  //     alert(`Failed to share via ${method}. Please try again.`);
+  //   }
+  // };
 
-  const handleDownloadPDF = async (invoice: InvoiceWithDetails) => {
-    try {
-      setProcessingPDF(invoice.id);
+  // const handleDownloadPDF = async (invoice: InvoiceWithDetails) => {
+  //   try {
+  //     setProcessingPDF(invoice.id);
       
-      // Get property details
-      const property = properties.find(p => p.id === invoice.propertyId);
-      if (!property) {
-        throw new Error('Property not found');
-      }
+  //     // Get property details
+  //     const property = properties.find(p => p.id === invoice.propertyId);
+  //     if (!property) {
+  //       throw new Error('Property not found');
+  //     }
 
-      // Get payment history
-      const payments: Payment[] = await database.getPaymentsByInvoice(invoice.id);
+  //     // Get payment history
+  //     const payments: Payment[] = await database.getPaymentsByInvoice(invoice.id);
       
-      // Generate PDF with all details
-      const pdfBytes = await generateInvoicePDF(
-        invoice, 
-        property, 
-        payments, 
-        companyInfo,
-        {
-          template: 'standard',
-          paymentInstructions: 'Please make payment within 7 days of the due date. For M-Pesa payments, use Till Number: 123456. For bank transfers, use Account: 1234567890.',
-          includeCompanyLogo: true
-        }
-      );
+  //     // Generate PDF with all details
+  //     const pdfBytes = await generateInvoicePDF(
+  //       invoice, 
+  //       property, 
+  //       payments, 
+  //       companyInfo,
+  //       {
+  //         template: 'standard',
+  //         paymentInstructions: 'Please make payment within 7 days of the due date. For M-Pesa payments, use Till Number: 123456. For bank transfers, use Account: 1234567890.',
+  //         includeCompanyLogo: true
+  //       }
+  //     );
       
-      const filename = generatePDFFilename(invoice);
+  //     const filename = generatePDFFilename(invoice);
       
-      // Share PDF using native sharing
-      await sharePDF(pdfBytes, filename, `Invoice ${invoice.invoiceNumber}`);
+  //     // Share PDF using native sharing
+  //     await sharePDF(pdfBytes, filename, `Invoice ${invoice.invoiceNumber}`);
       
-    } catch (error) {
-      console.error('PDF generation failed:', error);
-      alert('Failed to generate PDF. Please try again.');
-    } finally {
-      setProcessingPDF(null);
-    }
-  };
+  //   } catch (error) {
+  //     console.error('PDF generation failed:', error);
+  //     alert('Failed to generate PDF. Please try again.');
+  //   } finally {
+  //     setProcessingPDF(null);
+  //   }
+  // };
 
   const handleViewInvoice = (invoiceId: any) => {
     setInvoiceId(invoiceId);

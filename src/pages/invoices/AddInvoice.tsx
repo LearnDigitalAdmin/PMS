@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Check, Calculator, Calendar, Zap, Droplets, FileText, Save, AlertCircle, Info } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, Calculator, Calendar, Zap, Droplets, FileText, Save, AlertCircle, Info, CreditCard } from 'lucide-react';
 import { database, type Property, type Tenant, type Invoice, type InvoiceInput } from '../../services/database/Database';
 
 // interface AddInvoiceProps {
@@ -20,6 +20,14 @@ interface AddInvoiceProps {
   onNavigate?: (page: string, params?: any) => void;
 }
 
+interface PaymentInstructions {
+  mpesaTillNumber?: string;
+  bankName?: string;
+  accountNumber?: string;
+  customInstructions?: string;
+}
+
+// Update the FormData interface to include payment instructions
 interface FormData {
   propertyId: number;
   tenantId: number;
@@ -38,6 +46,7 @@ interface FormData {
   otherCharges: number;
   otherChargesDescription: string;
   dueDate: string;
+  paymentInstructions: PaymentInstructions; // Add this line
 }
 
 interface FormErrors {
@@ -69,34 +78,78 @@ const AddInvoice: React.FC<AddInvoiceProps> = ({
   const [errors, setErrors] = useState<FormErrors>({});
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
 
+  const getStoredPaymentInstructions = (): PaymentInstructions => {
+  try {
+    const stored = localStorage.getItem('defaultPaymentInstructions');
+    return stored ? JSON.parse(stored) : {};
+  } catch {
+    return {};
+  }
+};
+
+const savePaymentInstructions = (instructions: PaymentInstructions) => {
+  try {
+    localStorage.setItem('defaultPaymentInstructions', JSON.stringify(instructions));
+  } catch {
+    // Silently fail if localStorage is not available
+  }
+};
+
   const [formData, setFormData] = useState<FormData>({
-    propertyId: initialPropertyId || 0,
-    tenantId: initialTenantId || 0,
-    billingMonth: new Date().toISOString().slice(0, 7),
-    rentAmount: 0,
-    standingFees: 0,
-    waterCurrentReading: 0,
-    waterPreviousReading: 0,
-    waterStandingFee: 0,
-    waterUnitPrice: 0,
-    includeWaterStanding: false,
-    powerCurrentReading: 0,
-    powerPreviousReading: 0,
-    powerUnitPrice: 0,
-    includePower: false,
-    otherCharges: 0,
-    otherChargesDescription: '',
-    dueDate: ''
-  });
+  propertyId: initialPropertyId || 0,
+  tenantId: initialTenantId || 0,
+  billingMonth: new Date().toISOString().slice(0, 7),
+  rentAmount: 0,
+  standingFees: 0,
+  waterCurrentReading: 0,
+  waterPreviousReading: 0,
+  waterStandingFee: 0,
+  waterUnitPrice: 0,
+  includeWaterStanding: false,
+  powerCurrentReading: 0,
+  powerPreviousReading: 0,
+  powerUnitPrice: 0,
+  includePower: false,
+  otherCharges: 0,
+  otherChargesDescription: '',
+  dueDate: '',
+  paymentInstructions: getStoredPaymentInstructions() // Add this line
+});
 
   const steps = [
-    { title: 'Property & Tenant', icon: FileText },
-    { title: 'Rent Details', icon: FileText },
-    { title: 'Water Billing', icon: Droplets },
-    { title: 'Power Billing', icon: Zap },
-    { title: 'Other Charges', icon: Calculator },
-    { title: 'Summary', icon: Check }
-  ];
+  { title: 'Property & Tenant', icon: FileText },
+  { title: 'Rent Details', icon: FileText },
+  { title: 'Water Billing', icon: Droplets },
+  { title: 'Power Billing', icon: Zap },
+  { title: 'Other Charges', icon: Calculator },
+  { title: 'Payment Details', icon: CreditCard }, // Update this line
+  { title: 'Summary', icon: Check }
+];
+
+useEffect(() => {
+  const storedInstructions = getStoredPaymentInstructions();
+  if (Object.keys(storedInstructions).length > 0) {
+    setFormData(prev => ({
+      ...prev,
+      paymentInstructions: storedInstructions
+    }));
+  }
+}, []);
+
+// Update the updateFormData function
+const updateFormData = (field: keyof FormData, value: any) => {
+  setFormData(prev => ({ ...prev, [field]: value }));
+  
+  // Save payment instructions to localStorage when updated
+  if (field === 'paymentInstructions') {
+    savePaymentInstructions(value);
+  }
+  
+  // Clear error for this field
+  if (errors[field as keyof FormErrors]) {
+    setErrors(prev => ({ ...prev, [field]: undefined }));
+  }
+};
 
   useEffect(() => {
     loadInitialData();
@@ -166,6 +219,7 @@ const AddInvoice: React.FC<AddInvoiceProps> = ({
       otherCharges: invoice.otherCharges,
       otherChargesDescription: invoice.otherChargesDescription || '',
       dueDate: invoice.dueDate || ''
+      ,paymentInstructions: getStoredPaymentInstructions() // Load stored payment instructions
     });
 
     // Load tenants for the property
@@ -361,13 +415,13 @@ const handleSave = async () => {
     }
   };
 
-  const updateFormData = (field: keyof FormData, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    // Clear error for this field
-    if (errors[field as keyof FormErrors]) {
-      setErrors(prev => ({ ...prev, [field]: undefined }));
-    }
-  };
+  // const updateFormData = (field: keyof FormData, value: any) => {
+  //   setFormData(prev => ({ ...prev, [field]: value }));
+  //   // Clear error for this field
+  //   if (errors[field as keyof FormErrors]) {
+  //     setErrors(prev => ({ ...prev, [field]: undefined }));
+  //   }
+  // };
 
   const selectedProperty = properties.find(p => p.id === formData.propertyId);
   const selectedTenant = tenants.find(t => t.id === formData.tenantId);
@@ -793,7 +847,146 @@ const handleSave = async () => {
           </div>
         );
 
-      case 5: // Summary
+      case 5: // Payment Details
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center gap-2 mb-4">
+              <CreditCard className="w-5 h-5 text-purple-500" />
+              <h3 className="text-lg font-medium">Payment Instructions</h3>
+            </div>
+
+            <div className="bg-blue-50 p-4 rounded-lg mb-6">
+              <div className="flex items-start gap-2">
+                <Info className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
+                <div>
+                  <h4 className="font-medium text-blue-900 mb-1">Payment Instructions</h4>
+                  <p className="text-blue-700 text-sm">
+                    Add payment details that will be included in the invoice PDF. These will be saved as defaults for future invoices.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  M-Pesa Till Number
+                </label>
+                <input
+                  type="text"
+                  value={formData.paymentInstructions.mpesaTillNumber || ''}
+                  onChange={(e) => updateFormData('paymentInstructions', {
+                    ...formData.paymentInstructions,
+                    mpesaTillNumber: e.target.value
+                  })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., 123456"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Bank Name
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.paymentInstructions.bankName || ''}
+                    onChange={(e) => updateFormData('paymentInstructions', {
+                      ...formData.paymentInstructions,
+                      bankName: e.target.value
+                    })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., Equity Bank"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Account Number
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.paymentInstructions.accountNumber || ''}
+                    onChange={(e) => updateFormData('paymentInstructions', {
+                      ...formData.paymentInstructions,
+                      accountNumber: e.target.value
+                    })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., 1234567890"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Additional Instructions
+                </label>
+                <textarea
+                  value={formData.paymentInstructions.customInstructions || ''}
+                  onChange={(e) => updateFormData('paymentInstructions', {
+                    ...formData.paymentInstructions,
+                    customInstructions: e.target.value
+                  })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                  rows={3}
+                  placeholder="e.g., Please make payment within 7 days. Include your name and invoice number as reference."
+                />
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="font-medium text-gray-700 mb-2">Quick Templates</h4>
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateFormData('paymentInstructions', {
+                        ...formData.paymentInstructions,
+                        customInstructions: 'Please make payment within 7 days of the due date. Late payments may incur additional charges.'
+                      });
+                    }}
+                    className="block w-full text-left p-2 text-sm text-gray-600 hover:bg-gray-100 rounded"
+                  >
+                    Standard payment terms
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateFormData('paymentInstructions', {
+                        ...formData.paymentInstructions,
+                        customInstructions: 'Payment is due by the 5th of each month. Please use your unit number as reference when making payments.'
+                      });
+                    }}
+                    className="block w-full text-left p-2 text-sm text-gray-600 hover:bg-gray-100 rounded"
+                  >
+                    Monthly due date reminder
+                  </button>
+                </div>
+              </div>
+
+              {(formData.paymentInstructions.mpesaTillNumber || 
+                formData.paymentInstructions.bankName || 
+                formData.paymentInstructions.customInstructions) && (
+                <div className="bg-purple-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-purple-900 mb-2">Payment Instructions Preview</h4>
+                  <div className="text-purple-700 text-sm space-y-1">
+                    {formData.paymentInstructions.mpesaTillNumber && (
+                      <p>• M-Pesa Till Number: {formData.paymentInstructions.mpesaTillNumber}</p>
+                    )}
+                    {formData.paymentInstructions.bankName && formData.paymentInstructions.accountNumber && (
+                      <p>• Bank Transfer: {formData.paymentInstructions.bankName} - Account: {formData.paymentInstructions.accountNumber}</p>
+                    )}
+                    {formData.paymentInstructions.customInstructions && (
+                      <p>• {formData.paymentInstructions.customInstructions}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+
+        case 6: // Summary
         return (
           <div className="space-y-6">
             <div className="flex items-center gap-2 mb-4">
@@ -881,6 +1074,27 @@ const handleSave = async () => {
               </div>
             </div>
 
+            {(formData.paymentInstructions.mpesaTillNumber || 
+              formData.paymentInstructions.bankName || 
+              formData.paymentInstructions.customInstructions) && (
+              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                <div className="bg-gray-50 px-4 py-3 border-b">
+                  <h4 className="font-medium text-gray-900">Payment Instructions</h4>
+                </div>
+                <div className="p-4 space-y-2 text-sm">
+                  {formData.paymentInstructions.mpesaTillNumber && (
+                    <p><span className="font-medium">M-Pesa Till:</span> {formData.paymentInstructions.mpesaTillNumber}</p>
+                  )}
+                  {formData.paymentInstructions.bankName && formData.paymentInstructions.accountNumber && (
+                    <p><span className="font-medium">Bank Transfer:</span> {formData.paymentInstructions.bankName} - {formData.paymentInstructions.accountNumber}</p>
+                  )}
+                  {formData.paymentInstructions.customInstructions && (
+                    <p><span className="font-medium">Additional:</span> {formData.paymentInstructions.customInstructions}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Due Date *
@@ -934,7 +1148,7 @@ const handleSave = async () => {
 
   // Replace the main return statement with this conditional layout:
 return (
-  <div className={isModal ? "h-full flex flex-col bottom-70" : "min-h-screen bg-gray-50"}>
+  <div className={isModal ? "h-screen bottom-35 flex flex-col bottom-70" : "min-h-screen bg-gray-50"}>
     {/* Header */}
     <div className={`bg-white shadow-sm ${isModal ? 'flex-shrink-0' : ''}`}>
       <div className="max-w-4xl mx-auto px-4 py-4">

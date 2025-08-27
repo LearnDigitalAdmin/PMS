@@ -114,68 +114,106 @@ const AnInvoice: React.FC<AnInvoiceProps> = ({ invoiceId, onBack, isModal = fals
   };
 
   // PDF and sharing functions
-  const handleDownloadPDF = async () => {
-    if (!invoice || !property) {
-      alert('Invoice or property data not available');
-      return;
-    }
+  const getStoredPaymentInstructions = () => {
+  try {
+    const stored = localStorage.getItem('defaultPaymentInstructions');
+    return stored ? JSON.parse(stored) : {};
+  } catch {
+    return {};
+  }
+};
 
-    try {
-      setProcessingPDF(true);
-      
-      // Generate PDF with all details including payments
-      const pdfBytes = await generateInvoicePDF(
-        invoice, 
-        property, 
-        payments, 
-        companyInfo,
-        {
-          template: 'standard',
-          paymentInstructions: 'Please make payment within 7 days of the due date. For M-Pesa payments, use Till Number: 123456. For bank transfers, use Account Number: 1234567890 (Bank ABC).',
-          includeCompanyLogo: true
-        }
-      );
-      
-      const filename = generatePDFFilename(invoice);
-      
-      // Share PDF using native sharing
-      await sharePDF(pdfBytes, filename, `Invoice ${invoice.invoiceNumber}`);
-      
-    } catch (error) {
-      console.error('PDF generation failed:', error);
-      alert('Failed to generate PDF. Please try again.');
-    } finally {
-      setProcessingPDF(false);
-    }
-  };
+const formatPaymentInstructions = (instructions: any) => {
+  const parts = [];
+  
+  if (instructions.mpesaTillNumber) {
+    parts.push(`M-Pesa Till Number: ${instructions.mpesaTillNumber}`);
+  }
+  
+  if (instructions.bankName && instructions.accountNumber) {
+    parts.push(`Bank Transfer: ${instructions.bankName} - Account: ${instructions.accountNumber}`);
+  }
+  
+  if (instructions.customInstructions) {
+    parts.push(instructions.customInstructions);
+  }
+  
+  return parts.length > 0 
+    ? parts.join('. ') 
+    : 'Please make payment within 7 days of the due date. Contact us for payment methods.';
+};
 
-  const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => {
-    if (!invoice || !property) {
-      alert('Invoice or property data not available');
-      return;
-    }
+// Update the handleDownloadPDF function
+const handleDownloadPDF = async () => {
+  if (!invoice || !property) {
+    alert('Invoice or property data not available');
+    return;
+  }
 
-    try {
-      switch (method) {
-        case 'whatsapp':
-          await shareViaWhatsApp(invoice, property, payments, companyInfo);
-          break;
-        case 'email':
-          await shareViaEmail(invoice, property, payments, companyInfo);
-          break;
-        case 'pdf':
-          await handleDownloadPDF();
-          break;
-        case 'summary':
-          await shareInvoiceSummary(invoice, property);
-          break;
+  try {
+    setProcessingPDF(true);
+    
+    // Get stored payment instructions
+    const storedInstructions = getStoredPaymentInstructions();
+    const paymentInstructions = formatPaymentInstructions(storedInstructions);
+    
+    // Generate PDF with all details including payments
+    const pdfBytes = await generateInvoicePDF(
+      invoice, 
+      property, 
+      payments, 
+      companyInfo,
+      {
+        template: 'standard',
+        paymentInstructions: paymentInstructions, // Use dynamic instructions
+        includeCompanyLogo: true
       }
-      setShowShareModal(false);
-    } catch (error) {
-      console.error(`${method} sharing failed:`, error);
-      alert(`Failed to share via ${method}. Please try again.`);
+    );
+    
+    const filename = generatePDFFilename(invoice);
+    
+    // Share PDF using native sharing
+    await sharePDF(pdfBytes, filename, `Invoice ${invoice.invoiceNumber}`);
+    
+  } catch (error) {
+    console.error('PDF generation failed:', error);
+    alert('Failed to generate PDF. Please try again.');
+  } finally {
+    setProcessingPDF(false);
+  }
+};
+
+// Update the handleShare function
+const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => {
+  if (!invoice || !property) {
+    alert('Invoice or property data not available');
+    return;
+  }
+
+  try {
+    // Get stored payment instructions for sharing
+    const storedInstructions = getStoredPaymentInstructions();
+    
+    switch (method) {
+      case 'whatsapp':
+        await shareViaWhatsApp(invoice, property, payments, companyInfo, storedInstructions);
+        break;
+      case 'email':
+        await shareViaEmail(invoice, property, payments, companyInfo, storedInstructions);
+        break;
+      case 'pdf':
+        await handleDownloadPDF();
+        break;
+      case 'summary':
+        await shareInvoiceSummary(invoice, property, storedInstructions);
+        break;
     }
-  };
+    setShowShareModal(false);
+  } catch (error) {
+    console.error(`${method} sharing failed:`, error);
+    alert(`Failed to share via ${method}. Please try again.`);
+  }
+};
 
   const handleMarkPaid = async () => {
     if (!invoice || processingPayment) return;
@@ -263,7 +301,7 @@ const AnInvoice: React.FC<AnInvoiceProps> = ({ invoiceId, onBack, isModal = fals
 
   if (loading) {
     return (
-      <div className={isModal ? "h-full flex flex-col bg-white" : "min-h-screen bg-gray-50 p-4"}>
+      <div className={isModal ? "h-screen flex flex-col bg-white" : "min-h-screen bg-gray-50 p-4"}>
         <div className="animate-pulse p-6">
           <div className="bg-gray-200 rounded-xl p-6 shadow-sm mb-4">
             <div className="h-8 bg-gray-300 rounded w-1/2 mb-4"></div>
@@ -280,7 +318,7 @@ const AnInvoice: React.FC<AnInvoiceProps> = ({ invoiceId, onBack, isModal = fals
 
   if (!invoice) {
     return (
-      <div className={isModal ? "h-full flex flex-col bg-white items-center justify-center p-4" : "min-h-screen bg-gray-50 flex items-center justify-center p-4"}>
+      <div className={isModal ? "h-screen bottom-35 flex flex-col bg-white items-center justify-center p-4" : "min-h-screen bg-gray-50 flex items-center justify-center p-4"}>
         <div className="text-center">
           <AlertTriangle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">Invoice not found</h3>
@@ -296,7 +334,7 @@ const AnInvoice: React.FC<AnInvoiceProps> = ({ invoiceId, onBack, isModal = fals
     );
   }
 
-  const containerClass = isModal ? "h-full flex flex-col bg-white" : "min-h-screen bg-gray-50";
+  const containerClass = isModal ? "h-screen bottom-35 flex flex-col bg-white" : "min-h-screen bg-gray-50";
   const contentClass = isModal ? "flex-1 overflow-y-auto" : "";
 
   return (
