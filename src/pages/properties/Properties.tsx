@@ -211,10 +211,14 @@ const Property: React.FC<PropertyProps> = ({
   const netRevenue = dashboardData ? 
     (dashboardData.monthlyRevenue - commissionAmount) : 0;
 
-  return (
-    <div className={isModal ? "h-screen bottom-35 flex flex-col" : "min-h-screen bg-gray-50"}>
+  
+
+
+
+return (
+    <div className={isModal ? "fixed bottom-70 inset-0 bg-gray-50 z-50 flex flex-col" : "min-h-screen bg-gray-50"}>
       {/* Sticky Header */}
-      <div className="sticky top-0 bg-white shadow-sm border-b border-gray-100 z-20">
+      <div className="sticky top-0 bg-white shadow-sm border-b border-gray-100 z-20 flex-shrink-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14 sm:h-16">
             <div className="flex items-center flex-1 min-w-0">
@@ -271,8 +275,8 @@ const Property: React.FC<PropertyProps> = ({
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Scrollable Main Content */}
+      <div className="flex-1 overflow-y-auto pb-safe">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
           {/* Property Overview */}
           <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6 sm:mb-8">
@@ -493,22 +497,32 @@ const Property: React.FC<PropertyProps> = ({
                 </div>
               )}
             </div>
-
-            
           </div>
-{/* Tenants List Section */}
-                <TenantsList
-                propertyId={propertyId}
-                onTenantAdded={loadPropertyData}
-                />
 
+          {/* Tenants List Section */}
+          <div className="mb-6">
+            <TenantsList
+              propertyId={propertyId}
+              onTenantAdded={loadPropertyData}
+            />
+          </div>
         </div>
       </div>
+
+      {/* Floating Add Tenant Button - Positioned above tab bar */}
+      {isModal && (
+        <button
+          onClick={() => setShowAddTenant(true)}
+          className="fixed bottom-20 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-xl hover:shadow-2xl transition-all transform hover:scale-110 flex items-center justify-center z-40"
+        >
+          <Plus className="w-6 h-6" />
+        </button>
+      )}
 
       {/* Edit Property Modal */}
       {showEditModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md transform transition-all">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md transform transition-all max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-100">
               <h2 className="text-xl font-bold text-gray-900">Edit Property</h2>
             </div>
@@ -598,92 +612,53 @@ const Property: React.FC<PropertyProps> = ({
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
-      {/* {showDeleteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+      {/* Discard Dialog */}
+      {showDiscardDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full">
             <div className="p-6">
-              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Trash2 className="w-6 h-6 text-red-600" />
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                  <AlertCircle className="w-5 h-5 text-red-600" />
+                </div>
+                <h3 className="text-lg font-semibold">Close View?</h3>
               </div>
-              <h3 className="text-lg font-bold text-gray-900 text-center mb-2">
-                Delete Property
-              </h3>
-              <p className="text-gray-600 text-center mb-6">
-                Are you sure you want to delete "{property.name}"? This will also delete all associated tenants and invoices. This action cannot be undone.
+              <p className="text-gray-600 mb-6">
+                Are you sure you want to close?
               </p>
               <div className="flex gap-3">
                 <button
-                  onClick={() => setShowDeleteModal(false)}
-                  className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-all font-medium"
+                  onClick={() => setShowDiscardDialog(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
                 >
-                  Cancel
+                  Continue Editing
                 </button>
                 <button
-                  onClick={handleDeleteProperty}
-                  className="flex-1 px-4 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all font-medium"
+                  onClick={() => {
+                    setShowDiscardDialog(false);
+                    onCancel?.();
+                  }}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
                 >
-                  Delete Property
+                  Close
                 </button>
               </div>
             </div>
           </div>
         </div>
-      )} */}
+      )}
 
-      {showDiscardDialog && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-lg max-w-md w-full">
-                <div className="p-6">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                      <AlertCircle className="w-5 h-5 text-red-600" />
-                    </div>
-                    <h3 className="text-lg font-semibold">Close View?</h3>
-                  </div>
-                  <p className="text-gray-600 mb-6">
-                    Are you sure you want to close?"
-                  </p>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => setShowDiscardDialog(false)}
-                      className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-                    >
-                      Continue Editing
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowDiscardDialog(false);
-                        onCancel?.();
-                      }}
-                      className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <button
-          onClick={() => setShowAddTenant(true)}
-          className="fixed bottom-35 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-xl hover:shadow-2xl transition-all transform hover:scale-110 flex items-center justify-center z-40"
-        >
-          <Plus className="w-6 h-6" />
-        </button>
-          
-
-          {showAddTenant && (
-                  <AddTenant
-                    propertyId={propertyId}
-                    onClose={() => setShowAddTenant(false)}
-                    onTenantAdded={() => {
-                      setShowAddTenant(false);
-                      loadPropertyData();
-                    }}
-                  />
-                )}
+      {/* Add Tenant Modal */}
+      {showAddTenant && (
+        <AddTenant
+          propertyId={propertyId}
+          onClose={() => setShowAddTenant(false)}
+          onTenantAdded={() => {
+            setShowAddTenant(false);
+            loadPropertyData();
+          }}
+        />
+      )}
     </div>
   );
 };

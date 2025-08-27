@@ -549,27 +549,15 @@ const Properties: React.FC<PropertyListProps> = ({
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+      <div className="bg-white shadow-sm">
+        <div className="px-4 py-6">
+          <div className="flex items-center justify-between mb-4">
             <div className="flex items-center">
               <Home className="w-6 h-6 text-blue-600 mr-3" />
               <h1 className="text-xl font-bold text-gray-900">{properties.length === 1 ? 'Property' : 'Properties'}</h1>
             </div>
             
-            <div className="flex items-center gap-4">
-              {/* Search */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <input
-                  type="text"
-                  placeholder="Search properties..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all w-64"
-                />
-              </div>
-
+            <div className="flex items-center gap-2">
               {/* View Toggle */}
               <div className="flex bg-gray-100 rounded-lg p-1">
                 <button
@@ -582,7 +570,7 @@ const Properties: React.FC<PropertyListProps> = ({
                 >
                   <Grid className="w-4 h-4" />
                 </button>
-                <button
+                {/* <button
                   onClick={() => setViewMode('list')}
                   className={`p-2 rounded-md transition-all ${
                     viewMode === 'list' 
@@ -591,7 +579,7 @@ const Properties: React.FC<PropertyListProps> = ({
                   }`}
                 >
                   <List className="w-4 h-4" />
-                </button>
+                </button> */}
               </div>
 
               {/* Refresh Button */}
@@ -604,22 +592,34 @@ const Properties: React.FC<PropertyListProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Search - Full width on mobile */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <input
+              type="text"
+              placeholder="Search properties..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+            />
+          </div>
         </div>
       </div>
 
       {/* Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="px-4 py-6">
         {loading ? (
           <LoadingSkeleton />
         ) : filteredProperties.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-blue-100 to-purple-100 rounded-2xl flex items-center justify-center">
-              <Building2 className="w-12 h-12 text-blue-600" />
+          <div className="text-center py-12 px-4">
+            <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-blue-100 to-purple-100 rounded-2xl flex items-center justify-center">
+              <Building2 className="w-10 h-10 text-blue-600" />
             </div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-2">
+            <h3 className="text-xl font-bold text-gray-900 mb-2">
               {properties.length === 0 ? 'No Properties Yet' : 'No Properties Found'}
             </h3>
-            <p className="text-gray-500 mb-8 max-w-md mx-auto">
+            <p className="text-gray-500 mb-6 text-sm max-w-sm mx-auto">
               {properties.length === 0 
                 ? 'Start by adding your first property to begin managing tenants and billing.'
                 : `No properties match "${searchTerm}". Try adjusting your search.`
@@ -628,7 +628,7 @@ const Properties: React.FC<PropertyListProps> = ({
             {properties.length === 0 && canAddProperty && (
               <button
                 onClick={() => setShowAddModal(true)}
-                className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition-all transform hover:scale-105"
+                className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition-all"
               >
                 <Plus className="w-5 h-5 mr-2" />
                 Add Your First Property
@@ -638,8 +638,8 @@ const Properties: React.FC<PropertyListProps> = ({
         ) : (
           <div className={`${
             viewMode === 'grid' 
-              ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' 
-              : 'space-y-4'
+              ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4' 
+              : 'space-y-3'
           }`}>
             {filteredProperties.map((property, index) => 
               viewMode === 'grid' ? (
@@ -669,7 +669,8 @@ const Properties: React.FC<PropertyListProps> = ({
       {canAddProperty && (
         <button
           onClick={() => setShowAddModal(true)}
-          className="fixed bottom-45 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-xl hover:shadow-2xl transition-all transform hover:scale-110 flex items-center justify-center z-40"
+          className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center z-40"
+          style={{ marginBottom: '60px' }}
         >
           <Plus className="w-6 h-6" />
         </button>
@@ -677,12 +678,12 @@ const Properties: React.FC<PropertyListProps> = ({
 
       {/* Upgrade Notice for Free Users */}
       {!canAddProperty && (
-        <div className="fixed bottom-6 right-6 bg-white rounded-xl shadow-xl border border-gray-200 p-4 max-w-sm z-40">
+        <div className="fixed bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm bg-white rounded-xl shadow-xl border border-gray-200 p-4 z-40">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-orange-400 to-pink-500 rounded-lg flex items-center justify-center flex-shrink-0">
               <Building2 className="w-5 h-5 text-white" />
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <h4 className="font-semibold text-gray-900 text-sm">Property Limit Reached</h4>
               <p className="text-gray-600 text-xs mt-1">
                 Upgrade to Premium to add unlimited properties
@@ -706,10 +707,7 @@ const Properties: React.FC<PropertyListProps> = ({
         formErrors={formErrors}
         companies={companies}
         imagePreview={imagePreview}
-        fileInputRef={fileInputRef}//Type 'RefObject<HTMLInputElement | null>' is not assignable to type 'RefObject<HTMLInputElement>'.
-        //   Type 'HTMLInputElement | null' is not assignable to type 'HTMLInputElement'.
-        //     Type 'null' is not assignable to type 'HTMLInputElement'.ts(2322)
-        // PropertyModal.tsx(24, 3): The expected type comes from property 'fileInputRef' which is declared here on type 'IntrinsicAttributes & PropertyModalProps'
+        fileInputRef={fileInputRef}
         handleImageUpload={handleImageUpload}
         removeImage={removeImage}
         MAX_FREE_UNITS={MAX_FREE_UNITS}
@@ -725,10 +723,7 @@ const Properties: React.FC<PropertyListProps> = ({
         formErrors={formErrors}
         companies={companies}
         imagePreview={imagePreview}
-        fileInputRef={fileInputRef}//Type 'RefObject<HTMLInputElement | null>' is not assignable to type 'RefObject<HTMLInputElement>'.
-        //   Type 'HTMLInputElement | null' is not assignable to type 'HTMLInputElement'.
-        //     Type 'null' is not assignable to type 'HTMLInputElement'.ts(2322)
-        // PropertyModal.tsx(24, 3): The expected type comes from property 'fileInputRef' which is declared here on type 'IntrinsicAttributes & PropertyModalProps'
+        fileInputRef={fileInputRef}
         handleImageUpload={handleImageUpload}
         removeImage={removeImage}
         MAX_FREE_UNITS={MAX_FREE_UNITS}
@@ -745,7 +740,7 @@ const Properties: React.FC<PropertyListProps> = ({
               <h3 className="text-lg font-bold text-gray-900 text-center mb-2">
                 Delete Property
               </h3>
-              <p className="text-gray-600 text-center mb-6">
+              <p className="text-gray-600 text-center mb-6 text-sm">
                 Are you sure you want to delete "{selectedProperty.name}"? This will also delete all associated tenants and invoices. This action cannot be undone.
               </p>
               <div className="flex gap-3">

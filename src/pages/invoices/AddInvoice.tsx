@@ -1148,7 +1148,9 @@ const handleSave = async () => {
 
   // Replace the main return statement with this conditional layout:
 return (
-  <div className={isModal ? "h-screen bottom-35 flex flex-col bottom-70" : "min-h-screen bg-gray-50"}>
+  <div className={isModal 
+      ? "fixed bottom-70 inset-0 bg-white z-50 flex flex-col pb-65" 
+      : "min-h-screen bg-gray-50"}>
     {/* Header */}
     <div className={`bg-white shadow-sm ${isModal ? 'flex-shrink-0' : ''}`}>
       <div className="max-w-4xl mx-auto px-4 py-4">

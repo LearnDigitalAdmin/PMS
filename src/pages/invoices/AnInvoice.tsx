@@ -318,7 +318,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
 
   if (!invoice) {
     return (
-      <div className={isModal ? "h-screen bottom-35 flex flex-col bg-white items-center justify-center p-4" : "min-h-screen bg-gray-50 flex items-center justify-center p-4"}>
+      <div className={isModal ? "h-screen bottom-65 flex flex-col bg-white items-center justify-center p-4" : "min-h-screen bg-gray-50 flex items-center justify-center p-4"}>
         <div className="text-center">
           <AlertTriangle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">Invoice not found</h3>
@@ -334,446 +334,452 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
     );
   }
 
-  const containerClass = isModal ? "h-screen bottom-35 flex flex-col bg-white" : "min-h-screen bg-gray-50";
-  const contentClass = isModal ? "flex-1 overflow-y-auto" : "";
-
-  return (
-    <div className={containerClass}>
-      {/* Header */}
-      <div className="bg-white shadow-sm sticky top-0 z-30 border-b border-gray-200">
-        <div className="flex items-center justify-between p-4">
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={onBack}
-              className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div>
-              <h1 className="text-lg font-semibold text-gray-900">
-                #{invoice.invoiceNumber}
-              </h1>
-              <div className={`inline-flex items-center space-x-2 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor()}`}>
-                {getStatusIcon()}
-                <span>{invoice.isPaid ? 'Paid' : 'Unpaid'}</span>
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex space-x-2">
-            <button
-              onClick={() => setShowShareModal(true)}
-              className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            >
-              <Share className="w-5 h-5" />
-            </button>
-            <button
-              onClick={handleDownloadPDF}
-              disabled={processingPDF}
-              className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center"
-            >
-              {processingPDF ? (
-                <div className="w-5 h-5 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
-              ) : (
-                <Download className="w-5 h-5" />
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Invoice Content */}
-      <div className={`${contentClass} ${isModal ? 'pb-4' : 'pb-24'}`}>
-        <div className="p-4 space-y-6">
-          {/* Invoice Header */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <div className="text-center border-b border-gray-100 pb-6 mb-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">RENTAL INVOICE</h2>
-              <p className="text-gray-600">#{invoice.invoiceNumber}</p>
-              <p className="text-sm text-gray-500 mt-2">
-                Billing Period: {invoice.billingMonth}
-              </p>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Property Details */}
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-3 flex items-center">
-                  <MapPin className="w-4 h-4 mr-2" />
-                  Property Details
-                </h3>
-                <div className="space-y-2 text-sm">
-                  <p><span className="font-medium">Property:</span> {invoice.propertyName}</p>
-                  <p><span className="font-medium">Invoice Date:</span> {formatDate(invoice.createdAt)}</p>
-                  {invoice.dueDate && (
-                    <p><span className="font-medium">Due Date:</span> {formatDate(invoice.dueDate)}</p>
-                  )}
-                </div>
-              </div>
-              
-              {/* Tenant Details */}
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-3">Tenant Details</h3>
-                <div className="space-y-2 text-sm">
-                  <p><span className="font-medium">Name:</span> {invoice.tenantName}</p>
-                  {invoice.tenantPhone && (
-                    <p className="flex items-center">
-                      <Phone className="w-3 h-3 mr-2" />
-                      {invoice.tenantPhone}
-                    </p>
-                  )}
-                  {invoice.tenantEmail && (
-                    <p className="flex items-center">
-                      <Mail className="w-3 h-3 mr-2" />
-                      {invoice.tenantEmail}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Billing Details */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h3 className="font-semibold text-gray-900 mb-4">Billing Details</h3>
-            
-            <div className="space-y-4">
-              {/* Rent */}
-              <div className="flex justify-between py-2 border-b border-gray-100">
-                <span className="text-gray-600">Monthly Rent</span>
-                <span className="font-medium">{formatCurrency(invoice.rentAmount)}</span>
-              </div>
-              
-              {/* Water Charges */}
-              {(invoice.waterCurrentReading > 0 || invoice.waterStandingFee > 0) && (
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Water Charges</span>
-                    <span className="font-medium">{formatCurrency(totals.waterTotal)}</span>
-                  </div>
-                  <div className="pl-4 space-y-1 text-sm text-gray-500">
-                    <div className="flex justify-between">
-                      <span>Previous Reading: {invoice.waterPreviousReading} units</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Current Reading: {invoice.waterCurrentReading} units</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Usage: {invoice.waterCurrentReading - invoice.waterPreviousReading} units @ {formatCurrency(invoice.waterUnitPrice)}/unit</span>
-                    </div>
-                    {invoice.waterStandingFee > 0 && (
-                      <div className="flex justify-between">
-                        <span>Standing Fee: {formatCurrency(invoice.waterStandingFee)}</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="border-b border-gray-100"></div>
-                </div>
-              )}
-              
-              {/* Power Charges */}
-              {invoice.powerCurrentReading > 0 && (
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Power Charges</span>
-                    <span className="font-medium">{formatCurrency(totals.powerTotal)}</span>
-                  </div>
-                  <div className="pl-4 space-y-1 text-sm text-gray-500">
-                    <div className="flex justify-between">
-                      <span>Previous Reading: {invoice.powerPreviousReading} kWh</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Current Reading: {invoice.powerCurrentReading} kWh</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Usage: {invoice.powerCurrentReading - invoice.powerPreviousReading} kWh @ {formatCurrency(invoice.powerUnitPrice)}/kWh</span>
-                    </div>
-                  </div>
-                  <div className="border-b border-gray-100"></div>
-                </div>
-              )}
-              
-              {/* Other Charges */}
-              {invoice.otherCharges > 0 && (
-                <div className="flex justify-between py-2 border-b border-gray-100">
-                  <div>
-                    <span className="text-gray-600">Other Charges</span>
-                    {invoice.otherChargesDescription && (
-                      <p className="text-sm text-gray-500">{invoice.otherChargesDescription}</p>
-                    )}
-                  </div>
-                  <span className="font-medium">{formatCurrency(invoice.otherCharges)}</span>
-                </div>
-              )}
-              
-              {/* Previous Arrears */}
-              {invoice.arrears > 0 && (
-                <div className="flex justify-between py-2 border-b border-gray-100 text-red-600">
-                  <span>Previous Arrears</span>
-                  <span className="font-medium">{formatCurrency(invoice.arrears)}</span>
-                </div>
-              )}
-              
-              {/* Total */}
-              <div className="flex justify-between py-3 text-lg font-bold text-gray-900 bg-gray-50 px-4 rounded-lg">
-                <span>Total Amount</span>
-                <span>{formatCurrency(invoice.totalAmount)}</span>
-              </div>
-              
-              {/* Payment Status */}
-              {invoice.isPaid && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <div className="flex items-center space-x-2 text-green-700">
-                    <CheckCircle className="w-5 h-5" />
-                    <span className="font-medium">Payment Received</span>
-                  </div>
-                  <div className="mt-2 space-y-1 text-sm">
-                    <p>Amount Paid: {formatCurrency(invoice.amountPaid)}</p>
-                    {invoice.paidDate && (
-                      <p>Payment Date: {formatDate(invoice.paidDate)}</p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Payment History */}
-          {payments.length > 0 && (
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h3 className="font-semibold text-gray-900 mb-4 flex items-center">
-                <CreditCard className="w-4 h-4 mr-2" />
-                Payment History
-              </h3>
-              
-              <div className="space-y-3">
-                {payments.map((payment) => (
-                  <div key={payment.id} className="flex justify-between items-center py-3 border-b border-gray-100 last:border-b-0">
-                    <div>
-                      <p className="font-medium text-gray-900">{formatCurrency(payment.amount)}</p>
-                      <p className="text-sm text-gray-500">{formatDate(payment.paymentDate)}</p>
-                      {payment.paymentMethod && (
-                        <p className="text-xs text-gray-400">{payment.paymentMethod}</p>
-                      )}
-                      {payment.notes && (
-                        <p className="text-xs text-gray-500 mt-1">{payment.notes}</p>
-                      )}
-                    </div>
-                    <CheckCircle className="w-5 h-5 text-green-500" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Action Buttons */}
-          <div className="bg-white rounded-xl shadow-sm p-6 sticky bottom-0">
-            <div className="grid grid-cols-1 gap-3">
-              {!invoice.isPaid ? (
-                <button
-                  onClick={() => setShowPaymentModal(true)}
-                  className="bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center justify-center space-x-2"
-                >
-                  <Check className="w-5 h-5" />
-                  <span>Mark as Paid</span>
-                </button>
-              ) : (
-                <button
-                  onClick={handleMarkUnpaid}
-                  className="bg-yellow-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-yellow-700 transition-colors flex items-center justify-center space-x-2"
-                >
-                  <X className="w-5 h-5" />
-                  <span>Mark as Unpaid</span>
-                </button>
-              )}
-              
+  // Updated container classes for modal
+    const containerClass = isModal 
+      ? "fixed bottom-70 inset-0 bg-white z-50 flex flex-col" 
+      : "min-h-screen bg-gray-50";
+      
+    const contentClass = isModal 
+      ? "flex-1 overflow-y-auto pb-safe" 
+      : "";
+  
+    return (
+      <div className={containerClass}>
+        {/* Fixed Header */}
+        <div className="bg-white shadow-sm sticky top-0 z-30 border-b border-gray-200 flex-shrink-0">
+          <div className="flex items-center justify-between p-4">
+            <div className="flex items-center space-x-3 flex-1 min-w-0">
               <button
-                onClick={() => setShowDeleteModal(true)}
-                className="bg-red-50 text-red-600 py-3 px-4 rounded-lg font-medium hover:bg-red-100 transition-colors flex items-center justify-center space-x-2"
+                onClick={onBack}
+                className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex-shrink-0"
               >
-                <Trash2 className="w-4 h-4" />
-                <span>Delete Invoice</span>
+                <ArrowLeft className="w-5 h-5" />
               </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Payment Modal */}
-      {showPaymentModal && (
-        <div className="fixed bottom-35 inset-0 bg-black bg-opacity-50 flex items-end z-50">
-          <div className="bg-white rounded-t-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
-            <h3 className="text-lg font-semibold text-center">Record Payment</h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Amount Paid *
-                </label>
-                <input
-                  type="number"
-                  value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(e.target.value)}
-                  placeholder="Enter amount paid"
-                  className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Arrears (if any)
-                </label>
-                <input
-                  type="number"
-                  value={arrears}
-                  onChange={(e) => setArrears(e.target.value)}
-                  placeholder="Enter arrears amount"
-                  className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Payment Date *
-                </label>
-                <input
-                  type="date"
-                  value={paymentDate}
-                  onChange={(e) => setPaymentDate(e.target.value)}
-                  className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Payment Method
-                </label>
-                <select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                  className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select method</option>
-                  <option value="Cash">Cash</option>
-                  <option value="M-Pesa">M-Pesa</option>
-                  <option value="Bank Transfer">Bank Transfer</option>
-                  <option value="Cheque">Cheque</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Notes (Optional)
-                </label>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Add any payment notes"
-                  rows={3}
-                  className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+              <div className="min-w-0">
+                <h1 className="text-lg font-semibold text-gray-900 truncate">
+                  #{invoice.invoiceNumber}
+                </h1>
+                <div className={`inline-flex items-center space-x-2 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor()}`}>
+                  {getStatusIcon()}
+                  <span>{invoice.isPaid ? 'Paid' : 'Unpaid'}</span>
+                </div>
               </div>
             </div>
             
-            <div className="flex space-x-3 pt-4">
+            <div className="flex space-x-2 flex-shrink-0">
               <button
-                onClick={() => setShowPaymentModal(false)}
-                className="flex-1 bg-gray-100 text-gray-700 py-3 px-4 rounded-lg font-medium hover:bg-gray-200 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleMarkPaid}
-                disabled={!paymentAmount || processingPayment}
-                className="flex-1 bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {processingPayment ? 'Processing...' : 'Record Payment'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Modal */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
-            <div className="text-center">
-              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Trash2 className="w-6 h-6 text-red-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Invoice</h3>
-              <p className="text-sm text-gray-600">
-                Are you sure you want to delete this invoice? This action cannot be undone.
-              </p>
-            </div>
-            
-            <div className="flex space-x-3">
-              <button
-                onClick={() => setShowDeleteModal(false)}
-                className="flex-1 bg-gray-100 text-gray-700 py-2 px-4 rounded-lg font-medium hover:bg-gray-200 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteInvoice}
-                className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-700 transition-colors"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Share Modal */}
-      {showShareModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end z-50">
-          <div className="bg-white rounded-t-2xl w-full p-6 space-y-4">
-            <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
-            <h3 className="text-lg font-semibold text-center">Share Invoice</h3>
-            
-            <div className="space-y-3">
-              <button
-                onClick={() => handleShare('whatsapp')}
-                className="w-full bg-green-50 text-green-600 py-3 px-4 rounded-lg font-medium hover:bg-green-100 transition-colors text-left flex items-center space-x-3"
-              >
-                <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                  <span className="text-white text-sm font-bold">W</span>
-                </div>
-                <span>Share via WhatsApp</span>
-              </button>
-              
-              <button
-                onClick={() => handleShare('email')}
-                className="w-full bg-blue-50 text-blue-600 py-3 px-4 rounded-lg font-medium hover:bg-blue-100 transition-colors text-left flex items-center space-x-3"
-              >
-                <Mail className="w-5 h-5" />
-                <span>Share via Email</span>
-              </button>
-              
-              <button
-                onClick={() => handleShare('pdf')}
-                className="w-full bg-gray-50 text-gray-600 py-3 px-4 rounded-lg font-medium hover:bg-gray-100 transition-colors text-left flex items-center space-x-3"
+                onClick={() => setShowShareModal(true)}
+                className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
               >
                 <Share className="w-5 h-5" />
-                <span>More Options</span>
+              </button>
+              <button
+                onClick={handleDownloadPDF}
+                disabled={processingPDF}
+                className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center"
+              >
+                {processingPDF ? (
+                  <div className="w-5 h-5 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
+                ) : (
+                  <Download className="w-5 h-5" />
+                )}
               </button>
             </div>
+          </div>
+        </div>
+  
+        {/* Scrollable Content */}
+        <div className={`${contentClass} ${isModal ? 'flex-1' : 'pb-24'} overflow-y-auto`}>
+          <div className="p-4 space-y-6">
+            {/* Invoice Header */}
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <div className="text-center border-b border-gray-100 pb-6 mb-6">
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">RENTAL INVOICE</h2>
+                <p className="text-gray-600">#{invoice.invoiceNumber}</p>
+                <p className="text-sm text-gray-500 mt-2">
+                  Billing Period: {invoice.billingMonth}
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Property Details */}
+                <div>
+                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center">
+                    <MapPin className="w-4 h-4 mr-2" />
+                    Property Details
+                  </h3>
+                  <div className="space-y-2 text-sm">
+                    <p><span className="font-medium">Property:</span> {invoice.propertyName}</p>
+                    <p><span className="font-medium">Invoice Date:</span> {formatDate(invoice.createdAt)}</p>
+                    {invoice.dueDate && (
+                      <p><span className="font-medium">Due Date:</span> {formatDate(invoice.dueDate)}</p>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Tenant Details */}
+                <div>
+                  <h3 className="font-semibold text-gray-900 mb-3">Tenant Details</h3>
+                  <div className="space-y-2 text-sm">
+                    <p><span className="font-medium">Name:</span> {invoice.tenantName}</p>
+                    {invoice.tenantPhone && (
+                      <p className="flex items-center">
+                        <Phone className="w-3 h-3 mr-2" />
+                        {invoice.tenantPhone}
+                      </p>
+                    )}
+                    {invoice.tenantEmail && (
+                      <p className="flex items-center">
+                        <Mail className="w-3 h-3 mr-2" />
+                        {invoice.tenantEmail}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+  
+            {/* Billing Details */}
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <h3 className="font-semibold text-gray-900 mb-4">Billing Details</h3>
+              
+              <div className="space-y-4">
+                {/* Rent */}
+                <div className="flex justify-between py-2 border-b border-gray-100">
+                  <span className="text-gray-600">Monthly Rent</span>
+                  <span className="font-medium">{formatCurrency(invoice.rentAmount)}</span>
+                </div>
+                
+                {/* Water Charges */}
+                {(invoice.waterCurrentReading > 0 || invoice.waterStandingFee > 0) && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Water Charges</span>
+                      <span className="font-medium">{formatCurrency(totals.waterTotal)}</span>
+                    </div>
+                    <div className="pl-4 space-y-1 text-sm text-gray-500">
+                      <div className="flex justify-between">
+                        <span>Previous Reading: {invoice.waterPreviousReading} units</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Current Reading: {invoice.waterCurrentReading} units</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Usage: {invoice.waterCurrentReading - invoice.waterPreviousReading} units @ {formatCurrency(invoice.waterUnitPrice)}/unit</span>
+                      </div>
+                      {invoice.waterStandingFee > 0 && (
+                        <div className="flex justify-between">
+                          <span>Standing Fee: {formatCurrency(invoice.waterStandingFee)}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="border-b border-gray-100"></div>
+                  </div>
+                )}
+                
+                {/* Power Charges */}
+                {invoice.powerCurrentReading > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Power Charges</span>
+                      <span className="font-medium">{formatCurrency(totals.powerTotal)}</span>
+                    </div>
+                    <div className="pl-4 space-y-1 text-sm text-gray-500">
+                      <div className="flex justify-between">
+                        <span>Previous Reading: {invoice.powerPreviousReading} kWh</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Current Reading: {invoice.powerCurrentReading} kWh</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Usage: {invoice.powerCurrentReading - invoice.powerPreviousReading} kWh @ {formatCurrency(invoice.powerUnitPrice)}/kWh</span>
+                      </div>
+                    </div>
+                    <div className="border-b border-gray-100"></div>
+                  </div>
+                )}
+                
+                {/* Other Charges */}
+                {invoice.otherCharges > 0 && (
+                  <div className="flex justify-between py-2 border-b border-gray-100">
+                    <div>
+                      <span className="text-gray-600">Other Charges</span>
+                      {invoice.otherChargesDescription && (
+                        <p className="text-sm text-gray-500">{invoice.otherChargesDescription}</p>
+                      )}
+                    </div>
+                    <span className="font-medium">{formatCurrency(invoice.otherCharges)}</span>
+                  </div>
+                )}
+                
+                {/* Previous Arrears */}
+                {invoice.arrears > 0 && (
+                  <div className="flex justify-between py-2 border-b border-gray-100 text-red-600">
+                    <span>Previous Arrears</span>
+                    <span className="font-medium">{formatCurrency(invoice.arrears)}</span>
+                  </div>
+                )}
+                
+                {/* Total */}
+                <div className="flex justify-between py-3 text-lg font-bold text-gray-900 bg-gray-50 px-4 rounded-lg">
+                  <span>Total Amount</span>
+                  <span>{formatCurrency(invoice.totalAmount)}</span>
+                </div>
+                
+                {/* Payment Status */}
+                {invoice.isPaid && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <div className="flex items-center space-x-2 text-green-700">
+                      <CheckCircle className="w-5 h-5" />
+                      <span className="font-medium">Payment Received</span>
+                    </div>
+                    <div className="mt-2 space-y-1 text-sm">
+                      <p>Amount Paid: {formatCurrency(invoice.amountPaid)}</p>
+                      {invoice.paidDate && (
+                        <p>Payment Date: {formatDate(invoice.paidDate)}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+  
+            {/* Payment History */}
+            {payments.length > 0 && (
+              <div className="bg-white rounded-xl shadow-sm p-6">
+                <h3 className="font-semibold text-gray-900 mb-4 flex items-center">
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  Payment History
+                </h3>
+                
+                <div className="space-y-3">
+                  {payments.map((payment) => (
+                    <div key={payment.id} className="flex justify-between items-center py-3 border-b border-gray-100 last:border-b-0">
+                      <div>
+                        <p className="font-medium text-gray-900">{formatCurrency(payment.amount)}</p>
+                        <p className="text-sm text-gray-500">{formatDate(payment.paymentDate)}</p>
+                        {payment.paymentMethod && (
+                          <p className="text-xs text-gray-400">{payment.paymentMethod}</p>
+                        )}
+                        {payment.notes && (
+                          <p className="text-xs text-gray-500 mt-1">{payment.notes}</p>
+                        )}
+                      </div>
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+  
+        {/* Fixed Bottom Actions */}
+        <div className="bg-white border-t border-gray-200 p-4 flex-shrink-0">
+          <div className="grid grid-cols-1 gap-3">
+            {!invoice.isPaid ? (
+              <button
+                onClick={() => setShowPaymentModal(true)}
+                className="bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center justify-center space-x-2 w-full"
+              >
+                <Check className="w-5 h-5" />
+                <span>Mark as Paid</span>
+              </button>
+            ) : (
+              <button
+                onClick={handleMarkUnpaid}
+                className="bg-yellow-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-yellow-700 transition-colors flex items-center justify-center space-x-2 w-full"
+              >
+                <X className="w-5 h-5" />
+                <span>Mark as Unpaid</span>
+              </button>
+            )}
             
             <button
-              onClick={() => setShowShareModal(false)}
-              className="w-full bg-gray-100 text-gray-700 py-3 px-4 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+              onClick={() => setShowDeleteModal(true)}
+              className="bg-red-50 text-red-600 py-3 px-4 rounded-lg font-medium hover:bg-red-100 transition-colors flex items-center justify-center space-x-2 w-full"
             >
-              Cancel
+              <Trash2 className="w-4 h-4" />
+              <span>Delete Invoice</span>
             </button>
           </div>
         </div>
-      )}
-    </div>
-  );
-};
+  
+        {/* Payment Modal - Updated positioning */}
+        {showPaymentModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end z-50">
+            <div className="bg-white rounded-t-2xl w-full p-6 space-y-4 max-h-[85vh] overflow-y-auto">
+              <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
+              <h3 className="text-lg font-semibold text-center">Record Payment</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Amount Paid *
+                  </label>
+                  <input
+                    type="number"
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    placeholder="Enter amount paid"
+                    className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Arrears (if any)
+                  </label>
+                  <input
+                    type="number"
+                    value={arrears}
+                    onChange={(e) => setArrears(e.target.value)}
+                    placeholder="Enter arrears amount"
+                    className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Payment Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={paymentDate}
+                    onChange={(e) => setPaymentDate(e.target.value)}
+                    className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Payment Method
+                  </label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select method</option>
+                    <option value="Cash">Cash</option>
+                    <option value="M-Pesa">M-Pesa</option>
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="Cheque">Cheque</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Notes (Optional)
+                  </label>
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Add any payment notes"
+                    rows={3}
+                    className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex space-x-3 pt-4">
+                <button
+                  onClick={() => setShowPaymentModal(false)}
+                  className="flex-1 bg-gray-100 text-gray-700 py-3 px-4 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleMarkPaid}
+                  disabled={!paymentAmount || processingPayment}
+                  className="flex-1 bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {processingPayment ? 'Processing...' : 'Record Payment'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+  
+        {/* Delete Modal - Updated positioning */}
+        {showDeleteModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
+              <div className="text-center">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Trash2 className="w-6 h-6 text-red-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Invoice</h3>
+                <p className="text-sm text-gray-600">
+                  Are you sure you want to delete this invoice? This action cannot be undone.
+                </p>
+              </div>
+              
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  className="flex-1 bg-gray-100 text-gray-700 py-2 px-4 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteInvoice}
+                  className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-700 transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+  
+        {/* Share Modal - Updated positioning */}
+        {showShareModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end z-50">
+            <div className="bg-white rounded-t-2xl w-full p-6 space-y-4">
+              <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
+              <h3 className="text-lg font-semibold text-center">Share Invoice</h3>
+              
+              <div className="space-y-3">
+                <button
+                  onClick={() => handleShare('whatsapp')}
+                  className="w-full bg-green-50 text-green-600 py-3 px-4 rounded-lg font-medium hover:bg-green-100 transition-colors text-left flex items-center space-x-3"
+                >
+                  <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                    <span className="text-white text-sm font-bold">W</span>
+                  </div>
+                  <span>Share via WhatsApp</span>
+                </button>
+                
+                <button
+                  onClick={() => handleShare('email')}
+                  className="w-full bg-blue-50 text-blue-600 py-3 px-4 rounded-lg font-medium hover:bg-blue-100 transition-colors text-left flex items-center space-x-3"
+                >
+                  <Mail className="w-5 h-5" />
+                  <span>Share via Email</span>
+                </button>
+                
+                <button
+                  onClick={() => handleShare('pdf')}
+                  className="w-full bg-gray-50 text-gray-600 py-3 px-4 rounded-lg font-medium hover:bg-gray-100 transition-colors text-left flex items-center space-x-3"
+                >
+                  <Share className="w-5 h-5" />
+                  <span>More Options</span>
+                </button>
+              </div>
+              
+              <button
+                onClick={() => setShowShareModal(false)}
+                className="w-full bg-gray-100 text-gray-700 py-3 px-4 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
 export default AnInvoice;
