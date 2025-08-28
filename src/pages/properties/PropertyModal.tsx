@@ -49,7 +49,7 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+    <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg transform transition-all max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl">
           <div className="flex items-center justify-between">

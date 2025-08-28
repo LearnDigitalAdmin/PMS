@@ -216,7 +216,7 @@ const Property: React.FC<PropertyProps> = ({
 
 
 return (
-    <div className={isModal ? "fixed bottom-70 inset-0 bg-gray-50 z-50 flex flex-col" : "min-h-screen bg-gray-50"}>
+    <div className={isModal ? "fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5" : "min-h-screen bg-gray-50"}>
       {/* Sticky Header */}
       <div className="sticky top-0 bg-white shadow-sm border-b border-gray-100 z-20 flex-shrink-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -521,7 +521,7 @@ return (
 
       {/* Edit Property Modal */}
       {showEditModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md transform transition-all max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-100">
               <h2 className="text-xl font-bold text-gray-900">Edit Property</h2>

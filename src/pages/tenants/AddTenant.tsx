@@ -155,7 +155,7 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, onClose, onTenantAdde
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+    <div className="fixed bottom-22 inset-0 bg-white z-50 flex flex-col pb-1">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">

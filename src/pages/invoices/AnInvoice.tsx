@@ -301,7 +301,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
 
   if (loading) {
     return (
-      <div className={isModal ? "h-screen flex flex-col bg-white" : "min-h-screen bg-gray-50 p-4"}>
+      <div className={isModal ? "fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5" : "min-h-screen bg-gray-50 p-4"}>
         <div className="animate-pulse p-6">
           <div className="bg-gray-200 rounded-xl p-6 shadow-sm mb-4">
             <div className="h-8 bg-gray-300 rounded w-1/2 mb-4"></div>
@@ -318,7 +318,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
 
   if (!invoice) {
     return (
-      <div className={isModal ? "h-screen bottom-65 flex flex-col bg-white items-center justify-center p-4" : "min-h-screen bg-gray-50 flex items-center justify-center p-4"}>
+      <div className={isModal ? "fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5" : "min-h-screen bg-gray-50 flex items-center justify-center p-4"}>
         <div className="text-center">
           <AlertTriangle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">Invoice not found</h3>
@@ -336,7 +336,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
 
   // Updated container classes for modal
     const containerClass = isModal 
-      ? "fixed bottom-70 inset-0 bg-white z-50 flex flex-col" 
+      ? "fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5" 
       : "min-h-screen bg-gray-50";
       
     const contentClass = isModal 
@@ -607,7 +607,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
   
         {/* Payment Modal - Updated positioning */}
         {showPaymentModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end z-50">
+          <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
             <div className="bg-white rounded-t-2xl w-full p-6 space-y-4 max-h-[85vh] overflow-y-auto">
               <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
               <h3 className="text-lg font-semibold text-center">Record Payment</h3>
@@ -704,7 +704,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
   
         {/* Delete Modal - Updated positioning */}
         {showDeleteModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
             <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
               <div className="text-center">
                 <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -736,7 +736,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
   
         {/* Share Modal - Updated positioning */}
         {showShareModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end z-50">
+          <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
             <div className="bg-white rounded-t-2xl w-full p-6 space-y-4">
               <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
               <h3 className="text-lg font-semibold text-center">Share Invoice</h3>

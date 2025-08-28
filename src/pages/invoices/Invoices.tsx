@@ -673,7 +673,7 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
 
       {/* Export Modal */}
       {exportModalVisible && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end z-50">
+        <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
           <div className="bg-white rounded-t-2xl w-full p-6 space-y-4">
             <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
             <h3 className="text-lg font-semibold text-center">Export Invoices</h3>
@@ -706,7 +706,7 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
 
       {/* Share Modal */}
       {shareModalVisible && selectedInvoiceForShare && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end z-50">
+        <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
           <div className="bg-white rounded-t-2xl w-full p-6 space-y-4 max-h-[80vh] overflow-y-auto">
             <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
             <h3 className="text-lg font-semibold text-center">Share Invoice #{selectedInvoiceForShare.invoiceNumber}</h3>
@@ -785,7 +785,7 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
 
       {/* Add Invoice Modal */}
       {showAddInvoiceModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
           <div className="bg-white rounded-lg w-full max-w-4xl max-h-[95vh] overflow-hidden">
             <AddInvoice
               propertyId={prefilledPropertyId}
@@ -801,7 +801,7 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
 
       {/* View Invoice Modal */}
       {showInvoiceModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
           <div className="bg-white rounded-lg w-full max-w-4xl max-h-[95vh] overflow-hidden">
             <AnInvoice
               invoiceId={invoiceId}

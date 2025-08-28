@@ -1,4 +1,4 @@
-// PDFService.tsx - Enhanced Professional PDF Invoice Generation
+// PDFService.tsx - Enhanced Professional PDF Invoice Generation - Layout Fixed
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
@@ -33,16 +33,18 @@ export interface CogvanaMessage {
   icon: string;
 }
 
-// Enhanced layout constants for better spacing
+// Fixed layout constants for proper A4 spacing
 const LAYOUT = {
-  MARGIN: 50,
+  MARGIN: 40,
   LINE_HEIGHT: 15,
-  SECTION_SPACING: 30,
-  TABLE_ROW_HEIGHT: 25,
-  HEADER_HEIGHT: 120,
-  FOOTER_HEIGHT: 150,
-  CARD_PADDING: 15,
-  BORDER_RADIUS: 5 // Simulated with rectangles
+  SECTION_SPACING: 25,
+  TABLE_ROW_HEIGHT: 22,
+  HEADER_HEIGHT: 100,
+  FOOTER_HEIGHT: 120,
+  CARD_PADDING: 12,
+  BORDER_RADIUS: 5,
+  TOP_MARGIN: 40, // Reduced from excessive margin
+  COGVANA_SPACING: 35 // Proper spacing between Cogvana and invoice data
 };
 
 const COLORS = {
@@ -76,6 +78,13 @@ function sanitizeTextForPDF(text: string): string {
     .replace(/[\u{20D0}-\u{20FF}]/gu, '')   // Combining marks
     .replace(/[\u{FE00}-\u{FE0F}]/gu, '')   // Variation Selectors
     .replace(/[\u{E000}-\u{F8FF}]/gu, '')   // Private Use Area
+    // Remove specific problematic characters
+    .replace(/[💳📧📞🏢🏠👤💰📝💡📊⚡💧]/g, '') // Common emojis
+    .replace(/[→←↑↓]/g, '') // Arrows
+    .replace(/[•◦‣⁃]/g, '*') // Replace bullet points with asterisk
+    .replace(/[""'']/g, '"') // Replace smart quotes
+    .replace(/[–—]/g, '-') // Replace em/en dashes
+    .replace(/[…]/g, '...') // Replace ellipsis
     // Clean up whitespace
     .replace(/\s+/g, ' ')
     .trim();
@@ -110,7 +119,7 @@ function hexToRgb(hex: string): [number, number, number] {
   return [0.31, 0.27, 0.9]; // Default Cogvana blue
 }
 
-// Enhanced header with modern card design
+// Fixed header with proper positioning
 async function drawEnhancedHeader(
   page: any,
   font: any,
@@ -119,90 +128,90 @@ async function drawEnhancedHeader(
   _options: PDFGenerationOptions,
   width: number
 ): Promise<number> {
-  const yStart = 792; // A4 height - top margin
+  const yStart = 842 - LAYOUT.TOP_MARGIN; // A4 height with proper top margin
   
   // Header background card
   page.drawRectangle({
     x: LAYOUT.MARGIN,
     y: yStart - LAYOUT.HEADER_HEIGHT,
     width: width - (LAYOUT.MARGIN * 2),
-    height: LAYOUT.HEADER_HEIGHT - 20,
+    height: LAYOUT.HEADER_HEIGHT - 10,
     color: COLORS.LIGHT_GRAY,
     borderColor: COLORS.BORDER,
     borderWidth: 1
   });
   
   // Company name with enhanced styling
-  page.drawText(companyInfo.name.toUpperCase(), {
-    x: LAYOUT.MARGIN + 20,
-    y: yStart - 40,
-    size: 24,
+  page.drawText(sanitizeTextForPDF(companyInfo.name.toUpperCase()), {
+    x: LAYOUT.MARGIN + 15,
+    y: yStart - 30,
+    size: 22,
     font: boldFont,
     color: COLORS.PRIMARY
   });
   
   // Subtitle
   page.drawText('RENTAL MANAGEMENT SERVICES', {
-    x: LAYOUT.MARGIN + 20,
-    y: yStart - 62,
-    size: 11,
+    x: LAYOUT.MARGIN + 15,
+    y: yStart - 50,
+    size: 10,
     font: font,
     color: COLORS.MEDIUM_GRAY
   });
   
-  // Contact information in structured format with fallback for emojis
-  let contactY = yStart - 85;
+  // Contact information in structured format
+  let contactY = yStart - 70;
   
   if (companyInfo.address) {
-    page.drawText('Address: ' + companyInfo.address, {
-      x: LAYOUT.MARGIN + 20,
+    page.drawText('Address: ' + sanitizeTextForPDF(companyInfo.address), {
+      x: LAYOUT.MARGIN + 15,
       y: contactY,
-      size: 10,
+      size: 9,
       font: font,
       color: COLORS.DARK
     });
-    contactY -= 15;
+    contactY -= 12;
   }
   
   // Contact details in two columns
-  const rightColumnX = width - 280;
-  let rightContactY = yStart - 85;
+  const rightColumnX = width - 250;
+  let rightContactY = yStart - 70;
   
   if (companyInfo.phone) {
-    page.drawText('Tel: ' + companyInfo.phone, {
-      x: LAYOUT.MARGIN + 20,
+    page.drawText('Tel: ' + sanitizeTextForPDF(companyInfo.phone), {
+      x: LAYOUT.MARGIN + 15,
       y: contactY,
-      size: 10,
+      size: 9,
       font: font,
       color: COLORS.DARK
     });
   }
   
   if (companyInfo.email) {
-    page.drawText('Email: ' + companyInfo.email, {
+    page.drawText('Email: ' + sanitizeTextForPDF(companyInfo.email), {
       x: rightColumnX,
       y: rightContactY,
-      size: 10,
+      size: 9,
       font: font,
       color: COLORS.DARK
     });
-    rightContactY -= 15;
+    rightContactY -= 12;
   }
   
   if (companyInfo.website) {
-    page.drawText('Web: ' + companyInfo.website, {
+    page.drawText('Web: ' + sanitizeTextForPDF(companyInfo.website), {
       x: rightColumnX,
       y: rightContactY,
-      size: 10,
+      size: 9,
       font: font,
       color: COLORS.DARK
     });
   }
   
-  return yStart - LAYOUT.HEADER_HEIGHT - 20;
+  return yStart - LAYOUT.HEADER_HEIGHT - 15;
 }
 
-// Enhanced invoice title section with status badge
+// Enhanced invoice title section with proper spacing
 async function drawEnhancedInvoiceTitle(
   page: any,
   font: any,
@@ -214,9 +223,9 @@ async function drawEnhancedInvoiceTitle(
   // Title card background
   page.drawRectangle({
     x: LAYOUT.MARGIN,
-    y: yPosition - 80,
+    y: yPosition - 70,
     width: width - (LAYOUT.MARGIN * 2),
-    height: 75,
+    height: 65,
     color: COLORS.WHITE,
     borderColor: COLORS.BORDER,
     borderWidth: 1
@@ -224,9 +233,9 @@ async function drawEnhancedInvoiceTitle(
   
   // INVOICE title with modern styling
   page.drawText('RENTAL INVOICE', {
-    x: LAYOUT.MARGIN + 20,
-    y: yPosition - 30,
-    size: 28,
+    x: LAYOUT.MARGIN + 15,
+    y: yPosition - 25,
+    size: 24,
     font: boldFont,
     color: COLORS.DARK
   });
@@ -237,29 +246,29 @@ async function drawEnhancedInvoiceTitle(
   const statusText = isPaid ? 'PAID' : 'PENDING';
   
   page.drawRectangle({
-    x: LAYOUT.MARGIN + 20,
-    y: yPosition - 55,
-    width: 60,
-    height: 18,
+    x: LAYOUT.MARGIN + 15,
+    y: yPosition - 48,
+    width: 55,
+    height: 16,
     color: statusColor
   });
   
   page.drawText(statusText, {
-    x: LAYOUT.MARGIN + 30,
-    y: yPosition - 50,
-    size: 10,
+    x: LAYOUT.MARGIN + 22,
+    y: yPosition - 44,
+    size: 9,
     font: boldFont,
     color: COLORS.WHITE
   });
   
   // Invoice details in a structured card on the right
-  const detailsX = width - 220;
+  const detailsX = width - 200;
   
   page.drawRectangle({
     x: detailsX - 10,
-    y: yPosition - 75,
-    width: 180,
-    height: 70,
+    y: yPosition - 65,
+    width: 170,
+    height: 60,
     color: COLORS.LIGHT_GRAY,
     borderColor: COLORS.BORDER,
     borderWidth: 1
@@ -271,56 +280,56 @@ async function drawEnhancedInvoiceTitle(
   // Invoice details with labels
   page.drawText('Invoice Number', {
     x: detailsX,
-    y: yPosition - 20,
-    size: 9,
+    y: yPosition - 18,
+    size: 8,
     font: font,
     color: COLORS.MEDIUM_GRAY
   });
   
-  page.drawText(invoice.invoiceNumber, {
+  page.drawText(sanitizeTextForPDF(invoice.invoiceNumber), {
     x: detailsX,
-    y: yPosition - 33,
-    size: 12,
+    y: yPosition - 30,
+    size: 11,
     font: boldFont,
     color: COLORS.DARK
   });
   
   page.drawText('Date Issued', {
     x: detailsX,
-    y: yPosition - 50,
-    size: 9,
+    y: yPosition - 45,
+    size: 8,
     font: font,
     color: COLORS.MEDIUM_GRAY
   });
   
   page.drawText(invoiceDate, {
     x: detailsX,
-    y: yPosition - 63,
-    size: 10,
+    y: yPosition - 57,
+    size: 9,
     font: font,
     color: COLORS.DARK
   });
   
   page.drawText('Due Date', {
-    x: detailsX + 90,
-    y: yPosition - 50,
-    size: 9,
+    x: detailsX + 80,
+    y: yPosition - 45,
+    size: 8,
     font: font,
     color: COLORS.MEDIUM_GRAY
   });
   
   page.drawText(dueDate, {
-    x: detailsX + 90,
-    y: yPosition - 63,
-    size: 10,
+    x: detailsX + 80,
+    y: yPosition - 57,
+    size: 9,
     font: font,
     color: COLORS.DARK
   });
   
-  return yPosition - 100;
+  return yPosition - 80;
 }
 
-// Enhanced property and tenant info with modern card layout
+// Enhanced property and tenant info with proper card sizing
 async function drawEnhancedPropertyTenantInfo(
   page: any,
   font: any,
@@ -330,8 +339,8 @@ async function drawEnhancedPropertyTenantInfo(
   yPosition: number,
   width: number
 ): Promise<number> {
-  const cardHeight = 120;
-  const cardWidth = (width - (LAYOUT.MARGIN * 2) - 20) / 2;
+  const cardHeight = 100;
+  const cardWidth = (width - (LAYOUT.MARGIN * 2) - 15) / 2;
   
   // Property info card
   page.drawRectangle({
@@ -344,47 +353,47 @@ async function drawEnhancedPropertyTenantInfo(
     borderWidth: 1
   });
   
-  // Property header with text instead of emoji
+  // Property header
   page.drawText('PROPERTY DETAILS', {
     x: LAYOUT.MARGIN + LAYOUT.CARD_PADDING,
-    y: yPosition - 25,
-    size: 12,
+    y: yPosition - 20,
+    size: 11,
     font: boldFont,
     color: COLORS.PRIMARY
   });
   
   // Property details
-  let propertyY = yPosition - 50;
+  let propertyY = yPosition - 40;
   
-  page.drawText(property.name, {
+  page.drawText(sanitizeTextForPDF(property.name), {
     x: LAYOUT.MARGIN + LAYOUT.CARD_PADDING,
     y: propertyY,
-    size: 14,
+    size: 12,
     font: boldFont,
     color: COLORS.DARK
   });
   
   if (property.address) {
-    propertyY -= 18;
+    propertyY -= 15;
     
     // Wrap long addresses
-    const maxLineLength = 35;
-    const addressLines = property.address.match(new RegExp(`.{1,${maxLineLength}}(\\s|$)`, 'g')) || [property.address];
+    const maxLineLength = 32;
+    const addressLines = sanitizeTextForPDF(property.address).match(new RegExp(`.{1,${maxLineLength}}(\\s|$)`, 'g')) || [sanitizeTextForPDF(property.address)];
     
     addressLines.forEach(line => {
       page.drawText(line.trim(), {
         x: LAYOUT.MARGIN + LAYOUT.CARD_PADDING,
         y: propertyY,
-        size: 10,
+        size: 9,
         font: font,
         color: COLORS.MEDIUM_GRAY
       });
-      propertyY -= 12;
+      propertyY -= 11;
     });
   }
   
   // Tenant info card
-  const tenantCardX = LAYOUT.MARGIN + cardWidth + 20;
+  const tenantCardX = LAYOUT.MARGIN + cardWidth + 15;
   
   page.drawRectangle({
     x: tenantCardX,
@@ -396,43 +405,43 @@ async function drawEnhancedPropertyTenantInfo(
     borderWidth: 1
   });
   
-  // Tenant header with text instead of emoji
+  // Tenant header
   page.drawText('TENANT DETAILS', {
     x: tenantCardX + LAYOUT.CARD_PADDING,
-    y: yPosition - 25,
-    size: 12,
+    y: yPosition - 20,
+    size: 11,
     font: boldFont,
     color: COLORS.PRIMARY
   });
   
   // Tenant details
-  let tenantY = yPosition - 50;
+  let tenantY = yPosition - 40;
   
-  page.drawText(invoice.tenantName, {
+  page.drawText(sanitizeTextForPDF(invoice.tenantName), {
     x: tenantCardX + LAYOUT.CARD_PADDING,
     y: tenantY,
-    size: 14,
+    size: 12,
     font: boldFont,
     color: COLORS.DARK
   });
   
   if (invoice.tenantPhone) {
-    tenantY -= 18;
-    page.drawText('Phone: ' + invoice.tenantPhone, {
+    tenantY -= 15;
+    page.drawText('Phone: ' + sanitizeTextForPDF(invoice.tenantPhone), {
       x: tenantCardX + LAYOUT.CARD_PADDING,
       y: tenantY,
-      size: 10,
+      size: 9,
       font: font,
       color: COLORS.MEDIUM_GRAY
     });
   }
   
   if (invoice.tenantEmail) {
-    tenantY -= 15;
-    page.drawText('Email: ' + invoice.tenantEmail, {
+    tenantY -= 12;
+    page.drawText('Email: ' + sanitizeTextForPDF(invoice.tenantEmail), {
       x: tenantCardX + LAYOUT.CARD_PADDING,
       y: tenantY,
-      size: 10,
+      size: 9,
       font: font,
       color: COLORS.MEDIUM_GRAY
     });
@@ -441,7 +450,7 @@ async function drawEnhancedPropertyTenantInfo(
   return yPosition - cardHeight - LAYOUT.SECTION_SPACING;
 }
 
-// Enhanced billing table with modern design
+// Fixed billing table with proper column widths
 async function drawEnhancedBillingTable(
   page: any,
   font: any,
@@ -454,18 +463,21 @@ async function drawEnhancedBillingTable(
   page.drawText('BILLING DETAILS', {
     x: LAYOUT.MARGIN,
     y: yPosition,
-    size: 14,
+    size: 12,
     font: boldFont,
     color: COLORS.DARK
   });
   
-  yPosition -= 25;
+  yPosition -= 20;
   
   const tableWidth = width - (LAYOUT.MARGIN * 2);
-  const rowHeight = 30;
-  const headerHeight = 35;
+  const rowHeight = LAYOUT.TABLE_ROW_HEIGHT;
+  const headerHeight = 28;
   
-  // Modern table header with gradient effect
+  // Fixed column widths that fit within table
+  const columnWidths = [140, 65, 65, 50, 80, 85]; // Total: 485 (fits in ~515 available width)
+  
+  // Modern table header
   page.drawRectangle({
     x: LAYOUT.MARGIN,
     y: yPosition - headerHeight,
@@ -476,14 +488,13 @@ async function drawEnhancedBillingTable(
   
   // Table headers
   const headers = ['Description', 'Previous', 'Current', 'Units', 'Rate', 'Amount'];
-  const columnWidths = [160, 70, 70, 60, 90, 95];
-  let headerX = LAYOUT.MARGIN + 15;
+  let headerX = LAYOUT.MARGIN + 10;
   
   headers.forEach((header, index) => {
     page.drawText(header.toUpperCase(), {
       x: headerX,
-      y: yPosition - 22,
-      size: 10,
+      y: yPosition - 18,
+      size: 9,
       font: boldFont,
       color: COLORS.WHITE
     });
@@ -493,7 +504,7 @@ async function drawEnhancedBillingTable(
   let currentY = yPosition - headerHeight;
   let rowIndex = 0;
   
-  // Helper function to draw table row
+  // Helper function to draw table row with proper text alignment
   const drawTableRow = (data: string[], isTotal = false) => {
     const rowColor = isTotal ? COLORS.LIGHT_GRAY : (rowIndex % 2 === 0 ? COLORS.WHITE : rgb(0.98, 0.98, 0.98));
     
@@ -507,15 +518,22 @@ async function drawEnhancedBillingTable(
       borderWidth: 0.5
     });
     
-    let cellX = LAYOUT.MARGIN + 15;
+    let cellX = LAYOUT.MARGIN + 10;
     data.forEach((cellData, index) => {
       const textColor = isTotal ? COLORS.DARK : (index === data.length - 1 ? COLORS.PRIMARY : COLORS.DARK);
       const textFont = isTotal || index === data.length - 1 ? boldFont : font;
       
-      page.drawText(cellData, {
+      // Truncate text if it's too long for the column
+      let displayText = sanitizeTextForPDF(cellData);
+      const maxChars = Math.floor(columnWidths[index] / 6); // Approximate character width
+      if (displayText.length > maxChars) {
+        displayText = displayText.substring(0, maxChars - 3) + '...';
+      }
+      
+      page.drawText(displayText, {
         x: cellX,
-        y: currentY - 18,
-        size: 10,
+        y: currentY - 15,
+        size: 9,
         font: textFont,
         color: textColor
       });
@@ -542,7 +560,7 @@ async function drawEnhancedBillingTable(
     const waterAmount = waterUnits * invoice.waterUnitPrice + invoice.waterStandingFee;
     
     drawTableRow([
-      'Water Usage + Standing Fee',
+      'Water + Standing Fee',
       invoice.waterPreviousReading.toString(),
       invoice.waterCurrentReading.toString(),
       waterUnits.toString(),
@@ -568,7 +586,7 @@ async function drawEnhancedBillingTable(
   
   // Other charges (if applicable)
   if (invoice.otherCharges > 0) {
-    const description = invoice.otherChargesDescription || 'Other Charges';
+    const description = sanitizeTextForPDF(invoice.otherChargesDescription || 'Other Charges');
     drawTableRow([
       description,
       '-',
@@ -579,10 +597,10 @@ async function drawEnhancedBillingTable(
     ]);
   }
   
-  return currentY - 20;
+  return currentY - 15;
 }
 
-// Enhanced payments table with better styling
+// Enhanced payments table with proper sizing
 async function drawEnhancedPaymentsTable(
   page: any,
   font: any,
@@ -591,20 +609,23 @@ async function drawEnhancedPaymentsTable(
   yPosition: number,
   width: number
 ): Promise<number> {
-  // Payments section title without emoji
+  // Payments section title
   page.drawText('PAYMENT HISTORY', {
     x: LAYOUT.MARGIN,
     y: yPosition,
-    size: 14,
+    size: 12,
     font: boldFont,
     color: COLORS.DARK
   });
   
-  yPosition -= 25;
+  yPosition -= 20;
   
   const tableWidth = width - (LAYOUT.MARGIN * 2);
-  const rowHeight = 25;
-  const headerHeight = 30;
+  const rowHeight = 20;
+  const headerHeight = 25;
+  
+  // Fixed column widths for payments table
+  const columnWidths = [90, 90, 90, 245]; // Total fits within table width
   
   // Table header
   page.drawRectangle({
@@ -616,14 +637,13 @@ async function drawEnhancedPaymentsTable(
   });
   
   const headers = ['Date', 'Amount', 'Method', 'Reference/Notes'];
-  const columnWidths = [100, 100, 100, 245];
-  let headerX = LAYOUT.MARGIN + 15;
+  let headerX = LAYOUT.MARGIN + 10;
   
   headers.forEach(header => {
     page.drawText(header.toUpperCase(), {
       x: headerX,
-      y: yPosition - 20,
-      size: 10,
+      y: yPosition - 16,
+      size: 9,
       font: boldFont,
       color: COLORS.WHITE
     });
@@ -645,34 +665,41 @@ async function drawEnhancedPaymentsTable(
       borderWidth: 0.5
     });
     
-    let cellX = LAYOUT.MARGIN + 15;
+    let cellX = LAYOUT.MARGIN + 10;
     
     // Payment data
     const paymentData = [
       formatDate(new Date(payment.paymentDate)),
       formatCurrency(payment.amount),
-      payment.paymentMethod || 'N/A',
-      payment.notes || ''
+      sanitizeTextForPDF(payment.paymentMethod || 'N/A'),
+      sanitizeTextForPDF(payment.notes || '')
     ];
     
-    paymentData.forEach(data => {
-      page.drawText(data, {
+    paymentData.forEach((data, colIndex) => {
+      // Truncate text if too long
+      let displayText = data;
+      const maxChars = Math.floor(columnWidths[colIndex] / 5);
+      if (displayText.length > maxChars) {
+        displayText = displayText.substring(0, maxChars - 3) + '...';
+      }
+      
+      page.drawText(displayText, {
         x: cellX,
-        y: currentY - 15,
-        size: 9,
+        y: currentY - 13,
+        size: 8,
         font: font,
         color: COLORS.DARK
       });
-      cellX += columnWidths[paymentData.indexOf(data)];
+      cellX += columnWidths[colIndex];
     });
     
     currentY -= rowHeight;
   });
   
-  return currentY - 20;
+  return currentY - 15;
 }
 
-// Enhanced summary with modern card design
+// Fixed summary positioning to avoid overlap
 async function drawEnhancedSummary(
   page: any,
   font: any,
@@ -681,14 +708,18 @@ async function drawEnhancedSummary(
   yPosition: number,
   width: number
 ): Promise<number> {
-  const summaryWidth = 280;
-  const summaryHeight = 140;
+  const summaryWidth = 260;
+  const summaryHeight = 120;
   const summaryX = width - summaryWidth - LAYOUT.MARGIN;
+  
+  // Ensure summary doesn't overlap with other content
+  const minY = Math.max(yPosition - summaryHeight, 150); // Minimum Y position
+  const adjustedY = Math.min(yPosition, minY + summaryHeight);
   
   // Summary card with shadow effect
   page.drawRectangle({
-    x: summaryX + 3,
-    y: yPosition - summaryHeight - 3,
+    x: summaryX + 2,
+    y: adjustedY - summaryHeight - 2,
     width: summaryWidth,
     height: summaryHeight,
     color: rgb(0.85, 0.85, 0.85)
@@ -696,7 +727,7 @@ async function drawEnhancedSummary(
   
   page.drawRectangle({
     x: summaryX,
-    y: yPosition - summaryHeight,
+    y: adjustedY - summaryHeight,
     width: summaryWidth,
     height: summaryHeight,
     color: COLORS.WHITE,
@@ -706,14 +737,14 @@ async function drawEnhancedSummary(
   
   // Summary header
   page.drawText('INVOICE SUMMARY', {
-    x: summaryX + 20,
-    y: yPosition - 25,
-    size: 12,
+    x: summaryX + 15,
+    y: adjustedY - 20,
+    size: 11,
     font: boldFont,
     color: COLORS.PRIMARY
   });
   
-  // Summary items with better spacing
+  // Summary items with proper spacing
   const items = [
     { label: 'Subtotal:', value: formatCurrency(invoice.totalAmount), color: COLORS.DARK },
     { label: 'Amount Paid:', value: formatCurrency(invoice.amountPaid), color: COLORS.ACCENT },
@@ -729,15 +760,15 @@ async function drawEnhancedSummary(
     });
   }
   
-  let summaryY = yPosition - 50;
+  let summaryY = adjustedY - 40;
   
   items.forEach((item, index) => {
     const isLast = index === items.length - 1;
-    const fontSize = isLast ? 14 : 11;
+    const fontSize = isLast ? 12 : 10;
     const itemFont = isLast ? boldFont : font;
     
     page.drawText(item.label, {
-      x: summaryX + 20,
+      x: summaryX + 15,
       y: summaryY,
       size: fontSize,
       font: itemFont,
@@ -745,7 +776,7 @@ async function drawEnhancedSummary(
     });
     
     page.drawText(item.value, {
-      x: summaryX + 150,
+      x: summaryX + 140,
       y: summaryY,
       size: fontSize,
       font: boldFont,
@@ -755,37 +786,34 @@ async function drawEnhancedSummary(
     if (isLast) {
       // Draw line above final total
       page.drawLine({
-        start: { x: summaryX + 20, y: summaryY + 5 },
-        end: { x: summaryX + 260, y: summaryY + 5 },
+        start: { x: summaryX + 15, y: summaryY + 3 },
+        end: { x: summaryX + 240, y: summaryY + 3 },
         thickness: 1,
         color: COLORS.PRIMARY
       });
     }
     
-    summaryY -= isLast ? 25 : 18;
+    summaryY -= isLast ? 20 : 15;
   });
   
-  return yPosition - summaryHeight - 30;
+  return adjustedY - summaryHeight - 20;
 }
 
-// Enhanced Cogvana banner with complete emoji sanitization
+// Fixed Cogvana banner with proper spacing
 async function drawEnhancedCogvanaBanner(
   page: any,
   font: any,
   boldFont: any,
   yPosition: number,
   width: number
-): Promise<void> {
+): Promise<number> {
   const cogvanaMsg = getRandomCogvanaMessage();
   const [r, g, b] = hexToRgb(cogvanaMsg.color);
-  const bannerHeight = 70;
+  const bannerHeight = 60;
   const bannerY = yPosition;
   
-  // Helper function to remove all emojis and special Unicode characters
-  const sanitizeText = sanitizeTextForPDF;
-  
   // Modern gradient background
-  const gradientSteps = 5;
+  const gradientSteps = 4;
   for (let i = 0; i < gradientSteps; i++) {
     const alpha = 0.05 + (i * 0.03);
     const stepHeight = bannerHeight / gradientSteps;
@@ -801,7 +829,7 @@ async function drawEnhancedCogvanaBanner(
     });
   }
   
-  // Modern border with rounded effect simulation
+  // Modern border
   page.drawRectangle({
     x: LAYOUT.MARGIN,
     y: bannerY - bannerHeight,
@@ -813,28 +841,23 @@ async function drawEnhancedCogvanaBanner(
   
   // Cogvana branding section
   page.drawText('COGVANA', {
-    x: LAYOUT.MARGIN + 20,
-    y: bannerY - 25,
-    size: 16,
+    x: LAYOUT.MARGIN + 15,
+    y: bannerY - 18,
+    size: 14,
     font: boldFont,
     color: rgb(r, g, b)
   });
   
   page.drawText('Education Platform', {
-    x: LAYOUT.MARGIN + 20,
-    y: bannerY - 40,
-    size: 9,
+    x: LAYOUT.MARGIN + 15,
+    y: bannerY - 32,
+    size: 8,
     font: font,
     color: COLORS.MEDIUM_GRAY
   });
   
   // Message content with complete emoji sanitization
-  const contentX = LAYOUT.MARGIN + 150;
-  
-  // Sanitize all text content
-  const cleanTitle = sanitizeText(cogvanaMsg.title);
-  const cleanMessage = sanitizeText(cogvanaMsg.message);
-  const cleanCta = sanitizeText(cogvanaMsg.cta);
+  const contentX = LAYOUT.MARGIN + 130;
   
   // Category-based prefix instead of emoji
   const categoryPrefix = {
@@ -844,34 +867,34 @@ async function drawEnhancedCogvanaBanner(
     'general': '[INFO]'
   }[cogvanaMsg.category] || '[COGVANA]';
   
-  page.drawText(`${categoryPrefix} ${cleanTitle}`, {
+  page.drawText(`${categoryPrefix} ${cogvanaMsg.title}`, {
     x: contentX,
-    y: bannerY - 25,
-    size: 12,
+    y: bannerY - 18,
+    size: 10,
     font: boldFont,
     color: COLORS.DARK
   });
   
   // Message description with safe text wrapping
-  const maxMessageWidth = width - contentX - 120;
-  const messageWords = cleanMessage.split(' ').filter(word => word.length > 0);
+  const maxMessageWidth = width - contentX - 100;
+  const messageWords = cogvanaMsg.message.split(' ').filter(word => word.length > 0);
   let messageLine = '';
-  let messageY = bannerY - 40;
+  let messageY = bannerY - 32;
   
   messageWords.forEach(word => {
     const testLine = messageLine + word + ' ';
-    if (testLine.length * 5 < maxMessageWidth) {
+    if (testLine.length * 4.5 < maxMessageWidth) {
       messageLine = testLine;
     } else {
       if (messageLine.trim()) {
         page.drawText(messageLine.trim(), {
           x: contentX,
           y: messageY,
-          size: 9,
+          size: 8,
           font: font,
           color: COLORS.MEDIUM_GRAY
         });
-        messageY -= 12;
+        messageY -= 10;
       }
       messageLine = word + ' ';
     }
@@ -881,19 +904,19 @@ async function drawEnhancedCogvanaBanner(
     page.drawText(messageLine.trim(), {
       x: contentX,
       y: messageY,
-      size: 9,
+      size: 8,
       font: font,
       color: COLORS.MEDIUM_GRAY
     });
   }
   
   // Call to action with safe text handling
-  const ctaText = cleanCta ? `>> ${cleanCta}` : '>> Learn More';
+  const ctaText = cogvanaMsg.cta ? `>> ${cogvanaMsg.cta}` : '>> Learn More';
   
   page.drawText(ctaText, {
     x: contentX,
-    y: bannerY - 60,
-    size: 10,
+    y: bannerY - 50,
+    size: 9,
     font: boldFont,
     color: rgb(r, g, b)
   });
@@ -904,15 +927,17 @@ async function drawEnhancedCogvanaBanner(
     : 'cogvana.com | Download on Play Store';
     
   page.drawText(contactText, {
-    x: width - 250,
-    y: bannerY - 60,
-    size: 8,
+    x: width - 220,
+    y: bannerY - 50,
+    size: 7,
     font: font,
     color: COLORS.MEDIUM_GRAY
   });
+  
+  return bannerY - bannerHeight - 10; // Return new Y position after banner
 }
 
-// Enhanced footer with proper spacing
+// Enhanced footer with proper spacing and no overlap
 async function drawEnhancedFooter(
   page: any,
   font: any,
@@ -922,21 +947,22 @@ async function drawEnhancedFooter(
   yPosition: number,
   width: number
 ): Promise<void> {
-  let currentY = yPosition;
+  // Ensure footer doesn't go below page boundaries
+  let currentY = Math.max(yPosition, 180);
   
   // Payment instructions section
-  const instructions = options.paymentInstructions || 
-    'Payment should be made within 7 days of the due date. Late payments may incur additional charges. Please include your invoice number in payment references.';
+  const instructions = sanitizeTextForPDF(options.paymentInstructions || 
+    'Payment should be made within 7 days of the due date. Late payments may incur additional charges. Please include your invoice number in payment references.');
   
-  page.drawText('💳 PAYMENT INSTRUCTIONS', {
+  page.drawText('PAYMENT INSTRUCTIONS', {
     x: LAYOUT.MARGIN,
     y: currentY,
-    size: 11,
+    size: 10,
     font: boldFont,
     color: COLORS.PRIMARY
   });
   
-  currentY -= 20;
+  currentY -= 15;
   
   // Wrap payment instructions properly
   const maxWidth = width - (LAYOUT.MARGIN * 2);
@@ -945,18 +971,18 @@ async function drawEnhancedFooter(
   
   words.forEach(word => {
     const testLine = line + word + ' ';
-    if (testLine.length * 5 < maxWidth) {
+    if (testLine.length * 4.5 < maxWidth) {
       line = testLine;
     } else {
       if (line) {
         page.drawText(line.trim(), {
           x: LAYOUT.MARGIN,
           y: currentY,
-          size: 10,
+          size: 9,
           font: font,
           color: COLORS.DARK
         });
-        currentY -= 14;
+        currentY -= 12;
       }
       line = word + ' ';
     }
@@ -966,23 +992,21 @@ async function drawEnhancedFooter(
     page.drawText(line.trim(), {
       x: LAYOUT.MARGIN,
       y: currentY,
-      size: 10,
+      size: 9,
       font: font,
       color: COLORS.DARK
     });
   }
   
-  currentY -= 25;
+  currentY -= LAYOUT.COGVANA_SPACING; // Proper spacing before Cogvana banner
   
-  // Add Cogvana promotional section
-  await drawEnhancedCogvanaBanner(page, font, boldFont, currentY, width);
-  
-  currentY -= 85;
+  // Add Cogvana promotional section with proper positioning
+  currentY = await drawEnhancedCogvanaBanner(page, font, boldFont, currentY, width);
   
   // Footer separator line
   page.drawLine({
-    start: { x: LAYOUT.MARGIN, y: currentY },
-    end: { x: width - LAYOUT.MARGIN, y: currentY },
+    start: { x: LAYOUT.MARGIN, y: currentY - 5 },
+    end: { x: width - LAYOUT.MARGIN, y: currentY - 5 },
     thickness: 1,
     color: COLORS.BORDER
   });
@@ -991,9 +1015,9 @@ async function drawEnhancedFooter(
   
   // Thank you message with modern styling (no emojis)
   page.drawText('Thank you for your business!', {
-    x: (width / 2) - 90,
+    x: (width / 2) - 80,
     y: currentY,
-    size: 14,
+    size: 12,
     font: boldFont,
     color: COLORS.PRIMARY
   });
@@ -1027,7 +1051,7 @@ async function addEnhancedWatermark(
   });
 }
 
-// Main enhanced PDF generation function with input sanitization
+// Main enhanced PDF generation function with proper layout management
 async function generateEnhancedInvoicePDF(
   invoice: InvoiceWithDetails,
   property: Property,
@@ -1074,14 +1098,14 @@ async function generateEnhancedInvoicePDF(
     };
     
     const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([595, 842]); // A4 size
+    const page = pdfDoc.addPage([595, 842]); // Standard A4 size
     const { width, height } = page.getSize();
     
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     
-    // Calculate if we need multiple pages
-    let yPosition = height - LAYOUT.MARGIN;
+    // Start with proper top margin
+    let yPosition = height - LAYOUT.TOP_MARGIN;
     
     // Draw enhanced header
     yPosition = await drawEnhancedHeader(page, font, boldFont, sanitizedCompanyInfo, sanitizedOptions, width);
@@ -1090,21 +1114,25 @@ async function generateEnhancedInvoicePDF(
     yPosition = await drawEnhancedInvoiceTitle(page, font, boldFont, sanitizedInvoice, yPosition, width);
     
     // Check if we need a new page for content
-    if (yPosition < 400) {
+    const requiredSpaceForContent = 350; // Estimate space needed for remaining content
+    
+    if (yPosition < requiredSpaceForContent) {
       const newPage = pdfDoc.addPage([595, 842]);
-      yPosition = height - LAYOUT.MARGIN;
+      yPosition = height - LAYOUT.TOP_MARGIN;
       
-      // Continue on new page
+      // Continue on new page with proper spacing
       yPosition = await drawEnhancedPropertyTenantInfo(newPage, font, boldFont, sanitizedProperty, sanitizedInvoice, yPosition, width);
       yPosition = await drawEnhancedBillingTable(newPage, font, boldFont, sanitizedInvoice, yPosition, width);
       
-      if (sanitizedPayments.length > 0) {
+      if (sanitizedPayments.length > 0 && yPosition > 200) {
         yPosition = await drawEnhancedPaymentsTable(newPage, font, boldFont, sanitizedPayments, yPosition, width);
       }
       
-      yPosition = await drawEnhancedSummary(newPage, font, boldFont, sanitizedInvoice, yPosition, width);
+      // Draw summary with proper positioning to avoid overlap
+      const summaryY = Math.max(yPosition, 250);
+      yPosition = await drawEnhancedSummary(newPage, font, boldFont, sanitizedInvoice, summaryY, width);
       
-      // Draw enhanced footer
+      // Draw enhanced footer with proper spacing
       await drawEnhancedFooter(newPage, font, boldFont, sanitizedCompanyInfo, sanitizedOptions, Math.max(yPosition, 200), width);
       
       // Add watermark for free version
@@ -1112,18 +1140,20 @@ async function generateEnhancedInvoicePDF(
         await addEnhancedWatermark(newPage, font, width, height);
       }
     } else {
-      // Everything fits on one page
+      // Everything fits on one page with proper spacing
       yPosition = await drawEnhancedPropertyTenantInfo(page, font, boldFont, sanitizedProperty, sanitizedInvoice, yPosition, width);
       yPosition = await drawEnhancedBillingTable(page, font, boldFont, sanitizedInvoice, yPosition, width);
       
-      if (sanitizedPayments.length > 0 && yPosition > 300) {
+      if (sanitizedPayments.length > 0 && yPosition > 250) {
         yPosition = await drawEnhancedPaymentsTable(page, font, boldFont, sanitizedPayments, yPosition, width);
       }
       
-      yPosition = await drawEnhancedSummary(page, font, boldFont, sanitizedInvoice, yPosition, width);
+      // Ensure summary doesn't overlap with other content
+      const summaryY = Math.max(yPosition, 280);
+      yPosition = await drawEnhancedSummary(page, font, boldFont, sanitizedInvoice, summaryY, width);
       
-      // Draw enhanced footer
-      await drawEnhancedFooter(page, font, boldFont, sanitizedCompanyInfo, sanitizedOptions, Math.max(yPosition, 200), width);
+      // Draw enhanced footer with proper spacing
+      await drawEnhancedFooter(page, font, boldFont, sanitizedCompanyInfo, sanitizedOptions, Math.max(yPosition, 220), width);
       
       // Add watermark for free version
       if (sanitizedOptions.template !== 'premium') {
@@ -1137,17 +1167,6 @@ async function generateEnhancedInvoicePDF(
     throw new Error('Failed to generate enhanced PDF invoice. Please try again.');
   }
 }
-
-// Keep original function for backward compatibility but use enhanced version
-// async function generateInvoicePDF(
-//   invoice: InvoiceWithDetails,
-//   property: Property,
-//   payments: Payment[] = [],
-//   companyInfo: CompanyInfo,
-//   options: PDFGenerationOptions = {}
-// ): Promise<Uint8Array> {
-//   return generateEnhancedInvoicePDF(invoice, property, payments, companyInfo, options);
-// }
 
 // Enhanced download function with better error handling
 async function downloadEnhancedPDF(
@@ -1235,11 +1254,11 @@ export async function shareEnhancedPDF(
 
 // Enhanced filename generation with better formatting
 export function generateEnhancedPDFFilename(invoice: InvoiceWithDetails): string {
-  const sanitizedTenant = invoice.tenantName.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_');
+  const sanitizedTenant = sanitizeTextForPDF(invoice.tenantName).replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_');
   const month = invoice.billingMonth.replace(/-/g, '_');
   const timestamp = new Date().toISOString().slice(0, 10);
   
-  return `PlotYangu_Invoice_${invoice.invoiceNumber}_${sanitizedTenant}_${month}_${timestamp}.pdf`;
+  return `PlotYangu_Invoice_${sanitizeTextForPDF(invoice.invoiceNumber)}_${sanitizedTenant}_${month}_${timestamp}.pdf`;
 }
 
 // Utility function to validate invoice data before PDF generation
@@ -1367,8 +1386,5 @@ export function generatePDFFilename(invoice: InvoiceWithDetails): string {
 export { 
   generateEnhancedInvoicePDF as generateInvoicePDF, 
   downloadEnhancedPDF as downloadPDF,
-  // generatePDFWithErrorHandling,
-  // validateInvoiceData,
-  LAYOUT,
   COLORS
 };

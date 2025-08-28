@@ -15,7 +15,7 @@ import {
   MapPin} from 'lucide-react';
 import { database, type PropertyWithUnits, type PropertyInput } from '../../services/database/Database';
 import Property from './Properties';
-import PropertyModal from './PropertyModal'; // Import the fixed PropertyModal
+import PropertyModal from './PropertyModal';
 
 interface PropertyListProps {
   onNavigateToProperty: (property: PropertyWithUnits) => void;
@@ -33,12 +33,20 @@ interface PropertyFormData {
   companyId?: number;
 }
 
+interface EnhancedProperty extends PropertyWithUnits {
+  tenants: any[];
+  monthlyRevenue: number;
+  occupancyRate: number;
+  agentIncome: number;
+  activeTenants: number;
+}
+
 const Properties: React.FC<PropertyListProps> = ({ 
   currentUserId,
   userPlan 
 }) => {
-  const [properties, setProperties] = useState<PropertyWithUnits[]>([]);
-  const [companies, setCompanies] = useState<any[]>([]);//useState<Company[]>([]);
+  const [properties, setProperties] = useState<EnhancedProperty[]>([]);
+  const [companies, setCompanies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -46,7 +54,7 @@ const Properties: React.FC<PropertyListProps> = ({
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [selectedProperty, setSelectedProperty] = useState<PropertyWithUnits | null>(null);
+  const [selectedProperty, setSelectedProperty] = useState<EnhancedProperty | null>(null);
   const [showPropModal, setShowPropModal] = useState(false);
   const [propertyId, setPropertyId] = useState<number>(0);
   const [formData, setFormData] = useState<PropertyFormData>({
@@ -76,8 +84,49 @@ const Properties: React.FC<PropertyListProps> = ({
   const loadProperties = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await database.getPropertiesWithUnits(currentUserId);
-      setProperties(data);
+      const propertiesData = await database.getPropertiesWithUnits(currentUserId);
+      
+      // Enhance each property with calculated data similar to Properties.tsx
+      const enhancedProperties = await Promise.all(
+        propertiesData.map(async (property) => {
+          try {
+            // Get tenants for this property
+            const tenants = await database.getTenantsByProperty(property.id);
+            
+            // Calculate monthly revenue from tenants
+            const monthlyRevenue = tenants.reduce((sum: number, tenant: { rentAmount: number }) => sum + tenant.rentAmount, 0);
+            
+            // Calculate agent income
+            const agentIncome = monthlyRevenue * (property.agentCommissionRate / 100);
+            
+            // Calculate occupancy rate: (occupied units / max units) * 100
+            const activeTenants = tenants.filter((t: { isActive: boolean }) => t.isActive).length;
+            const occupancyRate = property.maxUnits > 0 ? (activeTenants / property.maxUnits) * 100 : 0;
+
+            return {
+              ...property,
+              tenants,
+              monthlyRevenue,
+              agentIncome,
+              occupancyRate,
+              activeTenants
+            } as EnhancedProperty;
+          } catch (error) {
+            console.error(`Error loading data for property ${property.id}:`, error);
+            // Return property with default values if error occurs
+            return {
+              ...property,
+              tenants: [],
+              monthlyRevenue: 0,
+              agentIncome: 0,
+              occupancyRate: 0,
+              activeTenants: 0
+            } as EnhancedProperty;
+          }
+        })
+      );
+      
+      setProperties(enhancedProperties);
     } catch (error) {
       console.error('Error loading properties:', error);
     } finally {
@@ -90,7 +139,7 @@ const Properties: React.FC<PropertyListProps> = ({
       const data = localStorage.getItem('currentCompany');
       if (data) {
         const company = JSON.parse(data);
-        setCompanies([company]); // Set as array for consistency
+        setCompanies([company]);
       } else {
         setCompanies([]);
       }
@@ -240,7 +289,7 @@ const Properties: React.FC<PropertyListProps> = ({
     }
   };
 
-  const openEditModal = (property: PropertyWithUnits) => {
+  const openEditModal = (property: EnhancedProperty) => {
     setSelectedProperty(property);
     setFormData({
       name: property.name,
@@ -255,16 +304,16 @@ const Properties: React.FC<PropertyListProps> = ({
     setShowEditModal(true);
   };
 
-  const openDeleteModal = (property: PropertyWithUnits) => {
+  const openDeleteModal = (property: EnhancedProperty) => {
     setSelectedProperty(property);
     setShowDeleteModal(true);
   };
 
-  // const getOccupancyColor = (rate: number) => {
-  //   if (rate >= 80) return 'text-green-600 bg-green-50';
-  //   if (rate >= 50) return 'text-yellow-600 bg-yellow-50';
-  //   return 'text-red-600 bg-red-50';
-  // };
+  const getOccupancyColor = (rate: number) => {
+    if (rate >= 80) return 'text-green-600 bg-green-50';
+    if (rate >= 50) return 'text-yellow-600 bg-yellow-50';
+    return 'text-red-600 bg-red-50';
+  };
 
   const handleProperty = (propertyId: number) => {
     setPropertyId(propertyId);
@@ -287,7 +336,7 @@ const Properties: React.FC<PropertyListProps> = ({
     resetForm();
   };
 
-  const PropertyCard: React.FC<{ property: PropertyWithUnits; index: number }> = ({ property, index }) => {
+  const PropertyCard: React.FC<{ property: EnhancedProperty; index: number }> = ({ property, index }) => {
     const occupancyPercentage = property.occupancyRate;
 
     return (
@@ -305,7 +354,7 @@ const Properties: React.FC<PropertyListProps> = ({
               className="w-full h-full object-cover"
             />
           ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-white-500 via-white-600 to-grey-600"></div>
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500 via-blue-600 to-purple-600"></div>
           )}
           <div className="absolute inset-0 bg-black bg-opacity-20"></div>
           <div className="absolute top-4 right-4 flex gap-2 opacity-70 group-hover:opacity-100 transition-opacity">
@@ -314,7 +363,7 @@ const Properties: React.FC<PropertyListProps> = ({
                 e.stopPropagation();
                 openEditModal(property);
               }}
-              className="p-2 bg-grey bg-opacity-20 backdrop-blur-sm rounded-lg hover:bg-opacity-30 transition-all"
+              className="p-2 bg-white bg-opacity-20 backdrop-blur-sm rounded-lg hover:bg-opacity-30 transition-all"
             >
               <Edit3 className="w-4 h-4 text-white" />
             </button>
@@ -348,7 +397,7 @@ const Properties: React.FC<PropertyListProps> = ({
               <div className="flex items-center justify-center mb-1">
                 <Users className="w-4 h-4 text-blue-600 mr-1" />
                 <span className="text-2xl font-bold text-gray-900">
-                  {property.units.filter(unit => unit.isOccupied).length}
+                  {property.activeTenants}
                 </span>
               </div>
               <p className="text-xs text-gray-500 font-medium">Tenants</p>
@@ -358,7 +407,7 @@ const Properties: React.FC<PropertyListProps> = ({
               <div className="flex items-center justify-center mb-1">
                 <DollarSign className="w-4 h-4 text-green-600 mr-1" />
                 <span className="text-2xl font-bold text-gray-900">
-                  ${(property.monthlyRevenue || 0).toLocaleString()}
+                  ${property.monthlyRevenue.toLocaleString()}
                 </span>
               </div>
               <p className="text-xs text-gray-500 font-medium">Monthly</p>
@@ -377,8 +426,8 @@ const Properties: React.FC<PropertyListProps> = ({
 
           {/* Units Info */}
           <div className="mb-4 text-sm text-gray-600">
-            <div className="flex justify-between">
-              <span>Units: {property.units.length}/{property.maxUnits}</span>
+            <div className="flex justify-between items-center">
+              <span>Units: {property.activeTenants}/{property.maxUnits}</span>
               {property.companyId && (
                 <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
                   Company Property
@@ -398,7 +447,7 @@ const Properties: React.FC<PropertyListProps> = ({
           {property.agentCommissionRate > 0 && (
             <div className="inline-flex items-center px-3 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
               <TrendingUp className="w-3 h-3 mr-1" />
-              {property.agentCommissionRate}% Commission
+              {property.agentCommissionRate}% Commission (${property.agentIncome.toLocaleString()}/month)
             </div>
           )}
         </div>
@@ -406,8 +455,8 @@ const Properties: React.FC<PropertyListProps> = ({
     );
   };
 
-  const PropertyListItem: React.FC<{ property: PropertyWithUnits; index: number }> = ({ property, index }) => {
-    //const occupancyPercentage = property.occupancyRate;
+  const PropertyListItem: React.FC<{ property: EnhancedProperty; index: number }> = ({ property, index }) => {
+    const occupancyPercentage = property.occupancyRate;
 
     return (
       <div 
@@ -415,82 +464,90 @@ const Properties: React.FC<PropertyListProps> = ({
         style={{ animationDelay: `${index * 50}ms` }}
         onClick={() => handleProperty(property.id)}
       >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4 flex-1 min-w-0">
-            {/* Property Image Thumbnail */}
-            <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0">
-              {property.image ? (
-                <img 
-                  src={property.image} 
-                  alt={property.name}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                  <Building2 className="w-6 h-6 text-white" />
-                </div>
-              )}
+        <div className="flex items-center gap-4">
+          {/* Property Image Thumbnail */}
+          <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0">
+            {property.image ? (
+              <img 
+                src={property.image} 
+                alt={property.name}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                <Building2 className="w-6 h-6 text-white" />
+              </div>
+            )}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            {/* Property Info */}
+            <div className="flex items-start justify-between mb-2">
+              <div className="flex-1 min-w-0 pr-4">
+                <h3 className="text-lg font-semibold text-gray-900 truncate">
+                  {property.name}
+                </h3>
+                {property.address && (
+                  <p className="text-sm text-gray-500 truncate mt-1 flex items-center">
+                    <MapPin className="w-3 h-3 mr-1 flex-shrink-0" />
+                    {property.address}
+                  </p>
+                )}
+              </div>
+              
+              {/* Action Buttons */}
+              <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openEditModal(property);
+                  }}
+                  className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                >
+                  <Edit3 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openDeleteModal(property);
+                  }}
+                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
-            <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-lg font-semibold text-gray-900 truncate">
-                    {property.name}
-                  </h3>
-                  {property.address && (
-                    <p className="text-sm text-gray-500 truncate mt-1 flex items-center">
-                      <MapPin className="w-3 h-3 mr-1 flex-shrink-0" />
-                      {property.address}
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-2 ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openEditModal(property);
-                    }}
-                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                  >
-                    <Edit3 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openDeleteModal(property);
-                    }}
-                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+            {/* Stats Row */}
+            <div className="flex flex-wrap items-center gap-4 text-sm">
+              <div className="flex items-center text-gray-600">
+                <Users className="w-4 h-4 mr-1 flex-shrink-0" />
+                <span className="font-medium">{property.activeTenants}</span>
+                <span className="ml-1">tenants</span>
+              </div>
+              
+              <div className="flex items-center text-gray-600">
+                <DollarSign className="w-4 h-4 mr-1 flex-shrink-0" />
+                <span className="font-medium">${property.monthlyRevenue.toLocaleString()}</span>
+                <span className="ml-1">monthly</span>
+              </div>
+              
+              <div className="flex items-center text-gray-600">
+                <Building2 className="w-4 h-4 mr-1 flex-shrink-0" />
+                <span className="font-medium">{property.activeTenants}/{property.maxUnits}</span>
+                <span className="ml-1">units</span>
+              </div>
+              
+              <div className={`flex items-center px-2 py-1 rounded-full text-xs font-medium ${getOccupancyColor(occupancyPercentage)}`}>
+                <TrendingUp className="w-3 h-3 mr-1" />
+                <span>{occupancyPercentage.toFixed(0)}% occupied</span>
               </div>
 
-              <div className="flex items-center gap-6 text-sm">
-                <div className="flex items-center text-gray-600">
-                  <Users className="w-4 h-4 mr-1" />
-                  <span className="font-medium">{property.units.filter(unit => unit.isOccupied).length}</span>
-                  <span className="ml-1">tenants</span>
+              {property.agentCommissionRate > 0 && (
+                <div className="flex items-center px-2 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-medium">
+                  <span>{property.agentCommissionRate}% commission</span>
                 </div>
-                
-                <div className="flex items-center text-gray-600">
-                  <DollarSign className="w-4 h-4 mr-1" />
-                  <span className="font-medium">${(property.monthlyRevenue || 0).toLocaleString()}</span>
-                  <span className="ml-1">monthly</span>
-                </div>
-                
-                <div className="flex items-center text-gray-600">
-                  <Building2 className="w-4 h-4 mr-1" />
-                  <span className="font-medium">{property.units.length}/{property.maxUnits}</span>
-                  <span className="ml-1">units</span>
-                </div>
-                
-                {/* <div className={`flex items-center px-2 py-1 rounded-full text-xs font-medium ${getOccupancyColor(occupancyPercentage)}`}>
-                  <TrendingUp className="w-3 h-3 mr-1" />
-                  <span>{occupancyPercentage.toFixed(0)}% occupied</span>
-                </div> */}
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -524,7 +581,8 @@ const Properties: React.FC<PropertyListProps> = ({
         <div className="space-y-4">
           {[...Array(4)].map((_, i) => (
             <div key={i} className="bg-white rounded-xl p-4 border border-gray-100">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 bg-gray-200 rounded-lg flex-shrink-0"></div>
                 <div className="flex-1">
                   <div className="h-6 bg-gray-200 rounded w-1/3 mb-2"></div>
                   <div className="h-4 bg-gray-200 rounded w-1/2 mb-3"></div>
@@ -570,7 +628,7 @@ const Properties: React.FC<PropertyListProps> = ({
                 >
                   <Grid className="w-4 h-4" />
                 </button>
-                {/* <button
+                <button
                   onClick={() => setViewMode('list')}
                   className={`p-2 rounded-md transition-all ${
                     viewMode === 'list' 
@@ -579,7 +637,7 @@ const Properties: React.FC<PropertyListProps> = ({
                   }`}
                 >
                   <List className="w-4 h-4" />
-                </button> */}
+                </button>
               </div>
 
               {/* Refresh Button */}
@@ -731,7 +789,7 @@ const Properties: React.FC<PropertyListProps> = ({
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && selectedProperty && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="p-6">
               <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
