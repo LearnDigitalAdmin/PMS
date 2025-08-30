@@ -718,6 +718,7 @@ const Properties: React.FC<PropertyListProps> = ({
           <div className="bg-white rounded-lg w-full max-w-4xl max-h-[95vh] overflow-hidden">
             <Property
               propertyId={propertyId}
+              userId={currentUserId}
               onCancel={handleCloseModal}
               isModal={true}
             />

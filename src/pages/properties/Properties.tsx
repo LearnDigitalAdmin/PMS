@@ -24,6 +24,7 @@ import AddTenant from '../tenants/AddTenant';
 
 interface PropertyProps {
   propertyId: number;
+  userId: number;
   onCancel?: () => void;
   isModal: boolean;
 }
@@ -37,6 +38,7 @@ interface PropertyFormData {
 
 const Property: React.FC<PropertyProps> = ({ 
   propertyId: propertyId,
+  userId,
   onCancel,
   isModal = false  
 }) => {
@@ -93,7 +95,7 @@ const Property: React.FC<PropertyProps> = ({
 
       setProperty(propertyWithTenants);
 
-      const dashboard = await database.getDashboardData(propertyId, selectedMonth);
+      const dashboard = await database.getDashboardData(userId, propertyId, selectedMonth);
       setDashboardData(dashboard);
 
       const stats = await database.getMonthlyStats(propertyId, selectedYear);

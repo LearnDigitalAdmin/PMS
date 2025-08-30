@@ -335,6 +335,13 @@ const InvoicesWrapper = () => {
   return <Invoices onNavigate={handleNavigate} />;
 };
 
+const DashboardWrapper = () => {
+  const { user } = useAuth();
+
+
+  return <Dashboard userData = {user} />;
+};
+
 // Enhanced Profile Wrapper with Sync Management
 const ProfileWrapper = () => {
   const { user } = useAuth();
@@ -367,7 +374,7 @@ const AppContent: React.FC = () => {
           <Routes>
             <Route path="/" element={
               <Suspense fallback={<LoadingSpinner />}>
-                <Dashboard />
+                <DashboardWrapper />
               </Suspense>
             } />
             <Route path="/properties" element={

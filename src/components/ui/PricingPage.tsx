@@ -1,9 +1,39 @@
-import React, { useState } from 'react';
-import { Check, X, Building, Users, Smartphone, Cloud, Palette, FileText, Mail, Shield, Star, Zap } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Check, X, Building, Users, Cloud, FileText, Shield, Star, Zap, Crown, ExternalLink, Phone, Mail } from 'lucide-react';
 
-const PricingPage = () => {
-  const [selectedPlan, setSelectedPlan] = useState('professional');
-  const [billingCycle, setBillingCycle] = useState('monthly');
+interface PricingModalProps {
+  isOpen: boolean;
+  onClose: (planSelected?: string) => void;
+  canDismiss?: boolean; // false when shown after signup, true when shown from profile
+  currentPlan?: string;
+}
+
+const PricingModal: React.FC<PricingModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  canDismiss = true,
+  currentPlan = 'free'
+}) => {
+  const [selectedPlan, setSelectedPlan] = useState(currentPlan);
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
+  const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
+
+  const marketingMessages = [
+    "🏠 Professional Property Management Services Available",
+    "📊 Upgrade to Premium - Remove Watermarks & Get More Properties", 
+    "🔒 Secure Online Data Backup - Never Lose Your Data Again",
+    "✨ Custom Branding Available - Make It Yours",
+    "📋 Professional Tenant Screening Services"
+  ];
+
+  useEffect(() => {
+    if (isOpen) {
+      const interval = setInterval(() => {
+        setCurrentMessageIndex((prev) => (prev + 1) % marketingMessages.length);
+      }, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [isOpen]);
 
   const plans = [
     {
@@ -23,8 +53,8 @@ const PricingPage = () => {
         support: 'Community'
       },
       features: [
-        { name: '1 Property', included: true },
-        { name: 'Up to 12 Tenants', included: true },
+        { name: '2 Properties', included: true },
+        { name: 'Up to 24 Tenants', included: true },
         { name: 'Invoice Generation', included: true },
         { name: 'Local Storage Only', included: true },
         { name: 'WhatsApp/Email Sharing', included: true },
@@ -44,8 +74,8 @@ const PricingPage = () => {
       headerColor: 'bg-blue-100',
       buttonColor: 'bg-blue-600 hover:bg-blue-700',
       limits: {
-        properties: 3,
-        tenants: 50,
+        properties: 7,
+        tenants: 105,
         sync: false,
         branding: 'Light footer branding',
         support: 'Email'
@@ -56,7 +86,7 @@ const PricingPage = () => {
         { name: 'Invoice Generation', included: true },
         { name: 'Local Storage', included: true },
         { name: 'WhatsApp/Email Sharing', included: true },
-        { name: 'Light Footer Branding', included: true, note: 'Company promotion on invoices' },
+        { name: 'Light Footer Branding', included: true, note: 'Minimal company promotion' },
         { name: 'Basic Reports', included: true },
         { name: 'Multi-device Sync', included: false },
         { name: 'Custom Logo', included: false }
@@ -125,7 +155,7 @@ const PricingPage = () => {
     return `KES ${price.toLocaleString()}`;
   };
 
-  const getDiscountBadge = (plan:any) => {
+  const getDiscountBadge = (plan: any) => {
     if (billingCycle === 'annual' && plan.originalPrice) {
       const discount = Math.round((1 - plan.price.annual / plan.originalPrice.annual) * 100);
       return discount > 0 ? `Save ${discount}%` : null;
@@ -133,237 +163,284 @@ const PricingPage = () => {
     return null;
   };
 
+  const handlePlanSelect = (planId: string) => {
+    if (planId === 'free') {
+      onClose('free');
+    } else {
+      // For paid plans, show contact info
+      const plan = plans.find(p => p.id === planId);
+      const message = `Hi! I'm interested in upgrading to the ${plan?.name} plan (KES ${formatPrice(plan?.price[billingCycle] || 0)}/${billingCycle}). Can you help me set this up?`;
+      
+      // Open WhatsApp with pre-filled message
+      window.open(`https://wa.me/254791286165?text=${encodeURIComponent(message)}`, '_blank');
+      
+      if (canDismiss) {
+        onClose(planId);
+      }
+    }
+  };
+
+  if (!isOpen) return null;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 py-8 px-4">
-      <div className="max-w-7xl mx-auto">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-6xl max-h-[95vh] overflow-hidden w-full">
         {/* Header */}
-        <div className="text-center mb-12">
-          <div className="flex items-center justify-center mb-4">
-            <Building className="h-8 w-8 text-green-600 mr-2" />
-            <h1 className="text-3xl font-bold text-gray-900">PlotYangu</h1>
-          </div>
-          <h2 className="text-4xl font-bold text-gray-900 mb-4">
-            Choose Your Perfect Plan
-          </h2>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            From solo landlords to property management companies - we have the right plan for your rental business
-          </p>
-        </div>
-
-        {/* Billing Toggle */}
-        <div className="flex justify-center mb-8">
-          <div className="bg-white rounded-lg p-1 shadow-md">
-            <button
-              onClick={() => setBillingCycle('monthly')}
-              className={`px-6 py-2 rounded-md font-medium transition-colors ${
-                billingCycle === 'monthly'
-                  ? 'bg-green-600 text-white'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Monthly
-            </button>
-            <button
-              onClick={() => setBillingCycle('annual')}
-              className={`px-6 py-2 rounded-md font-medium transition-colors relative ${
-                billingCycle === 'annual'
-                  ? 'bg-green-600 text-white'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Annual
-              <span className="absolute -top-2 -right-2 bg-orange-500 text-white text-xs px-2 py-1 rounded-full">
-                Save 25%
-              </span>
-            </button>
-          </div>
-        </div>
-
-        {/* Plans Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-          {plans.map((plan) => {
-            const discount = getDiscountBadge(plan);
-            return (
-              <div
-                key={plan.id}
-                className={`relative rounded-2xl border-2 transition-all duration-300 hover:shadow-xl ${
-                  plan.color
-                } ${
-                  selectedPlan === plan.id ? 'ring-2 ring-green-500 ring-offset-2' : ''
-                }`}
-                onClick={() => setSelectedPlan(plan.id)}
+        <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-4 md:p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl md:text-2xl font-bold mb-2">Choose Your Perfect Plan</h2>
+              <p className="text-purple-100 text-sm">
+                {canDismiss ? 'Upgrade your account to unlock more features' : 'Select a plan to get started with PlotYangu'}
+              </p>
+            </div>
+            {canDismiss && (
+              <button
+                onClick={() => onClose()}
+                className="text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/20 transition-colors"
               >
-                {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                    <div className="bg-green-600 text-white px-4 py-1 rounded-full text-sm font-medium flex items-center">
-                      <Star className="h-4 w-4 mr-1" />
-                      Most Popular
-                    </div>
-                  </div>
-                )}
-                
-                {discount && (
-                  <div className="absolute -top-3 right-4">
-                    <div className="bg-orange-500 text-white px-3 py-1 rounded-full text-sm font-medium">
-                      {discount}
-                    </div>
-                  </div>
-                )}
+                ×
+              </button>
+            )}
+          </div>
 
-                <div className={`${plan.headerColor} px-6 py-4 rounded-t-2xl`}>
-                  <h3 className="text-xl font-bold text-gray-900">{plan.name}</h3>
-                  <div className="mt-2">
-                    <span className="text-3xl font-bold text-gray-900">
-                      {formatPrice(plan.price[billingCycle])}
-                    </span>
-                    {plan.price[billingCycle] > 0 && (
-                      <span className="text-gray-600 ml-1">
-                        /{billingCycle === 'monthly' ? 'month' : 'year'}
-                      </span>
-                    )}
-                  </div>
-                  {billingCycle === 'annual' && plan.originalPrice && (
-                    <div className="text-sm text-gray-500 line-through">
-                      Was {formatPrice(plan.originalPrice.annual)}/year
+          {/* Auto-rotating Marketing Banner */}
+          <div className="mt-4 bg-white/20 backdrop-blur-lg rounded-lg p-3">
+            <div className="flex items-center justify-center">
+              <Star className="w-4 h-4 mr-2 flex-shrink-0" />
+              <p className="text-sm font-medium text-center animate-pulse">
+                {marketingMessages[currentMessageIndex]}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 md:p-6 overflow-y-auto max-h-[calc(95vh-180px)]">
+          {/* Billing Toggle */}
+          <div className="flex justify-center mb-6">
+            <div className="bg-gray-100 rounded-lg p-1 shadow-md">
+              <button
+                onClick={() => setBillingCycle('monthly')}
+                className={`px-4 py-2 rounded-md font-medium transition-colors text-sm ${
+                  billingCycle === 'monthly'
+                    ? 'bg-green-600 text-white'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => setBillingCycle('annual')}
+                className={`px-4 py-2 rounded-md font-medium transition-colors text-sm relative ${
+                  billingCycle === 'annual'
+                    ? 'bg-green-600 text-white'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Annual
+                <span className="absolute -top-2 -right-2 bg-orange-500 text-white text-xs px-2 py-1 rounded-full">
+                  Save 25%
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Plans Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            {plans.map((plan) => {
+              const discount = getDiscountBadge(plan);
+              const isCurrentPlan = currentPlan === plan.id;
+              
+              return (
+                <div
+                  key={plan.id}
+                  className={`relative rounded-xl border-2 transition-all duration-300 hover:shadow-lg cursor-pointer ${
+                    plan.color
+                  } ${
+                    selectedPlan === plan.id ? 'ring-2 ring-green-500 ring-offset-2' : ''
+                  } ${
+                    isCurrentPlan ? 'ring-2 ring-blue-500 ring-offset-2' : ''
+                  }`}
+                  onClick={() => setSelectedPlan(plan.id)}
+                >
+                  {plan.popular && (
+                    <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                      <div className="bg-green-600 text-white px-3 py-1 rounded-full text-xs font-medium flex items-center">
+                        <Star className="h-3 w-3 mr-1" />
+                        Most Popular
+                      </div>
                     </div>
                   )}
-                </div>
+                  
+                  {discount && (
+                    <div className="absolute -top-3 right-4">
+                      <div className="bg-orange-500 text-white px-2 py-1 rounded-full text-xs font-medium">
+                        {discount}
+                      </div>
+                    </div>
+                  )}
 
-                <div className="px-6 py-6">
-                  {/* Quick Stats */}
-                  <div className="grid grid-cols-2 gap-2 mb-6 text-sm">
-                    <div className="flex items-center">
-                      <Building className="h-4 w-4 text-green-600 mr-1" />
-                      <span>{plan.limits.properties} {typeof plan.limits.properties === 'number' && plan.limits.properties > 1 ? 'Properties' : 'Property'}</span>
+                  {isCurrentPlan && (
+                    <div className="absolute -top-3 left-4">
+                      <div className="bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-medium">
+                        Current Plan
+                      </div>
                     </div>
-                    <div className="flex items-center">
-                      <Users className="h-4 w-4 text-blue-600 mr-1" />
-                      <span>{plan.limits.tenants} Tenants</span>
-                    </div>
-                    <div className="flex items-center">
-                      <Cloud className="h-4 w-4 text-purple-600 mr-1" />
-                      <span className={plan.limits.sync ? 'text-green-600' : 'text-gray-400'}>
-                        {plan.limits.sync ? 'Cloud Sync' : 'Local Only'}
+                  )}
+
+                  <div className={`${plan.headerColor} px-4 py-4 rounded-t-xl`}>
+                    <h3 className="text-lg font-bold text-gray-900">{plan.name}</h3>
+                    <div className="mt-2">
+                      <span className="text-2xl font-bold text-gray-900">
+                        {formatPrice(plan.price[billingCycle])}
                       </span>
+                      {plan.price[billingCycle] > 0 && (
+                        <span className="text-gray-600 ml-1 text-sm">
+                          /{billingCycle === 'monthly' ? 'mo' : 'yr'}
+                        </span>
+                      )}
                     </div>
-                    <div className="flex items-center">
-                      <Palette className="h-4 w-4 text-orange-600 mr-1" />
-                      <span className="text-xs">{plan.limits.branding}</span>
-                    </div>
+                    {billingCycle === 'annual' && plan.originalPrice && (
+                      <div className="text-xs text-gray-500 line-through">
+                        Was {formatPrice(plan.originalPrice.annual)}/year
+                      </div>
+                    )}
                   </div>
 
-                  {/* Features List */}
-                  <div className="space-y-3">
-                    {plan.features.map((feature, index) => (
-                      <div key={index} className="flex items-start">
-                        {feature.included ? (
-                          <Check className="h-4 w-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
-                        ) : (
-                          <X className="h-4 w-4 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
-                        )}
-                        <div>
-                          <span className={feature.included ? 'text-gray-900' : 'text-gray-400'}>
+                  <div className="px-4 py-4">
+                    {/* Quick Stats */}
+                    <div className="grid grid-cols-1 gap-2 mb-4 text-xs">
+                      <div className="flex items-center">
+                        <Building className="h-3 w-3 text-green-600 mr-1" />
+                        <span>{plan.limits.properties} {typeof plan.limits.properties === 'number' && plan.limits.properties > 1 ? 'Properties' : 'Property'}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <Users className="h-3 w-3 text-blue-600 mr-1" />
+                        <span>{plan.limits.tenants} Tenants</span>
+                      </div>
+                      <div className="flex items-center">
+                        <Cloud className="h-3 w-3 text-purple-600 mr-1" />
+                        <span className={plan.limits.sync ? 'text-green-600' : 'text-gray-400'}>
+                          {plan.limits.sync ? 'Cloud Sync' : 'Local Only'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Top Features */}
+                    <div className="space-y-2 mb-4">
+                      {plan.features.slice(0, 4).map((feature, index) => (
+                        <div key={index} className="flex items-start">
+                          {feature.included ? (
+                            <Check className="h-3 w-3 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                          ) : (
+                            <X className="h-3 w-3 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
+                          )}
+                          <span className={`text-xs ${feature.included ? 'text-gray-900' : 'text-gray-400'}`}>
                             {feature.name}
                           </span>
-                          {feature.note && (
-                            <div className="text-xs text-gray-500 mt-1">{feature.note}</div>
-                          )}
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                      {plan.features.length > 4 && (
+                        <div className="text-xs text-gray-500 text-center mt-2">
+                          +{plan.features.length - 4} more features
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => handlePlanSelect(plan.id)}
+                      disabled={isCurrentPlan}
+                      className={`w-full px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
+                        isCurrentPlan 
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : `${plan.buttonColor} text-white hover:shadow-lg`
+                      }`}
+                    >
+                      {isCurrentPlan ? 'Current Plan' : 
+                       plan.id === 'free' ? 'Continue Free' : 'Start Free Trial'}
+                    </button>
                   </div>
+                </div>
+              );
+            })}
+          </div>
 
-                  <button
-                    className={`w-full mt-6 px-4 py-3 rounded-lg font-medium transition-colors ${
-                      plan.buttonColor
-                    } text-white`}
-                  >
-                    {plan.id === 'free' ? 'Get Started Free' : 'Start Free Trial'}
-                  </button>
+          {/* Trial Information */}
+          <div className="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl p-4 md:p-6 mb-6">
+            <div className="text-center">
+              <Zap className="h-8 w-8 text-yellow-500 mx-auto mb-3" />
+              <h3 className="text-lg font-bold text-gray-900 mb-3">Start Your Journey Risk-Free</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="text-center">
+                  <div className="bg-green-100 rounded-full p-2 w-10 h-10 mx-auto mb-2 flex items-center justify-center">
+                    <FileText className="h-5 w-5 text-green-600" />
+                  </div>
+                  <h4 className="font-semibold text-gray-900 mb-1 text-sm">1 Month Free Trial</h4>
+                  <p className="text-gray-600 text-xs">Try any paid plan free for 30 days</p>
+                </div>
+                <div className="text-center">
+                  <div className="bg-blue-100 rounded-full p-2 w-10 h-10 mx-auto mb-2 flex items-center justify-center">
+                    <Shield className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <h4 className="font-semibold text-gray-900 mb-1 text-sm">No Commitment</h4>
+                  <p className="text-gray-600 text-xs">Cancel anytime, no questions asked</p>
+                </div>
+                <div className="text-center">
+                  <div className="bg-purple-100 rounded-full p-2 w-10 h-10 mx-auto mb-2 flex items-center justify-center">
+                    <ExternalLink className="h-5 w-5 text-purple-600" />
+                  </div>
+                  <h4 className="font-semibold text-gray-900 mb-1 text-sm">Expert Support</h4>
+                  <p className="text-gray-600 text-xs">Get help when you need it</p>
                 </div>
               </div>
-            );
-          })}
-        </div>
+            </div>
+          </div>
 
-        {/* Trial Information */}
-        <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
-          <div className="text-center">
-            <Zap className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
-            <h3 className="text-2xl font-bold text-gray-900 mb-4">Start Your Journey Risk-Free</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-              <div className="text-center">
-                <div className="bg-green-100 rounded-full p-3 w-16 h-16 mx-auto mb-3 flex items-center justify-center">
-                  <FileText className="h-8 w-8 text-green-600" />
-                </div>
-                <h4 className="font-semibold text-gray-900 mb-2">1 Month Free Trial</h4>
-                <p className="text-gray-600 text-sm">Try any paid plan free for 30 days</p>
-              </div>
-              <div className="text-center">
-                <div className="bg-blue-100 rounded-full p-3 w-16 h-16 mx-auto mb-3 flex items-center justify-center">
-                  <Shield className="h-8 w-8 text-blue-600" />
-                </div>
-                <h4 className="font-semibold text-gray-900 mb-2">No Commitment</h4>
-                <p className="text-gray-600 text-sm">Cancel anytime, no questions asked</p>
-              </div>
-              <div className="text-center">
-                <div className="bg-purple-100 rounded-full p-3 w-16 h-16 mx-auto mb-3 flex items-center justify-center">
-                  <Smartphone className="h-8 w-8 text-purple-600" />
-                </div>
-                <h4 className="font-semibold text-gray-900 mb-2">Instant Setup</h4>
-                <p className="text-gray-600 text-sm">Start managing rent in minutes</p>
+          {/* Contact Information */}
+          <div className="bg-gray-50 rounded-xl p-4 mb-6">
+            <div className="text-center">
+              <p className="text-sm text-gray-600 mb-3 font-medium">
+                Questions about pricing or need a custom solution?
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <button
+                  onClick={() => window.open('https://wa.me/254791286165', '_blank')}
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center space-x-2 transition-all hover:shadow-lg"
+                >
+                  <Phone className="w-4 h-4" />
+                  <span>WhatsApp: +254791286165</span>
+                </button>
+                <button
+                  onClick={() => window.open('mailto:info@smbkenya.com', '_blank')}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center space-x-2 transition-all hover:shadow-lg"
+                >
+                  <Mail className="w-4 h-4" />
+                  <span>info@smbkenya.com</span>
+                </button>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Target Audience */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 max-w-6xl mx-auto">
-          <div className="text-center p-6 bg-white rounded-lg shadow-md">
-            <div className="bg-gray-100 rounded-full p-3 w-16 h-16 mx-auto mb-3 flex items-center justify-center">
-              <Building className="h-8 w-8 text-gray-600" />
+          {/* Bottom Actions for Signup Flow */}
+          {!canDismiss && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+              <div className="flex items-center justify-center text-yellow-800">
+                <Crown className="w-5 h-5 mr-2" />
+                <span className="font-medium text-sm">
+                  Select a plan to continue to your dashboard
+                </span>
+              </div>
+              <div className="mt-3 text-center">
+                <p className="text-xs text-yellow-700">
+                  You can always upgrade later from your profile page
+                </p>
+              </div>
             </div>
-            <h4 className="font-semibold text-gray-900 mb-2">Small Landlords</h4>
-            <p className="text-gray-600 text-sm">Perfect for 1-3 properties with local tenants</p>
-            <div className="mt-3 text-green-600 font-medium">Free Forever</div>
-          </div>
-          
-          <div className="text-center p-6 bg-white rounded-lg shadow-md">
-            <div className="bg-blue-100 rounded-full p-3 w-16 h-16 mx-auto mb-3 flex items-center justify-center">
-              <Users className="h-8 w-8 text-blue-600" />
-            </div>
-            <h4 className="font-semibold text-gray-900 mb-2">Property Agents</h4>
-            <p className="text-gray-600 text-sm">Managing multiple plots for different owners</p>
-            <div className="mt-3 text-blue-600 font-medium">Starter Plan</div>
-          </div>
-          
-          <div className="text-center p-6 bg-white rounded-lg shadow-md ring-2 ring-green-500">
-            <div className="bg-green-100 rounded-full p-3 w-16 h-16 mx-auto mb-3 flex items-center justify-center">
-              <Smartphone className="h-8 w-8 text-green-600" />
-            </div>
-            <h4 className="font-semibold text-gray-900 mb-2">Serious Landlords</h4>
-            <p className="text-gray-600 text-sm">Multiple properties, professional invoices</p>
-            <div className="mt-3 text-green-600 font-medium">Professional Plan</div>
-          </div>
-          
-          <div className="text-center p-6 bg-white rounded-lg shadow-md">
-            <div className="bg-purple-100 rounded-full p-3 w-16 h-16 mx-auto mb-3 flex items-center justify-center">
-              <Mail className="h-8 w-8 text-purple-600" />
-            </div>
-            <h4 className="font-semibold text-gray-900 mb-2">PMCs</h4>
-            <p className="text-gray-600 text-sm">Property Management Companies with teams</p>
-            <div className="mt-3 text-purple-600 font-medium">Enterprise Plan</div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="text-center mt-12 text-gray-600">
-          <p>Trusted by landlords and agents across Kenya 🇰🇪</p>
-          <p className="mt-2">Questions? WhatsApp us at +254 791 286 165</p>
+          )}
         </div>
       </div>
     </div>
   );
 };
 
-export default PricingPage;
+export default PricingModal;

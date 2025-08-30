@@ -38,7 +38,7 @@ import {
 } from 'recharts';
 import { database, type Property, type DashboardData, type MonthlyStats, type InvoiceWithDetails } from '../services/database/Database';
 
-interface DashboardProps {}
+interface DashboardProps {userData: any;}
 
 const CHART_COLORS = {
   primary: '#3B82F6',
@@ -553,8 +553,9 @@ const RecentActivity: React.FC<{
   );
 };
 
+
 // Main Dashboard Component
-const Dashboard: React.FC<DashboardProps> = () => {
+const Dashboard: React.FC<DashboardProps> = ({userData}) => {
   const [properties, setProperties] = useState<Property[]>([]);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [currentMonth, setCurrentMonth] = useState(() => {
@@ -572,11 +573,12 @@ const Dashboard: React.FC<DashboardProps> = () => {
       setLoading(true);
       
       // Load properties (assuming userId = 1 for demo)
-      const propertiesData = await database.getProperties(1);
+      const propertiesData = await database.getProperties(userData.id);
       setProperties(propertiesData);
 
       // Load dashboard data
       const dashData = await database.getDashboardData(
+        userData.id,
         selectedProperty?.id,
         currentMonth
       );
