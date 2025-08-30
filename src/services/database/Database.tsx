@@ -1,9 +1,9 @@
 // Database.tsx - Complete SQLite Database Implementation with Transaction Fixes
 import { SQLiteDBConnection, type capSQLiteChanges } from '@capacitor-community/sqlite';
 import SQLiteConnectionManager from './Initializer';
+import { firebaseSyncService, type UserTier, type UserType } from './FirebaseSync';
 
 // ==================== TYPE INTERFACES ====================
-
 export interface User {
   id: number;
   name: string;
@@ -11,22 +11,17 @@ export interface User {
   phone?: string;
   passwordHash?: string;
   isPremium: boolean;
+  type: UserType; // New field for user type
+  tier: UserTier; // 'free' | 'low' | 'business' | 'enterprise'
+  storage: boolean; // Cloud storage and multi-device sync permission
+  revenuekatUserId?: string; // RevenueCat user identifier
+  selectedPropertyIds?: number[]; // For restricted users
+  restrictedAccess: boolean; // When user exceeds limits
   createdAt: string;
   updatedAt: string;
 }
 
-// export interface Property {
-//   id: number;
-//   userId: number;
-//   name: string;
-//   address?: string;
-//   description?: string;
-//   agentCommissionRate: number;
-//   createdAt: string;
-//   updatedAt: string;
-// }
-
-
+// Keep existing interfaces but add access control fields where needed
 export interface Property {
   id: number;
   userId: number;
@@ -34,12 +29,82 @@ export interface Property {
   name: string;
   address?: string;
   description?: string;
-  image?: string; // Base64 encoded image
+  image?: string;
   agentCommissionRate: number;
   maxUnits: number;
+  isRestricted?: boolean; // Added for access control
   createdAt: string;
   updatedAt: string;
 }
+
+export interface Tenant {
+  id: number;
+  propertyId: number;
+  name: string;
+  phone?: string;
+  email?: string;
+  unitNumber?: string;
+  rentAmount: number;
+  standingFees: number;
+  depositAmount: number;
+  leaseStart?: string;
+  leaseEnd?: string;
+  isActive: boolean;
+  isRestricted?: boolean; // Added for access control
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Enhanced input interface with validation
+export interface UserWithCompanyInput {
+  user: {
+    id: number;
+    name: string;
+    email: string;
+    phone?: string;
+    password: string;
+    type?: "free" | "premium";
+    tier?: UserTier;
+  };
+  company?: CompanyInput;
+}
+
+// export interface User {
+//   id: number;
+//   name: string;
+//   email?: string;
+//   phone?: string;
+//   passwordHash?: string;
+//   isPremium: boolean;
+//   createdAt: string;
+//   updatedAt: string;
+// }
+
+// // export interface Property {
+// //   id: number;
+// //   userId: number;
+// //   name: string;
+// //   address?: string;
+// //   description?: string;
+// //   agentCommissionRate: number;
+// //   createdAt: string;
+// //   updatedAt: string;
+// // }
+
+
+// export interface Property {
+//   id: number;
+//   userId: number;
+//   companyId?: number;
+//   name: string;
+//   address?: string;
+//   description?: string;
+//   image?: string; // Base64 encoded image
+//   agentCommissionRate: number;
+//   maxUnits: number;
+//   createdAt: string;
+//   updatedAt: string;
+// }
 
 export interface Unit {
   id: number;
@@ -87,22 +152,22 @@ export interface PropertyWithUnits {
 }
 
 
-export interface Tenant {
-  id: number;
-  propertyId: number;
-  name: string;
-  phone?: string;
-  email?: string;
-  unitNumber?: string;
-  rentAmount: number;
-  standingFees: number;
-  depositAmount: number;
-  leaseStart?: string;
-  leaseEnd?: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
+// export interface Tenant {
+//   id: number;
+//   propertyId: number;
+//   name: string;
+//   phone?: string;
+//   email?: string;
+//   unitNumber?: string;
+//   rentAmount: number;
+//   standingFees: number;
+//   depositAmount: number;
+//   leaseStart?: string;
+//   leaseEnd?: string;
+//   isActive: boolean;
+//   createdAt: string;
+//   updatedAt: string;
+// }
 
 export interface Invoice {
   id: number;
@@ -141,13 +206,13 @@ export interface Payment {
 }
 
 // Input interfaces for creation
-export interface PropertyInput {
-  userId: number;
-  name: string;
-  address?: string;
-  description?: string;
-  agentCommissionRate?: number;
-}
+// export interface PropertyInput {
+//   userId: number;
+//   name: string;
+//   address?: string;
+//   description?: string;
+//   agentCommissionRate?: number;
+// }
 
 export interface TenantInput {
   propertyId: number;
@@ -248,16 +313,16 @@ export interface CompanyInput {
   email?: string;
 }
 
-export interface UserWithCompanyInput {
-  user: {
-    id: number;
-    name: string;
-    email: string;
-    phone?: string;
-    password: string;
-  };
-  company?: CompanyInput;
-}
+// export interface UserWithCompanyInput {
+//   user: {
+//     id: number;
+//     name: string;
+//     email: string;
+//     phone?: string;
+//     password: string;
+//   };
+//   company?: CompanyInput;
+// }
 
 export interface AuthResult {
   user: User;
@@ -284,6 +349,7 @@ export class DatabaseManager {
       this.db = await this.connectionManager.getConnection(this.DB_NAME);
       await this.createTables();
       await this.createIndexes();
+      await this.migrateExistingData();
       
       console.log('Database initialized successfully');
     } catch (error) {
@@ -294,17 +360,6 @@ export class DatabaseManager {
 
   private async createTables(): Promise<void> {
     const queries = [
-      // Users table (updated)
-      `CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        phone TEXT,
-        password_hash TEXT NOT NULL,
-        is_premium INTEGER DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )`,
 
       // Companies table (new)
       `CREATE TABLE IF NOT EXISTS companies (
@@ -319,23 +374,6 @@ export class DatabaseManager {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       )`,
 
-      // Properties table (updated with user_id reference)
-      `CREATE TABLE IF NOT EXISTS properties (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      company_id INTEGER,
-      name TEXT NOT NULL,
-      address TEXT,
-      description TEXT,
-      image TEXT, -- Base64 encoded image
-      agent_commission_rate REAL DEFAULT 0,
-      max_units INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
-    )`,
-
     // New Units table
     `CREATE TABLE IF NOT EXISTS units (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -349,26 +387,62 @@ export class DatabaseManager {
       UNIQUE(property_id, unit_number)
     )`,
 
-    // Updated Tenants table - add unit_id reference
-    `CREATE TABLE IF NOT EXISTS tenants (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      property_id INTEGER NOT NULL,
-      unit_id INTEGER,
-      name TEXT NOT NULL,
-      phone TEXT,
-      email TEXT,
-      unit_number TEXT, -- Keep for backward compatibility
-      rent_amount REAL NOT NULL,
-      standing_fees REAL DEFAULT 0,
-      deposit_amount REAL DEFAULT 0,
-      lease_start DATE,
-      lease_end DATE,
-      is_active INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
-      FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE SET NULL
-    )`,
+    `CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        phone TEXT,
+        password_hash TEXT NOT NULL,
+        is_premium INTEGER DEFAULT 0,
+        type TEXT DEFAULT 'free' CHECK (type IN ('free', 'premium')),
+        tier TEXT DEFAULT 'free' CHECK (tier IN ('free', 'low', 'business', 'enterprise')),
+        storage INTEGER DEFAULT 0,
+        revenuecat_user_id TEXT,
+        selected_property_ids TEXT, -- JSON array of property IDs for restricted users
+        restricted_access INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+
+      // Add access control to properties
+      `CREATE TABLE IF NOT EXISTS properties (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        company_id INTEGER,
+        name TEXT NOT NULL,
+        address TEXT,
+        description TEXT,
+        image TEXT,
+        agent_commission_rate REAL DEFAULT 0,
+        max_units INTEGER DEFAULT 1,
+        is_restricted INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
+      )`,
+
+      // Add access control to tenants
+      `CREATE TABLE IF NOT EXISTS tenants (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        property_id INTEGER NOT NULL,
+        unit_id INTEGER,
+        name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        unit_number TEXT,
+        rent_amount REAL NOT NULL,
+        standing_fees REAL DEFAULT 0,
+        deposit_amount REAL DEFAULT 0,
+        lease_start DATE,
+        lease_end DATE,
+        is_active INTEGER DEFAULT 1,
+        is_restricted INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
+        FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE SET NULL
+      )`,
 
       // Invoices table
       `CREATE TABLE IF NOT EXISTS invoices (
@@ -451,251 +525,1011 @@ export class DatabaseManager {
     }
   }
 
-  // // ==================== USER & AUTHENTICATION ====================
 
-// Corrected transaction helper
-private async executeInTransaction(statements: { statement: string; values?: any[] }[]): Promise<capSQLiteChanges> {
-  try {
-    console.log('Starting transaction...');
-    
-    const results = await this.db!.executeSet(statements, true);
-    
-    console.log('Transaction completed successfully');
-    return results;
-  } catch (error) {
-    console.error('Transaction error:', error);
-    throw error;
+
+    private async migrateExistingData(): Promise<void> {
+    try {
+      // Add new columns to existing tables if they don't exist
+      const migrations = [
+        `ALTER TABLE users ADD COLUMN type TEXT DEFAULT 'free'`,
+        `ALTER TABLE users ADD COLUMN tier TEXT DEFAULT 'free'`,
+        `ALTER TABLE users ADD COLUMN storage INTEGER DEFAULT 0`,
+        `ALTER TABLE users ADD COLUMN revenuecat_user_id TEXT`,
+        `ALTER TABLE users ADD COLUMN selected_property_ids TEXT`,
+        `ALTER TABLE users ADD COLUMN restricted_access INTEGER DEFAULT 0`,
+        `ALTER TABLE properties ADD COLUMN is_restricted INTEGER DEFAULT 0`,
+        `ALTER TABLE tenants ADD COLUMN is_restricted INTEGER DEFAULT 0`
+      ];
+
+      for (const migration of migrations) {
+        try {
+          await this.db!.run(migration);
+        } catch (error) {
+          // Column might already exist, ignore error
+          console.log('Migration skipped (column exists):', migration);
+        }
+      }
+    } catch (error) {
+      console.error('Migration error:', error);
+    }
   }
-}
 
-// Updated createUserWithCompany method
-// async createUserWithCompany(data: UserWithCompanyInput): Promise<AuthResult> {
-//   // Check if user exists first
-//   const existingUserQuery = 'SELECT * FROM users WHERE email = ?';
-//   const existingUserResult = await this.db!.query(existingUserQuery, [data.user.email]);
-  
-//   if (existingUserResult.values && existingUserResult.values.length > 0) {
-//     throw new Error('User with this email already exists');
-//   }
+  // ==================== ENHANCED USER OPERATIONS ====================
 
-//   const passwordHash = await this.hashPassword(data.user.password);
+  async updateUserTierAndType(userId: number, tier: UserTier, type: UserType, storage: boolean = false): Promise<void> {
+    const query = `UPDATE users SET ${fields.join(', ')} WHERE id = ?`;
+    await this.db!.run(query, values);
+  }
 
-//   const statements = [
-//     {
-//       statement: `
-//         INSERT INTO users (id, name, email, phone, password_hash, is_premium)
-//         VALUES (?, ?, ?, ?, ?, 0)
-//       `,
-//       values: [
-//         data.user.id,
-//         data.user.name,
-//         data.user.email,
-//         data.user.phone || '',
-//         passwordHash
-//       ]
-//     }
-//   ];
+  // ==================== STANDARD MAPPING FUNCTIONS ====================
 
-//   if (data.company && data.company.name) {
-//     statements.push({
-//       statement: `
-//         INSERT INTO companies (user_id, name, address, phone, email)
-//         VALUES (last_insert_rowid(), ?, ?, ?, ?)
-//       `,
-//       values: [
-//         data.company.name,
-//         data.company.address || '',
-//         data.company.phone || '',
-//         data.company.email || ''
-//       ]
-//     });
-//   }
-
-//   const results = await this.executeInTransaction(statements);
-//   const userId = results.changes!.lastId!;
-
-//   const user = await this.getUserById(userId);
-//   if (!user) {
-//     throw new Error('Failed to retrieve created user');
-//   }
-
-//   // Fix the null type issue
-//   const companyResult = data.company ? await this.getCompanyByUserId(userId) : null;
-//   const company = companyResult || undefined;
-
-//   return { user, company };
-// }
-
-async authenticateUser(email: string, password: string): Promise<AuthResult | null> {
-  try {
-    console.log('Authenticating user:', email);
-    
-    // Normalize email (lowercase and trim)
-    const normalizedEmail = email.toLowerCase().trim();
-    
-    // Get user by email
-    const user = await this.getUserByEmail(normalizedEmail);
-    if (!user) {
-      console.log('User not found:', normalizedEmail);
-      return null;
-    }
-
-    console.log('User found:', user.email);
-
-    // Check if user has a password hash
-    if (!user.passwordHash) {
-      console.log('User has no password hash');
-      return null;
-    }
-
-    // Verify password
-    const isValidPassword = await this.verifyPassword(password, user.passwordHash);
-    if (!isValidPassword) {
-      console.log('Invalid password for user:', normalizedEmail);
-      return null;
-    }
-
-    console.log('Password verified successfully for user:', normalizedEmail);
-
-    // Get user's company if exists
-    const company = await this.getCompanyByUserId(user.id);
-    
-    console.log('Authentication successful for user:', normalizedEmail);
-    return { 
-      user, 
-      company: company || undefined 
+  private mapToCompany(row: any): Company {
+    return {
+      id: row.id,
+      userId: row.user_id,
+      name: row.name,
+      address: row.address,
+      phone: row.phone,
+      email: row.email,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
     };
-  } catch (error) {
-    console.error('Authentication error:', error);
-    return null;
   }
-}
 
-async getUserByEmail(email: string): Promise<User | null> {
-  try {
-    // Normalize email for consistent lookup
-    const normalizedEmail = email.toLowerCase().trim();
-    
-    const query = 'SELECT * FROM users WHERE LOWER(email) = ?';
-    const result = await this.db!.query(query, [normalizedEmail]);
-    
-    if (result.values && result.values.length > 0) {
-      return this.mapToUser(result.values[0]);
+  private mapToInvoice(row: any): Invoice {
+    return {
+      id: row.id,
+      tenantId: row.tenant_id,
+      propertyId: row.property_id,
+      invoiceNumber: row.invoice_number,
+      billingMonth: row.billing_month,
+      rentAmount: row.rent_amount,
+      waterCurrentReading: row.water_current_reading,
+      waterPreviousReading: row.water_previous_reading,
+      waterStandingFee: row.water_standing_fee,
+      waterUnitPrice: row.water_unit_price,
+      powerCurrentReading: row.power_current_reading,
+      powerPreviousReading: row.power_previous_reading,
+      powerUnitPrice: row.power_unit_price,
+      otherCharges: row.other_charges,
+      otherChargesDescription: row.other_charges_description,
+      totalAmount: row.total_amount,
+      amountPaid: row.amount_paid,
+      arrears: row.arrears,
+      isPaid: Boolean(row.is_paid),
+      dueDate: row.due_date,
+      paidDate: row.paid_date,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  private mapToPayment(row: any): Payment {
+    return {
+      id: row.id,
+      invoiceId: row.invoice_id,
+      amount: row.amount,
+      paymentDate: row.payment_date,
+      paymentMethod: row.payment_method,
+      notes: row.notes,
+      createdAt: row.created_at
+    };
+  }
+
+  private mapToPayments(rows: any[]): Payment[] {
+    return rows.map(row => this.mapToPayment(row));
+  }
+
+  // ==================== DELEGATION METHODS ====================
+  
+  // Include all other existing methods that don't need changes
+  async getInvoices(filters: InvoiceFilters = {}): Promise<InvoiceWithDetails[]> {
+    try {
+      let query = `
+        SELECT 
+          i.*,
+          t.name as tenant_name,
+          t.phone as tenant_phone,
+          t.email as tenant_email,
+          p.name as property_name
+        FROM invoices i
+        JOIN tenants t ON i.tenant_id = t.id
+        JOIN properties p ON i.property_id = p.id
+        WHERE 1=1
+      `;
+      
+      const params = [];
+      
+      if (filters.propertyId) {
+        query += ' AND i.property_id = ?';
+        params.push(filters.propertyId);
+      }
+      
+      if (filters.tenantId) {
+        query += ' AND i.tenant_id = ?';
+        params.push(filters.tenantId);
+      }
+      
+      if (filters.billingMonth) {
+        query += ' AND i.billing_month = ?';
+        params.push(filters.billingMonth);
+      }
+      
+      if (filters.isPaid !== undefined) {
+        query += ' AND i.is_paid = ?';
+        params.push(filters.isPaid ? 1 : 0);
+      }
+      
+      if (filters.startDate) {
+        query += ' AND i.created_at >= ?';
+        params.push(filters.startDate);
+      }
+      
+      if (filters.endDate) {
+        query += ' AND i.created_at <= ?';
+        params.push(filters.endDate);
+      }
+      
+      query += ' ORDER BY i.created_at DESC';
+      
+      const result = await this.db!.query(query, params);
+      return this.mapToInvoicesWithDetails(result.values || []);
+    } catch (error) {
+      console.error('Error getting invoices:', error);
+      return [];
     }
-    return null;
-  } catch (error) {
-    console.error('Error getting user by email:', error);
-    return null;
-  }
-}
-
-// Enhanced password verification with better error handling
-private async verifyPassword(password: string, hash: string): Promise<boolean> {
-  try {
-    const passwordHash = await this.hashPassword(password);
-    return passwordHash === hash;
-  } catch (error) {
-    console.error('Error verifying password:', error);
-    return false;
-  }
-}
-
-// Enhanced password hashing with consistent salt
-private async hashPassword(password: string): Promise<string> {
-  try {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(password + 'propertyflow_salt_2024');
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  } catch (error) {
-    console.error('Error hashing password:', error);
-    throw new Error('Password hashing failed');
-  }
-}
-
-// Updated createUserWithCompany method with better email normalization
-async createUserWithCompany(data: UserWithCompanyInput): Promise<AuthResult> {
-  // Normalize email
-  const normalizedEmail = data.user.email.toLowerCase().trim();
-  
-  // Check if user exists first
-  const existingUserQuery = 'SELECT * FROM users WHERE LOWER(email) = ?';
-  const existingUserResult = await this.db!.query(existingUserQuery, [normalizedEmail]);
-  
-  if (existingUserResult.values && existingUserResult.values.length > 0) {
-    throw new Error('User with this email already exists');
   }
 
-  const passwordHash = await this.hashPassword(data.user.password);
+  private mapToInvoicesWithDetails(rows: any[]): InvoiceWithDetails[] {
+    return rows.map(row => ({
+      ...this.mapToInvoice(row),
+      tenantName: row.tenant_name,
+      propertyName: row.property_name,
+      tenantPhone: row.tenant_phone,
+      tenantEmail: row.tenant_email
+    }));
+  }
 
-  const statements = [
-    {
-      statement: `
-        INSERT INTO users (name, email, phone, password_hash, is_premium)
-        VALUES (?, ?, ?, ?, 0)
-      `,
-      values: [
-        data.user.name.trim(),
-        normalizedEmail,
-        data.user.phone?.trim() || '',
-        passwordHash
-      ]
+  async getDashboardData(propertyId?: number, month?: string): Promise<DashboardData> {
+    try {
+      let propertyFilter = propertyId ? 'AND p.id = ?' : '';
+      let monthFilter = month ? 'AND i.billing_month = ?' : '';
+      
+      const query = `
+        SELECT 
+          COUNT(DISTINCT p.id) as total_properties,
+          COUNT(DISTINCT t.id) as total_tenants,
+          SUM(CASE WHEN i.is_paid = 1 THEN i.total_amount ELSE 0 END) as monthly_revenue,
+          SUM(i.arrears) as total_arrears,
+          COUNT(CASE WHEN i.is_paid = 1 THEN 1 END) as paid_invoices,
+          COUNT(CASE WHEN i.is_paid = 0 THEN 1 END) as unpaid_invoices,
+          COUNT(CASE WHEN t.is_active = 1 THEN 1 END) as active_tenants,
+          COUNT(t.id) as total_tenant_spaces
+        FROM properties p
+        LEFT JOIN tenants t ON p.id = t.property_id
+        LEFT JOIN invoices i ON t.id = i.tenant_id ${monthFilter}
+        WHERE 1=1 ${propertyFilter}
+      `;
+      
+      const params = [];
+      if (month) params.push(month);
+      if (propertyId) params.push(propertyId);
+      
+      const result = await this.db!.query(query, params);
+      const row = result.values?.[0] || {};
+      
+      return {
+        totalProperties: row.total_properties || 0,
+        totalTenants: row.total_tenants || 0,
+        monthlyRevenue: row.monthly_revenue || 0,
+        totalArrears: row.total_arrears || 0,
+        paidInvoices: row.paid_invoices || 0,
+        unpaidInvoices: row.unpaid_invoices || 0,
+        occupancyRate: row.total_tenant_spaces > 0 ? 
+          (row.active_tenants / row.total_tenant_spaces) * 100 : 0
+      };
+    } catch (error) {
+      console.error('Error getting dashboard data:', error);
+      return {
+        totalProperties: 0,
+        totalTenants: 0,
+        monthlyRevenue: 0,
+        totalArrears: 0,
+        paidInvoices: 0,
+        unpaidInvoices: 0,
+        occupancyRate: 0
+      };
     }
-  ];
-
-  if (data.company && data.company.name?.trim()) {
-    statements.push({
-      statement: `
-        INSERT INTO companies (user_id, name, address, phone, email)
-        VALUES (last_insert_rowid(), ?, ?, ?, ?)
-      `,
-      values: [
-        data.company.name.trim(),
-        data.company.address?.trim() || '',
-        data.company.phone?.trim() || '',
-        data.company.email?.toLowerCase().trim() || ''
-      ]
-    });
   }
 
-  const results = await this.executeInTransaction(statements);
-  const userId = results.changes!.lastId!;
-
-  const user = await this.getUserById(userId);
-  if (!user) {
-    throw new Error('Failed to retrieve created user');
+  async closeConnection(): Promise<void> {
+    try {
+      if (this.db) {
+        await this.db.close();
+        this.db = null;
+        console.log('Database connection closed');
+      }
+    } catch (error) {
+      console.error('Error closing database connection:', error);
+    }
   }
 
-  const company = data.company ? await this.getCompanyByUserId(userId) : null;
+  async updateUserSelectedProperties(userId: number, propertyIds: number[]): Promise<void> {
+    const query = `
+      UPDATE users 
+      SET selected_property_ids = ?, restricted_access = 1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `;
+    await this.db!.run(query, [JSON.stringify(propertyIds), userId]);
+  }
 
-  return { user, company: company || undefined };
-}
+  async restrictPropertiesAccess(userId: number, allowedPropertyIds: number[]): Promise<void> {
+    // Mark all properties as restricted first
+    await this.db!.run(`UPDATE properties SET is_restricted = 1 WHERE user_id = ?`, [userId]);
+    
+    // Unrestrict allowed properties
+    if (allowedPropertyIds.length > 0) {
+      const placeholders = allowedPropertyIds.map(() => '?').join(',');
+      await this.db!.run(
+        `UPDATE properties SET is_restricted = 0 WHERE id IN (${placeholders})`,
+        allowedPropertyIds
+      );
+    }
+  }
 
-async createProperty(property: PropertyInput): Promise<Property> {
-  const query = `
-    INSERT INTO properties (user_id, company_id, name, address, description, image, agent_commission_rate, max_units)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `;
+  async restrictTenantsAccess(propertyId: number, allowedTenantIds: number[]): Promise<void> {
+    // Mark all tenants as restricted first
+    await this.db!.run(`UPDATE tenants SET is_restricted = 1 WHERE property_id = ?`, [propertyId]);
+    
+    // Unrestrict allowed tenants
+    if (allowedTenantIds.length > 0) {
+      const placeholders = allowedTenantIds.map(() => '?').join(',');
+      await this.db!.run(
+        `UPDATE tenants SET is_restricted = 0 WHERE id IN (${placeholders})`,
+        allowedTenantIds
+      );
+    }
+  }
+
+  // ==================== ENHANCED PROPERTY OPERATIONS ====================
+
+  async createProperty(property: PropertyInput): Promise<Property> {
+    // Check limits before creation
+    const canCreate = await this.canCreateProperty(property.userId);
+    if (!canCreate.allowed) {
+      throw new Error(canCreate.reason);
+    }
+
+    const query = `
+      INSERT INTO properties (user_id, company_id, name, address, description, image, agent_commission_rate, max_units)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    
+    const result = await this.db!.run(query, [
+      property.userId,
+      property.companyId || null,
+      property.name,
+      property.address || '',
+      property.description || '',
+      property.image || '',
+      property.agentCommissionRate || 0,
+      property.maxUnits || 1
+    ]);
+
+    const createdProperty = await this.getPropertyById(result.changes!.lastId!);
+    if (!createdProperty) {
+      throw new Error('Failed to retrieve created property');
+    }
+
+    // Sync to Firebase if user has permission
+    const user = await this.getUserById(property.userId);
+    if (user && this.canUserSync(user)) {
+      try {
+        await firebaseSyncService.syncUserToFirestore(user);
+      } catch (error) {
+        console.error('Failed to sync after property creation:', error);
+      }
+    }
+
+    return createdProperty;
+  }
+
+  async getProperties(userId: number): Promise<Property[]> {
+    try {
+      const user = await this.getUserById(userId);
+      if (!user) return [];
+
+      let query = `
+        SELECT * FROM properties 
+        WHERE user_id = ?
+      `;
+
+      // Apply access restrictions
+      if (user.restrictedAccess && user.selectedPropertyIds) {
+        const selectedIds = user.selectedPropertyIds;
+        if (selectedIds.length > 0) {
+          const placeholders = selectedIds.map(() => '?').join(',');
+          query += ` AND id IN (${placeholders})`;
+        } else {
+          // No selected properties, return empty
+          return [];
+        }
+      } else if (user.restrictedAccess) {
+        // User is restricted but no selected properties, apply default limit
+        const limits = USER_LIMITS[user.tier] || USER_LIMITS.free;
+        if (limits.properties !== -1) {
+          query += ` ORDER BY created_at ASC LIMIT ${limits.properties}`;
+        }
+      }
+
+      query += ` ORDER BY created_at DESC`;
+      
+      const params = [userId];
+      if (user.restrictedAccess && user.selectedPropertyIds && user.selectedPropertyIds.length > 0) {
+        params.push(...user.selectedPropertyIds);
+      }
+
+      const result = await this.db!.query(query, params);
+      return this.mapToProperties(result.values || []);
+    } catch (error) {
+      console.error('Error getting properties:', error);
+      return [];
+    }
+  }
+
+  private async canCreateProperty(userId: number): Promise<{ allowed: boolean; reason: string }> {
+    const user = await this.getUserById(userId);
+    if (!user) {
+      return { allowed: false, reason: 'User not found' };
+    }
+
+    const limits = USER_LIMITS[user.tier] || USER_LIMITS.free;
+    if (limits.properties === -1) {
+      return { allowed: true, reason: 'Unlimited properties allowed' };
+    }
+
+    const currentProperties = await this.getProperties(userId);
+    if (currentProperties.length >= limits.properties) {
+      return { 
+        allowed: false, 
+        reason: `${user.tier.charAt(0).toUpperCase() + user.tier.slice(1)} tier allows maximum ${limits.properties} properties. Upgrade your plan to add more.` 
+      };
+    }
+
+    return { allowed: true, reason: 'Within limits' };
+  }
+
+  // ==================== ENHANCED TENANT OPERATIONS ====================
+
+  async createTenant(tenant: TenantInput): Promise<Tenant> {
+    // Check limits before creation
+    const canCreate = await this.canCreateTenant(tenant.propertyId);
+    if (!canCreate.allowed) {
+      throw new Error(canCreate.reason);
+    }
+
+    const query = `
+      INSERT INTO tenants (
+        property_id, name, phone, email, unit_number, 
+        rent_amount, standing_fees, deposit_amount, lease_start, lease_end
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    
+    const result = await this.db!.run(query, [
+      tenant.propertyId,
+      tenant.name,
+      tenant.phone || '',
+      tenant.email || '',
+      tenant.unitNumber || '',
+      tenant.rentAmount,
+      tenant.standingFees || 0,
+      tenant.depositAmount || 0,
+      tenant.leaseStart || null,
+      tenant.leaseEnd || null
+    ]);
+
+    const createdTenant = await this.getTenantById(result.changes!.lastId!);
+    if (!createdTenant) {
+      throw new Error('Failed to retrieve created tenant');
+    }
+
+    // Sync to Firebase if user has permission
+    const property = await this.getPropertyById(tenant.propertyId);
+    if (property) {
+      const user = await this.getUserById(property.userId);
+      if (user && this.canUserSync(user)) {
+        try {
+          await firebaseSyncService.syncUserToFirestore(user);
+        } catch (error) {
+          console.error('Failed to sync after tenant creation:', error);
+        }
+      }
+    }
+
+    return createdTenant;
+  }
+
+  async getTenantsByProperty(propertyId: number): Promise<Tenant[]> {
+    try {
+      const property = await this.getPropertyById(propertyId);
+      if (!property) return [];
+
+      const user = await this.getUserById(property.userId);
+      if (!user) return [];
+
+      let query = `
+        SELECT * FROM tenants 
+        WHERE property_id = ?
+      `;
+
+      // Apply access restrictions
+      if (user.restrictedAccess) {
+        const limits = USER_LIMITS[user.tier] || USER_LIMITS.free;
+        if (limits.tenantsPerProperty !== -1) {
+          query += ` AND is_restricted = 0 ORDER BY created_at ASC LIMIT ${limits.tenantsPerProperty}`;
+        }
+      } else {
+        query += ` ORDER BY name ASC`;
+      }
+      
+      const result = await this.db!.query(query, [propertyId]);
+      return this.mapToTenants(result.values || []);
+    } catch (error) {
+      console.error('Error getting tenants by property:', error);
+      return [];
+    }
+  }
+
+  private async canCreateTenant(propertyId: number): Promise<{ allowed: boolean; reason: string }> {
+    const property = await this.getPropertyById(propertyId);
+    if (!property) {
+      return { allowed: false, reason: 'Property not found' };
+    }
+
+    const user = await this.getUserById(property.userId);
+    if (!user) {
+      return { allowed: false, reason: 'User not found' };
+    }
+
+    // Check if property is restricted
+    if (property.isRestricted) {
+      return { 
+        allowed: false, 
+        reason: 'This property is restricted due to plan limitations. Upgrade to access.' 
+      };
+    }
+
+    const limits = USER_LIMITS[user.tier] || USER_LIMITS.free;
+    if (limits.tenantsPerProperty === -1) {
+      return { allowed: true, reason: 'Unlimited tenants allowed' };
+    }
+
+    const currentTenants = await this.getTenantsByProperty(propertyId);
+    if (currentTenants.length >= limits.tenantsPerProperty) {
+      return { 
+        allowed: false, 
+        reason: `${user.tier.charAt(0).toUpperCase() + user.tier.slice(1)} tier allows maximum ${limits.tenantsPerProperty} tenants per property. Upgrade your plan to add more.` 
+      };
+    }
+
+    return { allowed: true, reason: 'Within limits' };
+  }
+
+  // ==================== ENHANCED AUTHENTICATION ====================
+
+  async createUserWithCompany(data: UserWithCompanyInput): Promise<AuthResult> {
+    // Normalize email
+    const normalizedEmail = data.user.email.toLowerCase().trim();
+    
+    // Check if user exists first
+    const existingUserQuery = 'SELECT * FROM users WHERE LOWER(email) = ?';
+    const existingUserResult = await this.db!.query(existingUserQuery, [normalizedEmail]);
+    
+    if (existingUserResult.values && existingUserResult.values.length > 0) {
+      throw new Error('User with this email already exists');
+    }
+
+    const passwordHash = await this.hashPassword(data.user.password);
+
+    const statements = [
+      {
+        statement: `
+          INSERT INTO users (name, email, phone, password_hash, is_premium, type, tier, storage)
+          VALUES (?, ?, ?, ?, 0, ?, ?, 0)
+        `,
+        values: [
+          data.user.name.trim(),
+          normalizedEmail,
+          data.user.phone?.trim() || '',
+          passwordHash,
+          data.user.type || 'free',
+          data.user.tier || 'free'
+        ]
+      }
+    ];
+
+    // Only premium users get companies
+    if (data.company && data.company.name?.trim() && (data.user.type === 'premium')) {
+      statements.push({
+        statement: `
+          INSERT INTO companies (user_id, name, address, phone, email)
+          VALUES (last_insert_rowid(), ?, ?, ?, ?)
+        `,
+        values: [
+          data.company.name.trim(),
+          data.company.address?.trim() || '',
+          data.company.phone?.trim() || '',
+          data.company.email?.toLowerCase().trim() || ''
+        ]
+      });
+    }
+
+    const results = await this.executeInTransaction(statements);
+    const userId = results.changes!.lastId!;
+
+    const user = await this.getUserById(userId);
+    if (!user) {
+      throw new Error('Failed to retrieve created user');
+    }
+
+    // Only get company for premium users
+    const company = (user.type === 'premium' && data.company) ? 
+      await this.getCompanyByUserId(userId) : null;
+
+    return { user, company: company || undefined };
+  }
+
+  async authenticateUser(email: string, password: string): Promise<AuthResult | null> {
+    try {
+      console.log('Authenticating user:', email);
+      
+      const normalizedEmail = email.toLowerCase().trim();
+      const user = await this.getUserByEmail(normalizedEmail);
+      
+      if (!user || !user.passwordHash) {
+        console.log('User not found or no password hash');
+        return null;
+      }
+
+      const isValidPassword = await this.verifyPassword(password, user.passwordHash);
+      if (!isValidPassword) {
+        console.log('Invalid password');
+        return null;
+      }
+
+      // Check for sync updates if user has cloud storage
+      if (this.canUserSync(user)) {
+        try {
+          const cloudUser = await firebaseSyncService.downloadUserFromFirestore(user.id);
+          if (cloudUser) {
+            // Update local user with cloud data
+            await this.updateUser(user.id, {
+              name: cloudUser.name,
+              email: cloudUser.email,
+              phone: cloudUser.phone,
+              isPremium: cloudUser.isPremium
+            });
+            
+            await this.updateUserTierAndType(
+              user.id, 
+              cloudUser.tier, 
+              cloudUser.type, 
+              cloudUser.storage
+            );
+            
+            // Get updated user
+            const updatedUser = await this.getUserById(user.id);
+            if (updatedUser) {
+              user.type = updatedUser.type;
+              user.tier = updatedUser.tier;
+              user.storage = updatedUser.storage;
+              user.isPremium = updatedUser.isPremium;
+            }
+          }
+        } catch (syncError) {
+          console.error('Failed to sync during login:', syncError);
+          // Continue with local login even if sync fails
+        }
+      }
+
+      // Get company only for premium users
+      const company = user.type === 'premium' ? 
+        await this.getCompanyByUserId(user.id) : null;
+      
+      console.log('Authentication successful for user:', normalizedEmail);
+      return { user, company: company || undefined };
+      
+    } catch (error) {
+      console.error('Authentication error:', error);
+      return null;
+    }
+  }
+
+  // ==================== ENHANCED CRUD WITH SYNC ====================
+
+  async updateProperty(id: number, property: Partial<PropertyInput>): Promise<void> {
+    const fields = [];
+    const values = [];
+    
+    if (property.name !== undefined) {
+      fields.push('name = ?');
+      values.push(property.name);
+    }
+    if (property.address !== undefined) {
+      fields.push('address = ?');
+      values.push(property.address);
+    }
+    if (property.description !== undefined) {
+      fields.push('description = ?');
+      values.push(property.description);
+    }
+    if (property.image !== undefined) {
+      fields.push('image = ?');
+      values.push(property.image);
+    }
+    if (property.agentCommissionRate !== undefined) {
+      fields.push('agent_commission_rate = ?');
+      values.push(property.agentCommissionRate);
+    }
+    if (property.maxUnits !== undefined) {
+      fields.push('max_units = ?');
+      values.push(property.maxUnits);
+    }
+    
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(id);
+    
+    const query = `UPDATE properties SET ${fields.join(', ')} WHERE id = ?`;
+    await this.db!.run(query, values);
+
+    // Auto-sync if enabled
+    await this.autoSyncAfterChange(id, 'property');
+  }
+
+  async updateTenant(id: number, tenant: Partial<TenantInput>): Promise<void> {
+    const fields = [];
+    const values = [];
+    
+    if (tenant.name !== undefined) {
+      fields.push('name = ?');
+      values.push(tenant.name);
+    }
+    if (tenant.phone !== undefined) {
+      fields.push('phone = ?');
+      values.push(tenant.phone);
+    }
+    if (tenant.email !== undefined) {
+      fields.push('email = ?');
+      values.push(tenant.email);
+    }
+    if (tenant.unitNumber !== undefined) {
+      fields.push('unit_number = ?');
+      values.push(tenant.unitNumber);
+    }
+    if (tenant.rentAmount !== undefined) {
+      fields.push('rent_amount = ?');
+      values.push(tenant.rentAmount);
+    }
+    if (tenant.standingFees !== undefined) {
+      fields.push('standing_fees = ?');
+      values.push(tenant.standingFees);
+    }
+    if (tenant.depositAmount !== undefined) {
+      fields.push('deposit_amount = ?');
+      values.push(tenant.depositAmount);
+    }
+    if (tenant.leaseStart !== undefined) {
+      fields.push('lease_start = ?');
+      values.push(tenant.leaseStart);
+    }
+    if (tenant.leaseEnd !== undefined) {
+      fields.push('lease_end = ?');
+      values.push(tenant.leaseEnd);
+    }
+    
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(id);
+    
+    const query = `UPDATE tenants SET ${fields.join(', ')} WHERE id = ?`;
+    await this.db!.run(query, values);
+
+    // Auto-sync if enabled
+    await this.autoSyncAfterChange(id, 'tenant');
+  }
+
+  private async autoSyncAfterChange(entityId: number, entityType: 'property' | 'tenant' | 'invoice'): Promise<void> {
+    try {
+      let userId: number;
+      
+      switch (entityType) {
+        case 'property':
+          const property = await this.getPropertyById(entityId);
+          userId = property?.userId || 0;
+          break;
+        case 'tenant':
+          const tenant = await this.getTenantById(entityId);
+          if (tenant) {
+            const tenantProperty = await this.getPropertyById(tenant.propertyId);
+            userId = tenantProperty?.userId || 0;
+          } else {
+            return;
+          }
+          break;
+        case 'invoice':
+          const invoice = await this.getInvoiceById(entityId);
+          if (invoice) {
+            const invoiceProperty = await this.getPropertyById(invoice.propertyId);
+            userId = invoiceProperty?.userId || 0;
+          } else {
+            return;
+          }
+          break;
+        default:
+          return;
+      }
+
+      const user = await this.getUserById(userId);
+      if (user && this.canUserSync(user)) {
+        // Schedule sync (don't await to avoid blocking UI)
+        setTimeout(async () => {
+          try {
+            await firebaseSyncService.forceSyncUserData(userId);
+          } catch (error) {
+            console.error('Auto-sync failed:', error);
+          }
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('Auto-sync error:', error);
+    }
+  }
+
+  // ==================== ACCESS CONTROL HELPERS ====================
+
+  private canUserSync(user: User): boolean {
+    // Business and enterprise users always have sync
+    if (user.tier === 'business' || user.tier === 'enterprise') {
+      return true;
+    }
+    
+    // Free and low tier users need storage permission
+    return user.storage === true;
+  }
+
+  async checkUserLimits(userId: number): Promise<{
+    properties: { current: number; max: number; exceeded: boolean };
+    tenants: { current: number; max: number; exceeded: boolean };
+    canSync: boolean;
+  }> {
+    const user = await this.getUserById(userId);
+    if (!user) {
+      return {
+        properties: { current: 0, max: 0, exceeded: true },
+        tenants: { current: 0, max: 0, exceeded: true },
+        canSync: false
+      };
+    }
+
+    const limits = USER_LIMITS[user.tier] || USER_LIMITS.free;
+    const properties = await this.getProperties(userId);
+    
+    let totalTenants = 0;
+    for (const property of properties) {
+      const tenants = await this.getTenantsByProperty(property.id);
+      totalTenants += tenants.length;
+    }
+
+    return {
+      properties: {
+        current: properties.length,
+        max: limits.properties,
+        exceeded: limits.properties !== -1 && properties.length > limits.properties
+      },
+      tenants: {
+        current: totalTenants,
+        max: limits.totalTenants,
+        exceeded: limits.totalTenants !== -1 && totalTenants > limits.totalTenants
+      },
+      canSync: this.canUserSync(user)
+    };
+  }
+
+  // ==================== ENHANCED USER RETRIEVAL ====================
+
+  async getUserById(id: number): Promise<User | null> {
+    try {
+      const query = 'SELECT * FROM users WHERE id = ?';
+      const result = await this.db!.query(query, [id]);
+      
+      if (result.values && result.values.length > 0) {
+        return this.mapToEnhancedUser(result.values[0]);
+      }
+      return null;
+    } catch (error) {
+      console.error('Error getting user by ID:', error);
+      return null;
+    }
+  }
+
+  async getUserByEmail(email: string): Promise<User | null> {
+    try {
+      const normalizedEmail = email.toLowerCase().trim();
+      const query = 'SELECT * FROM users WHERE LOWER(email) = ?';
+      const result = await this.db!.query(query, [normalizedEmail]);
+      
+      if (result.values && result.values.length > 0) {
+        return this.mapToEnhancedUser(result.values[0]);
+      }
+      return null;
+    } catch (error) {
+      console.error('Error getting user by email:', error);
+      return null;
+    }
+  }
+
+  // ==================== TRANSACTION HELPER ====================
+
+  private async executeInTransaction(statements: { statement: string; values?: any[] }[]): Promise<capSQLiteChanges> {
+    try {
+      console.log('Starting transaction...');
+      const results = await this.db!.executeSet(statements, true);
+      console.log('Transaction completed successfully');
+      return results;
+    } catch (error) {
+      console.error('Transaction error:', error);
+      throw error;
+    }
+  }
+
+  // ==================== ENHANCED MAPPING FUNCTIONS ====================
+
+  private mapToEnhancedUser(row: any): User {
+    let selectedPropertyIds: number[] = [];
+    try {
+      if (row.selected_property_ids) {
+        selectedPropertyIds = JSON.parse(row.selected_property_ids);
+      }
+    } catch (error) {
+      console.error('Error parsing selected property IDs:', error);
+    }
+
+    return {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      phone: row.phone,
+      passwordHash: row.password_hash,
+      isPremium: Boolean(row.is_premium),
+      type: row.type || 'free',
+      tier: row.tier || 'free',
+      storage: Boolean(row.storage),
+      revenuekatUserId: row.revenuecat_user_id,
+      selectedPropertyIds,
+      restrictedAccess: Boolean(row.restricted_access),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  private mapToProperty(row: any): Property {
+    return {
+      id: row.id,
+      userId: row.user_id,
+      companyId: row.company_id,
+      name: row.name,
+      address: row.address,
+      description: row.description,
+      image: row.image,
+      agentCommissionRate: row.agent_commission_rate,
+      maxUnits: row.max_units || 1,
+      isRestricted: Boolean(row.is_restricted),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  private mapToProperties(rows: any[]): Property[] {
+    return rows.map(row => this.mapToProperty(row));
+  }
+
+  private mapToTenant(row: any): Tenant {
+    return {
+      id: row.id,
+      propertyId: row.property_id,
+      name: row.name,
+      phone: row.phone,
+      email: row.email,
+      unitNumber: row.unit_number,
+      rentAmount: row.rent_amount,
+      standingFees: row.standing_fees,
+      depositAmount: row.deposit_amount,
+      leaseStart: row.lease_start,
+      leaseEnd: row.lease_end,
+      isActive: Boolean(row.is_active),
+      isRestricted: Boolean(row.is_restricted),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  private mapToTenants(rows: any[]): Tenant[] {
+    return rows.map(row => this.mapToTenant(row));
+  }
+
+  // ==================== PASSWORD METHODS ====================
+
+  private async verifyPassword(password: string, hash: string): Promise<boolean> {
+    try {
+      const passwordHash = await this.hashPassword(password);
+      return passwordHash === hash;
+    } catch (error) {
+      console.error('Error verifying password:', error);
+      return false;
+    }
+  }
+
+  private async hashPassword(password: string): Promise<string> {
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(password + 'propertyflow_salt_2024');
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (error) {
+      console.error('Error hashing password:', error);
+      throw new Error('Password hashing failed');
+    }
+  }
+
+  // ==================== DELEGATION TO EXISTING METHODS ====================
   
-  const result = await this.db!.run(query, [
-    property.userId,
-    property.companyId || null,
-    property.name,
-    property.address || '',
-    property.description || '',
-    property.image || '',
-    property.agentCommissionRate || 0,
-    property.maxUnits || 1
-  ]);
-
-  const createdProperty = await this.getPropertyById(result.changes!.lastId!);
-  if (!createdProperty) {
-    throw new Error('Failed to retrieve created property');
+  // Delegate unchanged methods to maintain compatibility
+  async getCompanyByUserId(userId: number): Promise<Company | null> {
+    try {
+      const query = 'SELECT * FROM companies WHERE user_id = ?';
+      const result = await this.db!.query(query, [userId]);
+      
+      if (result.values && result.values.length > 0) {
+        return this.mapToCompany(result.values[0]);
+      }
+      return null;
+    } catch (error) {
+      console.error('Error getting company by user ID:', error);
+      return null;
+    }
   }
-  return createdProperty;
-}
 
+  async getPropertyById(id: number): Promise<Property | null> {
+    try {
+      const query = 'SELECT * FROM properties WHERE id = ?';
+      const result = await this.db!.query(query, [id]);
+      
+      if (result.values && result.values.length > 0) {
+        return this.mapToProperty(result.values[0]);
+      }
+      return null;
+    } catch (error) {
+      console.error('Error getting property by ID:', error);
+      return null;
+    }
+  }
+
+  async getTenantById(id: number): Promise<Tenant | null> {
+    try {
+      const query = 'SELECT * FROM tenants WHERE id = ?';
+      const result = await this.db!.query(query, [id]);
+      
+      if (result.values && result.values.length > 0) {
+        return this.mapToTenant(result.values[0]);
+      }
+      return null;
+    } catch (error) {
+      console.error('Error getting tenant by ID:', error);
+      return null;
+    }
+  }
+  
 async getPropertiesWithUnits(userId: number): Promise<PropertyWithUnits[]> {
   try {
     const query = `
@@ -731,42 +1565,6 @@ async getPropertiesWithUnits(userId: number): Promise<PropertyWithUnits[]> {
     console.error('Error getting properties with units:', error);
     return [];
   }
-}
-
-async updateProperty(id: number, property: Partial<PropertyInput>): Promise<void> {
-  const fields = [];
-  const values = [];
-  
-  if (property.name !== undefined) {
-    fields.push('name = ?');
-    values.push(property.name);
-  }
-  if (property.address !== undefined) {
-    fields.push('address = ?');
-    values.push(property.address);
-  }
-  if (property.description !== undefined) {
-    fields.push('description = ?');
-    values.push(property.description);
-  }
-  if (property.image !== undefined) {
-    fields.push('image = ?');
-    values.push(property.image);
-  }
-  if (property.agentCommissionRate !== undefined) {
-    fields.push('agent_commission_rate = ?');
-    values.push(property.agentCommissionRate);
-  }
-  if (property.maxUnits !== undefined) {
-    fields.push('max_units = ?');
-    values.push(property.maxUnits);
-  }
-  
-  fields.push('updated_at = CURRENT_TIMESTAMP');
-  values.push(id);
-  
-  const query = `UPDATE properties SET ${fields.join(', ')} WHERE id = ?`;
-  await this.db!.run(query, values);
 }
 
 // ==================== UNIT OPERATIONS ====================
@@ -856,22 +1654,6 @@ async setUnitOccupancy(id: number, isOccupied: boolean): Promise<void> {
 
 // ==================== UPDATED MAPPING FUNCTIONS ====================
 
-private mapToProperty(row: any): Property {
-  return {
-    id: row.id,
-    userId: row.user_id,
-    companyId: row.company_id,
-    name: row.name,
-    address: row.address,
-    description: row.description,
-    image: row.image,
-    agentCommissionRate: row.agent_commission_rate,
-    maxUnits: row.max_units || 1,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
-  };
-}
-
 private mapToUnit(row: any): Unit {
   return {
     id: row.id,
@@ -892,52 +1674,6 @@ private mapToUnits(rows: any[]): Unit[] {
 
 
 
-
-
-
-async createTenant(tenant: TenantInput): Promise<Tenant> {
-  const query = `
-    INSERT INTO tenants (
-      property_id, name, phone, email, unit_number, 
-      rent_amount, standing_fees, deposit_amount, lease_start, lease_end
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `;
-  
-  const result = await this.db!.run(query, [
-    tenant.propertyId,
-    tenant.name,
-    tenant.phone || '',
-    tenant.email || '',
-    tenant.unitNumber || '',
-    tenant.rentAmount,
-    tenant.standingFees || 0,
-    tenant.depositAmount || 0,
-    tenant.leaseStart || null,
-    tenant.leaseEnd || null
-  ]);
-
-  const createdTenant = await this.getTenantById(result.changes!.lastId!);
-  if (!createdTenant) {
-    throw new Error('Failed to retrieve created tenant');
-  }
-  return createdTenant;
-}
-
-  async getUserById(id: number): Promise<User | null> {
-    try {
-      const query = 'SELECT * FROM users WHERE id = ?';
-      const result = await this.db!.query(query, [id]);
-      
-      if (result.values && result.values.length > 0) {
-        return this.mapToUser(result.values[0]);
-      }
-      return null;
-    } catch (error) {
-      console.error('Error getting user by ID:', error);
-      return null;
-    }
-  }
 
   async updateUser(id: number, user: Partial<{
     name: string;
@@ -968,7 +1704,7 @@ async createTenant(tenant: TenantInput): Promise<Tenant> {
     }
     if (user.isPremium !== undefined) {
       fields.push('is_premium = ?');
-      values.push(user.isPremium ? 1 : 0);
+      values.push(user.isPremium ? 0 : 1);
     }
     
     fields.push('updated_at = CURRENT_TIMESTAMP');
@@ -999,21 +1735,6 @@ async createTenant(tenant: TenantInput): Promise<Tenant> {
       throw new Error('Failed to retrieve created company');
     }
     return createdCompany;
-  }
-
-  async getCompanyByUserId(userId: number): Promise<Company | null> {
-    try {
-      const query = 'SELECT * FROM companies WHERE user_id = ?';
-      const result = await this.db!.query(query, [userId]);
-      
-      if (result.values && result.values.length > 0) {
-        return this.mapToCompany(result.values[0]);
-      }
-      return null;
-    } catch (error) {
-      console.error('Error getting company by user ID:', error);
-      return null;
-    }
   }
 
   async getCompanyById(id: number): Promise<Company | null> {
@@ -1063,38 +1784,6 @@ async createTenant(tenant: TenantInput): Promise<Tenant> {
     await this.db!.run('DELETE FROM companies WHERE id = ?', [id]);
   }
 
-
-  async getProperties(userId: number): Promise<Property[]> {
-    try {
-      const query = `
-        SELECT * FROM properties 
-        WHERE user_id = ? 
-        ORDER BY created_at DESC
-      `;
-      
-      const result = await this.db!.query(query, [userId]);
-      return this.mapToProperties(result.values || []);
-    } catch (error) {
-      console.error('Error getting properties:', error);
-      return [];
-    }
-  }
-
-  async getPropertyById(id: number): Promise<Property | null> {
-    try {
-      const query = 'SELECT * FROM properties WHERE id = ?';
-      const result = await this.db!.query(query, [id]);
-      
-      if (result.values && result.values.length > 0) {
-        return this.mapToProperty(result.values[0]);
-      }
-      return null;
-    } catch (error) {
-      console.error('Error getting property by ID:', error);
-      return null;
-    }
-  }
-
   async getPropertiesWithTenants(userId: number): Promise<PropertyWithTenants[]> {
     try {
       const query = `
@@ -1139,22 +1828,6 @@ async createTenant(tenant: TenantInput): Promise<Tenant> {
 
   // ==================== TENANT OPERATIONS ====================
 
-  async getTenantsByProperty(propertyId: number): Promise<Tenant[]> {
-    try {
-      const query = `
-        SELECT * FROM tenants 
-        WHERE property_id = ? 
-        ORDER BY name ASC
-      `;
-      
-      const result = await this.db!.query(query, [propertyId]);
-      return this.mapToTenants(result.values || []);
-    } catch (error) {
-      console.error('Error getting tenants by property:', error);
-      return [];
-    }
-  }
-
   async getTenantsWithInvoices(propertyId: number, billingMonth?: string): Promise<TenantWithInvoices[]> {
     try {
       const query = `
@@ -1196,69 +1869,6 @@ async createTenant(tenant: TenantInput): Promise<Tenant> {
       console.error('Error getting tenants with invoices:', error);
       return [];
     }
-  }
-
-  async getTenantById(id: number): Promise<Tenant | null> {
-    try {
-      const query = 'SELECT * FROM tenants WHERE id = ?';
-      const result = await this.db!.query(query, [id]);
-      
-      if (result.values && result.values.length > 0) {
-        return this.mapToTenant(result.values[0]);
-      }
-      return null;
-    } catch (error) {
-      console.error('Error getting tenant by ID:', error);
-      return null;
-    }
-  }
-
-  async updateTenant(id: number, tenant: Partial<TenantInput>): Promise<void> {
-    const fields = [];
-    const values = [];
-    
-    if (tenant.name !== undefined) {
-      fields.push('name = ?');
-      values.push(tenant.name);
-    }
-    if (tenant.phone !== undefined) {
-      fields.push('phone = ?');
-      values.push(tenant.phone);
-    }
-    if (tenant.email !== undefined) {
-      fields.push('email = ?');
-      values.push(tenant.email);
-    }
-    if (tenant.unitNumber !== undefined) {
-      fields.push('unit_number = ?');
-      values.push(tenant.unitNumber);
-    }
-    if (tenant.rentAmount !== undefined) {
-      fields.push('rent_amount = ?');
-      values.push(tenant.rentAmount);
-    }
-    if (tenant.standingFees !== undefined) {
-      fields.push('standing_fees = ?');
-      values.push(tenant.standingFees);
-    }
-    if (tenant.depositAmount !== undefined) {
-      fields.push('deposit_amount = ?');
-      values.push(tenant.depositAmount);
-    }
-    if (tenant.leaseStart !== undefined) {
-      fields.push('lease_start = ?');
-      values.push(tenant.leaseStart);
-    }
-    if (tenant.leaseEnd !== undefined) {
-      fields.push('lease_end = ?');
-      values.push(tenant.leaseEnd);
-    }
-    
-    fields.push('updated_at = CURRENT_TIMESTAMP');
-    values.push(id);
-    
-    const query = `UPDATE tenants SET ${fields.join(', ')} WHERE id = ?`;
-    await this.db!.run(query, values);
   }
 
   async deleteTenant(id: number): Promise<void> {
@@ -1368,63 +1978,6 @@ async createPayment(payment: {
       throw new Error('Failed to retrieve created invoice');
     }
     return createdInvoice;
-  }
-
-  async getInvoices(filters: InvoiceFilters = {}): Promise<InvoiceWithDetails[]> {
-    try {
-      let query = `
-        SELECT 
-          i.*,
-          t.name as tenant_name,
-          t.phone as tenant_phone,
-          t.email as tenant_email,
-          p.name as property_name
-        FROM invoices i
-        JOIN tenants t ON i.tenant_id = t.id
-        JOIN properties p ON i.property_id = p.id
-        WHERE 1=1
-      `;
-      
-      const params = [];
-      
-      if (filters.propertyId) {
-        query += ' AND i.property_id = ?';
-        params.push(filters.propertyId);
-      }
-      
-      if (filters.tenantId) {
-        query += ' AND i.tenant_id = ?';
-        params.push(filters.tenantId);
-      }
-      
-      if (filters.billingMonth) {
-        query += ' AND i.billing_month = ?';
-        params.push(filters.billingMonth);
-      }
-      
-      if (filters.isPaid !== undefined) {
-        query += ' AND i.is_paid = ?';
-        params.push(filters.isPaid ? 1 : 0);
-      }
-      
-      if (filters.startDate) {
-        query += ' AND i.created_at >= ?';
-        params.push(filters.startDate);
-      }
-      
-      if (filters.endDate) {
-        query += ' AND i.created_at <= ?';
-        params.push(filters.endDate);
-      }
-      
-      query += ' ORDER BY i.created_at DESC';
-      
-      const result = await this.db!.query(query, params);
-      return this.mapToInvoicesWithDetails(result.values || []);
-    } catch (error) {
-      console.error('Error getting invoices:', error);
-      return [];
-    }
   }
 
   async getInvoiceById(id: number): Promise<Invoice | null> {
@@ -1595,58 +2148,6 @@ async createPayment(payment: {
     }
   }
 
-  async getDashboardData(propertyId?: number, month?: string): Promise<DashboardData> {
-    try {
-      let propertyFilter = propertyId ? 'AND p.id = ?' : '';
-      let monthFilter = month ? 'AND i.billing_month = ?' : '';
-      
-      const query = `
-        SELECT 
-          COUNT(DISTINCT p.id) as total_properties,
-          COUNT(DISTINCT t.id) as total_tenants,
-          SUM(CASE WHEN i.is_paid = 1 THEN i.total_amount ELSE 0 END) as monthly_revenue,
-          SUM(i.arrears) as total_arrears,
-          COUNT(CASE WHEN i.is_paid = 1 THEN 1 END) as paid_invoices,
-          COUNT(CASE WHEN i.is_paid = 0 THEN 1 END) as unpaid_invoices,
-          COUNT(CASE WHEN t.is_active = 1 THEN 1 END) as active_tenants,
-          COUNT(t.id) as total_tenant_spaces
-        FROM properties p
-        LEFT JOIN tenants t ON p.id = t.property_id
-        LEFT JOIN invoices i ON t.id = i.tenant_id ${monthFilter}
-        WHERE 1=1 ${propertyFilter}
-      `;
-      
-      const params = [];
-      if (month) params.push(month);
-      if (propertyId) params.push(propertyId);
-      
-      const result = await this.db!.query(query, params);
-      const row = result.values?.[0] || {};
-      
-      return {
-        totalProperties: row.total_properties || 0,
-        totalTenants: row.total_tenants || 0,
-        monthlyRevenue: row.monthly_revenue || 0,
-        totalArrears: row.total_arrears || 0,
-        paidInvoices: row.paid_invoices || 0,
-        unpaidInvoices: row.unpaid_invoices || 0,
-        occupancyRate: row.total_tenant_spaces > 0 ? 
-          (row.active_tenants / row.total_tenant_spaces) * 100 : 0
-      };
-    } catch (error) {
-      console.error('Error getting dashboard data:', error);
-      return {
-        totalProperties: 0,
-        totalTenants: 0,
-        monthlyRevenue: 0,
-        totalArrears: 0,
-        paidInvoices: 0,
-        unpaidInvoices: 0,
-        occupancyRate: 0
-      };
-    }
-  }
-
   async getMonthlyStats(propertyId: number, year: number): Promise<MonthlyStats[]> {
     try {
       const query = `
@@ -1677,133 +2178,6 @@ async createPayment(payment: {
       console.error('Error getting monthly stats:', error);
       return [];
     }
-  }
-
-  // ==================== UTILITY METHODS ====================
-
-  async closeConnection(): Promise<void> {
-    try {
-      if (this.db) {
-        await this.db.close();
-        this.db = null;
-        console.log('Database connection closed');
-      }
-    } catch (error) {
-      console.error('Error closing database connection:', error);
-    }
-  }
-
-  // ==================== MAPPING FUNCTIONS ====================
-
-  private mapToUser(row: any): User {
-    return {
-      id: row.id,
-      name: row.name,
-      email: row.email,
-      phone: row.phone,
-      passwordHash: row.password_hash,
-      isPremium: Boolean(row.is_premium),
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    };
-  }
-
-  private mapToCompany(row: any): Company {
-    return {
-      id: row.id,
-      userId: row.user_id,
-      name: row.name,
-      address: row.address,
-      phone: row.phone,
-      email: row.email,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    };
-  }
-
-  private mapToProperties(rows: any[]): Property[] {
-    return rows.map(row => this.mapToProperty(row));
-  }
-
-  private mapToTenant(row: any): Tenant {
-    return {
-      id: row.id,
-      propertyId: row.property_id,
-      name: row.name,
-      phone: row.phone,
-      email: row.email,
-      unitNumber: row.unit_number,
-      rentAmount: row.rent_amount,
-      standingFees: row.standing_fees,
-      depositAmount: row.deposit_amount,
-      leaseStart: row.lease_start,
-      leaseEnd: row.lease_end,
-      isActive: Boolean(row.is_active),
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    };
-  }
-
-  private mapToTenants(rows: any[]): Tenant[] {
-    return rows.map(row => this.mapToTenant(row));
-  }
-
-  private mapToInvoice(row: any): Invoice {
-    return {
-      id: row.id,
-      tenantId: row.tenant_id,
-      propertyId: row.property_id,
-      invoiceNumber: row.invoice_number,
-      billingMonth: row.billing_month,
-      rentAmount: row.rent_amount,
-      waterCurrentReading: row.water_current_reading,
-      waterPreviousReading: row.water_previous_reading,
-      waterStandingFee: row.water_standing_fee,
-      waterUnitPrice: row.water_unit_price,
-      powerCurrentReading: row.power_current_reading,
-      powerPreviousReading: row.power_previous_reading,
-      powerUnitPrice: row.power_unit_price,
-      otherCharges: row.other_charges,
-      otherChargesDescription: row.other_charges_description,
-      totalAmount: row.total_amount,
-      amountPaid: row.amount_paid,
-      arrears: row.arrears,
-      isPaid: Boolean(row.is_paid),
-      dueDate: row.due_date,
-      paidDate: row.paid_date,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    };
-  }
-
-  private mapToInvoiceWithDetails(row: any): InvoiceWithDetails {
-    return {
-      ...this.mapToInvoice(row),
-      tenantName: row.tenant_name,
-      propertyName: row.property_name,
-      tenantPhone: row.tenant_phone,
-      tenantEmail: row.tenant_email
-    };
-  }
-
-  private mapToInvoicesWithDetails(rows: any[]): InvoiceWithDetails[] {
-    return rows.map(row => this.mapToInvoiceWithDetails(row));
-  }
-
-  private mapToPayment(row: any): Payment {
-    return {
-      id: row.id,
-      invoiceId: row.invoice_id,
-      amount: row.amount,
-      paymentDate: row.payment_date,
-      paymentMethod: row.payment_method,
-      notes: row.notes,
-      createdAt: row.created_at
-    };
-  }
-
-  private mapToPayments(rows: any[]): Payment[] {
-    return rows.map(row => this.mapToPayment(row));
   }
 }
 

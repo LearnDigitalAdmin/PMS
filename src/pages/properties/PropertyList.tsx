@@ -16,11 +16,12 @@ import {
 import { database, type PropertyWithUnits, type PropertyInput } from '../../services/database/Database';
 import Property from './Properties';
 import PropertyModal from './PropertyModal';
+import type { UserTier } from '../../services/database/FirebaseSync';
 
 interface PropertyListProps {
   onNavigateToProperty: (property: PropertyWithUnits) => void;
   currentUserId: number;
-  userPlan: 'free' | 'premium';
+  userPlan: UserTier;
 }
 
 interface PropertyFormData {
@@ -74,7 +75,8 @@ const Properties: React.FC<PropertyListProps> = ({
 
   const MAX_FREE_PROPERTIES = 2;
   const MAX_FREE_UNITS = 12;
-  const canAddProperty = userPlan === 'premium' || properties.length < MAX_FREE_PROPERTIES;
+  const PROPERTIES_LIMITS: ['free', 'premium', 'business', 'enterprise'] = [2, 10, 50, Infinity];
+  const canAddProperty = userPlan === 'enterprise' || properties.length < MAX_FREE_PROPERTIES;
 
   useEffect(() => {
     loadProperties();
