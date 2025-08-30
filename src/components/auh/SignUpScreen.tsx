@@ -13,7 +13,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
     // User details
     name: '',
     email: '',
-    phone: '',
+    phone: 0,
     password: '',
     confirmPassword: '',
     // Company details
@@ -29,7 +29,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
   const { login } = useAuth();
 
   const validateStep1 = () => {
-    if (!formData.name || !formData.email || !formData.password || !formData.confirmPassword) {
+    if (!formData.name || !formData.email || !formData.phone || !formData.password || !formData.confirmPassword) {
       setError('Please fill in all required fields');
       return false;
     }
@@ -58,7 +58,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
     try {
       await database.createUserWithCompany({
         user: {
-          id: 1,
+          id: formData.phone,
           name: formData.name,
           email: formData.email,
           phone: formData.phone,
@@ -159,14 +159,14 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Phone Number
+                  Phone Number *
                 </label>
                 <div className="relative">
                   <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input
                     type="tel"
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.valueAsNumber })}
                     className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
                     placeholder="Enter your phone number"
                   />

@@ -61,7 +61,7 @@ export interface UserWithCompanyInput {
     id: number;
     name: string;
     email: string;
-    phone?: string;
+    phone?: number;
     password: string;
     type?: "free" | "premium";
     tier?: UserTier;
@@ -2018,7 +2018,7 @@ async checkUserLimits(userId: number): Promise<{
         values: [
           data.user.name.trim(),
           normalizedEmail,
-          data.user.phone?.trim() || '',
+          data.user.phone || '',
           passwordHash,
           data.user.type || 'free',
           data.user.tier || 'free'
@@ -2026,8 +2026,8 @@ async checkUserLimits(userId: number): Promise<{
       }
     ];
 
-    // Only premium users get companies
-    if (data.company && data.company.name?.trim() && (data.user.type === 'premium')) {
+    // Only premium users get companies&& (data.user.type === 'premium')
+    if (data.company && data.company.name?.trim()) {
       statements.push({
         statement: `
           INSERT INTO companies (user_id, name, address, phone, email)
