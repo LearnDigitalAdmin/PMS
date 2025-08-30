@@ -16,7 +16,7 @@ import {
 import { database, type PropertyWithUnits, type PropertyInput } from '../../services/database/Database';
 import Property from './Properties';
 import PropertyModal from './PropertyModal';
-import type { UserTier } from '../../services/database/FirebaseSync';
+import { USER_LIMITS, type UserTier } from '../../services/database/FirebaseSync';
 
 interface PropertyListProps {
   onNavigateToProperty: (property: PropertyWithUnits) => void;
@@ -73,10 +73,10 @@ const Properties: React.FC<PropertyListProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
 
-  const MAX_FREE_PROPERTIES = 2;
-  const MAX_FREE_UNITS = 12;
-  const PROPERTIES_LIMITS: ['free', 'premium', 'business', 'enterprise'] = [2, 10, 50, Infinity];
-  const canAddProperty = userPlan === 'enterprise' || properties.length < MAX_FREE_PROPERTIES;
+
+  const MAX_FREE_UNITS = USER_LIMITS[userPlan].totalTenants;;
+  const canAddProperty = userPlan === 'enterprise' || 
+  properties.length < USER_LIMITS[userPlan].properties;
 
   useEffect(() => {
     loadProperties();

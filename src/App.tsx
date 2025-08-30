@@ -338,7 +338,7 @@ const InvoicesWrapper = () => {
 // Enhanced Profile Wrapper with Sync Management
 const ProfileWrapper = () => {
   const { user } = useAuth();
-  const [syncStatus, setSyncStatus] = useState<any>(null);
+  const [_syncStatus, setSyncStatus] = useState<any>(null);
 
   useEffect(() => {
     const loadSyncStatus = async () => {
@@ -355,7 +355,7 @@ const ProfileWrapper = () => {
     loadSyncStatus();
   }, [user]);
 
-  return <Profile syncStatus={syncStatus} />;
+  return <Profile/>;// syncStatus={syncStatus} 
 };
 
 // App Content Component with Enhanced Routing
