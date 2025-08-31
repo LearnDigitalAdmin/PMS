@@ -71,13 +71,14 @@ export async function shareViaWhatsApp(
   property: Property,
   payments: Payment[] = [],
   companyInfo: CompanyInfo,
-  _options: Partial<WhatsAppMessageOptions> = {}
+  options: any,
+  user: any
 ): Promise<void> {
   try {
     // Generate PDF with Cogvana integration
-    const pdfBytes = await generateInvoicePDF(invoice, property, payments, companyInfo);
+    const pdfBytes = await generateInvoicePDF(invoice, property, payments, companyInfo, options, user);
     const filename = generatePDFFilename(invoice);
-    const fileUri = await downloadPDF(pdfBytes, filename);
+    const fileUri = await downloadPDF(pdfBytes, filename, user);
     
     const normalizedPhone = normalizeKenyanPhoneNumber(invoice.tenantPhone || '');
     const balanceDue = invoice.totalAmount - invoice.amountPaid;
@@ -148,13 +149,14 @@ export async function shareViaEmail(
   property: Property,
   payments: Payment[] = [],
   companyInfo: CompanyInfo,
-  options: Partial<EmailOptions> = {}
+  options: any,
+  user: any
 ): Promise<void> {
   try {
     // Generate PDF with Cogvana integration
-    const pdfBytes = await generateInvoicePDF(invoice, property, payments, companyInfo);
+    const pdfBytes = await generateInvoicePDF(invoice, property, payments, companyInfo, options, user);
     const filename = generatePDFFilename(invoice);
-    const fileUri = await downloadPDF(pdfBytes, filename);
+    const fileUri = await downloadPDF(pdfBytes, filename, user);
     
     const subject = options.subject || `Your invoice for ${invoice.billingMonth} - ${property.name}`;
     const body = options.body || generateEnhancedEmailBody(invoice, property);
@@ -242,93 +244,94 @@ Empowering Education Across East Africa
 }
 
 // Enhanced payment reminder with Cogvana integration
-export async function sharePaymentReminder(
-  invoice: InvoiceWithDetails,
-  property: Property,
-  payments: Payment[] = [],
-  companyInfo: CompanyInfo,
-  daysOverdue: number = 0
-): Promise<void> {
-  try {
-    // Generate PDF with Cogvana integration
-    const pdfBytes = await generateInvoicePDF(invoice, property, payments, companyInfo);
-    const filename = generatePDFFilename(invoice);
-    const fileUri = await downloadPDF(pdfBytes, filename);
+// export async function sharePaymentReminder(
+//   invoice: InvoiceWithDetails,
+//   property: Property,
+//   payments: Payment[] = [],
+//   companyInfo: CompanyInfo,
+//   daysOverdue: number = 0,
+//   user: any
+// ): Promise<void> {
+//   try {
+//     // Generate PDF with Cogvana integration
+//     const pdfBytes = await generateInvoicePDF(invoice, property, payments, companyInfo);
+//     const filename = generatePDFFilename(invoice);
+//     const fileUri = await downloadPDF(pdfBytes, filename, user);
     
-    const message = generateEnhancedPaymentReminderMessage(invoice, property, daysOverdue);
-    const urgencyLevel = daysOverdue > 30 ? 'URGENT' : daysOverdue > 7 ? 'IMPORTANT' : 'FRIENDLY';
+//     const message = generateEnhancedPaymentReminderMessage(invoice, property, daysOverdue);
+//     const urgencyLevel = daysOverdue > 30 ? 'URGENT' : daysOverdue > 7 ? 'IMPORTANT' : 'FRIENDLY';
     
-    await Share.share({
-      title: `${urgencyLevel} Payment Reminder`,
-      text: message,
-      url: fileUri,
-      dialogTitle: 'Send Payment Reminder'
-    });
-  } catch (error) {
-    console.error('Payment reminder sharing failed:', error);
-    throw new Error('Failed to share payment reminder. Please try again.');
-  }
-}
+//     await Share.share({
+//       title: `${urgencyLevel} Payment Reminder`,
+//       text: message,
+//       url: fileUri,
+//       dialogTitle: 'Send Payment Reminder'
+//     });
+//   } catch (error) {
+//     console.error('Payment reminder sharing failed:', error);
+//     throw new Error('Failed to share payment reminder. Please try again.');
+//   }
+// }
 
 // Enhanced payment reminder message with Cogvana integration
-function generateEnhancedPaymentReminderMessage(
-  invoice: InvoiceWithDetails,
-  property: Property,
-  daysOverdue: number
-): string {
-  const balanceDue = invoice.totalAmount - invoice.amountPaid;
-  const urgencyLevel = daysOverdue > 30 ? 'URGENT' : daysOverdue > 7 ? 'IMPORTANT' : 'FRIENDLY';
-  const cogvanaMsg = getRandomCogvanaMessage('employment'); // Focus on employment/earning messages
+// function generateEnhancedPaymentReminderMessage(
+//   invoice: InvoiceWithDetails,
+//   property: Property,
+//   daysOverdue: number
+// ): string {
+//   const balanceDue = invoice.totalAmount - invoice.amountPaid;
+//   const urgencyLevel = daysOverdue > 30 ? 'URGENT' : daysOverdue > 7 ? 'IMPORTANT' : 'FRIENDLY';
+//   const cogvanaMsg = getRandomCogvanaMessage('employment'); // Focus on employment/earning messages
   
-  let greeting = '';
-  let tone = '';
+//   let greeting = '';
+//   let tone = '';
   
-  switch (urgencyLevel) {
-    case 'URGENT':
-      greeting = ' URGENT PAYMENT REMINDER';
-      tone = 'This is a final reminder that your rent payment is significantly overdue.';
-      break;
-    case 'IMPORTANT':
-      greeting = ' PAYMENT REMINDER';
-      tone = 'We notice that your rent payment is overdue.';
-      break;
-    default:
-      greeting = ' FRIENDLY PAYMENT REMINDER';
-      tone = 'This is a friendly reminder about your upcoming rent payment.';
-  }
+//   switch (urgencyLevel) {
+//     case 'URGENT':
+//       greeting = ' URGENT PAYMENT REMINDER';
+//       tone = 'This is a final reminder that your rent payment is significantly overdue.';
+//       break;
+//     case 'IMPORTANT':
+//       greeting = ' PAYMENT REMINDER';
+//       tone = 'We notice that your rent payment is overdue.';
+//       break;
+//     default:
+//       greeting = ' FRIENDLY PAYMENT REMINDER';
+//       tone = 'This is a friendly reminder about your upcoming rent payment.';
+//   }
 
-  return `${greeting}
+//   return `${greeting}
 
-Dear ${invoice.tenantName},
+// Dear ${invoice.tenantName},
 
-${tone}
+// ${tone}
 
-PAYMENT DETAILS:
-Property: ${property.name}
-Invoice #: ${invoice.invoiceNumber}
-Amount Due: ${formatCurrency(balanceDue)}
-${invoice.dueDate ? `Due Date: ${formatDate(new Date(invoice.dueDate))}` : ''}
-${daysOverdue > 0 ? `Days Overdue: ${daysOverdue}` : ''}
+// PAYMENT DETAILS:
+// Property: ${property.name}
+// Invoice #: ${invoice.invoiceNumber}
+// Amount Due: ${formatCurrency(balanceDue)}
+// ${invoice.dueDate ? `Due Date: ${formatDate(new Date(invoice.dueDate))}` : ''}
+// ${daysOverdue > 0 ? `Days Overdue: ${daysOverdue}` : ''}
 
-${urgencyLevel === 'URGENT' ? 
-  'Please contact us immediately to arrange payment or discuss payment options.' :
-  'Please arrange for payment at your earliest convenience.'
-}
+// ${urgencyLevel === 'URGENT' ? 
+//   'Please contact us immediately to arrange payment or discuss payment options.' :
+//   'Please arrange for payment at your earliest convenience.'
+// }
 
-Please refer to the attached invoice for complete details.
+// Please refer to the attached invoice for complete details.
 
-Thank you for your attention to this matter.
+// Thank you for your attention to this matter.
 
-━━━━━━━━━━━━━━━━━━━━━
-${cogvanaMsg.icon} ${cogvanaMsg.title}
-${cogvanaMsg.message}
+// ━━━━━━━━━━━━━━━━━━━━━
+// ${cogvanaMsg.icon} ${cogvanaMsg.title}
+// ${cogvanaMsg.message}
 
-💡 ${cogvanaMsg.cta}
-${cogvanaMsg.category === 'tutors' ? 'Contact: tutors@cogvana.com' : 'Available on Play Store'}
-━━━━━━━━━━━━━━━━━━━━━
+// 💡 ${cogvanaMsg.cta}
+// ${cogvanaMsg.category === 'tutors' ? 'Contact: tutors@cogvana.com' : 'Available on Play Store'}
+// ━━━━━━━━━━━━━━━━━━━━━
 
-Powered by Cogvana Education Platform`;
-}
+// Powered by Cogvana Education Platform`;
+// }
 
 // New function to share Cogvana promotional message independently
 export async function shareCogvanaMessage(
@@ -575,13 +578,14 @@ export async function shareInvoicePDF(
   property: Property,
   payments: Payment[] = [],
   companyInfo: CompanyInfo,
-  options: ShareOptions = {}
+  options: any,
+  user: any
 ): Promise<void> {
   try {
     // Generate PDF
-    const pdfBytes = await generateInvoicePDF(invoice, property, payments, companyInfo);
+    const pdfBytes = await generateInvoicePDF(invoice, property, payments, companyInfo, options, user);
     const filename = generatePDFFilename(invoice);
-    const fileUri = await downloadPDF(pdfBytes, filename);
+    const fileUri = await downloadPDF(pdfBytes, filename, user);
     
     const caption = `Your invoice for ${invoice.billingMonth}`;
     
@@ -636,7 +640,8 @@ export async function shareBulkInvoicePDFs(
   properties: Property[],
   payments: Payment[][],
   companyInfo: CompanyInfo,
-  options: ShareOptions = {}
+  options: any,
+  user: any
 ): Promise<void> {
   try {
     // For bulk sharing, we'll create a summary text and let user know PDFs are available separately
@@ -656,9 +661,9 @@ export async function shareBulkInvoicePDFs(
       const firstPayments = payments[0] || [];
       
       if (firstProperty) {
-        const pdfBytes = await generateInvoicePDF(firstInvoice, firstProperty, firstPayments, companyInfo);
+        const pdfBytes = await generateInvoicePDF(firstInvoice, firstProperty, firstPayments, companyInfo, options, user);
         const filename = `Sample_${generatePDFFilename(firstInvoice)}`;
-        await downloadPDF(pdfBytes, filename);
+        await downloadPDF(pdfBytes, filename, user);
       }
     }
   } catch (error) {

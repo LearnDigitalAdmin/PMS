@@ -1057,7 +1057,8 @@ async function generateEnhancedInvoicePDF(
   property: Property,
   payments: Payment[] = [],
   companyInfo: CompanyInfo,
-  options: PDFGenerationOptions = {}
+  options: PDFGenerationOptions = {},
+  user: any
 ): Promise<Uint8Array> {
   try {
     // Sanitize all text inputs before processing
@@ -1171,7 +1172,8 @@ async function generateEnhancedInvoicePDF(
 // Enhanced download function with better error handling
 async function downloadEnhancedPDF(
   pdfBytes: Uint8Array,
-  filename: string
+  filename: string,
+  user: any
 ): Promise<string> {
   try {
     // Convert to base64 with improved chunking
@@ -1235,10 +1237,11 @@ async function downloadEnhancedPDF(
 export async function shareEnhancedPDF(
   pdfBytes: Uint8Array,
   filename: string,
-  title: string = 'Professional Invoice'
+  title: string = 'Professional Invoice',
+  user: any
 ): Promise<void> {
   try {
-    const fileUri = await downloadEnhancedPDF(pdfBytes, filename);
+    const fileUri = await downloadEnhancedPDF(pdfBytes, filename, user);
     
     await Share.share({
       title: title,
@@ -1279,7 +1282,8 @@ export async function generatePDFWithErrorHandling(
   property: Property,
   payments: Payment[] = [],
   companyInfo: CompanyInfo,
-  options: PDFGenerationOptions = {}
+  options: PDFGenerationOptions = {},
+  user: any
 ): Promise<Uint8Array> {
   // Validate input data
   if (!validateInvoiceData(invoice, property)) {
@@ -1292,7 +1296,7 @@ export async function generatePDFWithErrorHandling(
   }
   
   try {
-    return await generateEnhancedInvoicePDF(invoice, property, payments, companyInfo, options);
+    return await generateEnhancedInvoicePDF(invoice, property, payments, companyInfo, options, user);
   } catch (error) {
     console.error('PDF generation error:', error);
     
@@ -1370,9 +1374,10 @@ async function downloadPDFWithFallback(
 export async function sharePDF(
   pdfBytes: Uint8Array,
   filename: string,
-  title: string = 'Professional Invoice'
+  title: string = 'Professional Invoice',
+  user: any
 ): Promise<void> {
-  return shareEnhancedPDF(pdfBytes, filename, title);
+  return shareEnhancedPDF(pdfBytes, filename, title, user);
 }
 
 /**

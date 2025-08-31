@@ -49,13 +49,43 @@ const Invoices: React.FC<InvoicesProps> = ({ user, userCompany }) => {
   const [processingPDF, setProcessingPDF] = useState<number | null>(null);
 
   // Company info for PDF generation
-  const [companyInfo] = useState({
-    name: 'SMB KENYA LTD: PLOT YANGU',
-    address: 'Naivasha, Nakuru, Kenya',
-    phone: '+254 791 286 165',
-    email: 'info@smbkenya.com',
-    website: 'www.cogvana.com'
-  });
+  // Company info for PDF generation
+  const companyInfo = useMemo(() => {
+    // Use user's company for business/enterprise tiers, otherwise use default
+    if (user?.tier === 'business' || user?.tier === 'enterprise') {
+      return userCompany ? {
+        name: userCompany.name,
+        address: userCompany.address || '',
+        phone: userCompany.phone || '',
+        email: userCompany.email || '',
+        website: 'www.cogvana.com'
+      } : {
+        name: 'SMB KENYA LTD: PLOT YANGU',
+        address: 'Naivasha, Nakuru, Kenya',
+        phone: '+254 791 286 165',
+        email: 'info@smbkenya.com',
+        website: 'www.cogvana.com'
+      };
+    }
+    
+    // Default company info for free tier users
+    return {
+      name: 'SMB KENYA LTD: PLOT YANGU',
+      address: 'Naivasha, Nakuru, Kenya',
+      phone: '+254 791 286 165',
+      email: 'info@smbkenya.com',
+      website: 'www.cogvana.com'
+    };
+  }, [user?.tier, userCompany]);
+
+
+  // const [companyInfo] = useState({
+  //   name: 'SMB KENYA LTD: PLOT YANGU',
+  //   address: 'Naivasha, Nakuru, Kenya',
+  //   phone: '+254 791 286 165',
+  //   email: 'info@smbkenya.com',
+  //   website: 'www.cogvana.com'
+  // });
 
   useEffect(() => {
     loadData();
@@ -85,7 +115,7 @@ const Invoices: React.FC<InvoicesProps> = ({ user, userCompany }) => {
   };
 
   const loadProperties = async () => {
-    const result = await database.getProperties(1);
+    const result = await database.getProperties(user!.id);
     setProperties(result);
   };
 
@@ -189,13 +219,14 @@ const handleDownloadPDF = async (invoice: InvoiceWithDetails) => {
         template: 'standard',
         paymentInstructions: paymentInstructions, // Use dynamic instructions
         includeCompanyLogo: true
-      }
+      },
+      user
     );
     
     const filename = generatePDFFilename(invoice);
     
     // Share PDF using native sharing
-    await sharePDF(pdfBytes, filename, `Invoice ${invoice.invoiceNumber}`);
+    await sharePDF(pdfBytes, filename, `Invoice ${invoice.invoiceNumber}`, user);
     
   } catch (error) {
     console.error('PDF generation failed:', error);
@@ -222,10 +253,10 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
     
     switch (method) {
       case 'whatsapp':
-        await shareViaWhatsApp(selectedInvoiceForShare, property, payments, companyInfo, storedInstructions);
+        await shareViaWhatsApp(selectedInvoiceForShare, property, payments, companyInfo, storedInstructions, user);
         break;
       case 'email':
-        await shareViaEmail(selectedInvoiceForShare, property, payments, companyInfo, storedInstructions);
+        await shareViaEmail(selectedInvoiceForShare, property, payments, companyInfo, storedInstructions, user);
         break;
       case 'pdf':
         await handleDownloadPDF(selectedInvoiceForShare);
@@ -808,6 +839,7 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
               invoiceId={invoiceId}
               onBack={handleCloseInvoice}
               isModal={true}
+              user={user}
             />
           </div>
         </div>

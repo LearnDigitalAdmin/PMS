@@ -22,9 +22,10 @@ interface AnInvoiceProps {
   invoiceId: any;
   onBack?: () => void;
   isModal: boolean;
+  user: any;
 }
 
-const AnInvoice: React.FC<AnInvoiceProps> = ({ invoiceId, onBack, isModal = false }) => {
+const AnInvoice: React.FC<AnInvoiceProps> = ({ invoiceId, onBack, isModal = false, user }) => {
   const [invoice, setInvoice] = useState<InvoiceWithDetails | null>(null);
   const [property, setProperty] = useState<Property | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -167,13 +168,14 @@ const handleDownloadPDF = async () => {
         template: 'standard',
         paymentInstructions: paymentInstructions, // Use dynamic instructions
         includeCompanyLogo: true
-      }
+      },
+      user
     );
     
     const filename = generatePDFFilename(invoice);
     
     // Share PDF using native sharing
-    await sharePDF(pdfBytes, filename, `Invoice ${invoice.invoiceNumber}`);
+    await sharePDF(pdfBytes, filename, `Invoice ${invoice.invoiceNumber}`, user);
     
   } catch (error) {
     console.error('PDF generation failed:', error);
@@ -196,10 +198,10 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
     
     switch (method) {
       case 'whatsapp':
-        await shareViaWhatsApp(invoice, property, payments, companyInfo, storedInstructions);
+        await shareViaWhatsApp(invoice, property, payments, companyInfo, storedInstructions, user);
         break;
       case 'email':
-        await shareViaEmail(invoice, property, payments, companyInfo, storedInstructions);
+        await shareViaEmail(invoice, property, payments, companyInfo, storedInstructions, user);
         break;
       case 'pdf':
         await handleDownloadPDF();
