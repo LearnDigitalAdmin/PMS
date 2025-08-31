@@ -124,11 +124,36 @@ const PropertySelector: React.FC<{
 }> = ({ properties, selectedProperty, onSelect, loading }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   const filteredProperties = properties.filter(property =>
     property.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     property.address?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const updateDropdownPosition = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + window.scrollY + 8,
+        left: rect.left + window.scrollX,
+        width: rect.width
+      });
+    }
+  };
+
+  const handleToggle = () => {
+    if (!isOpen) {
+      updateDropdownPosition();
+    }
+    setIsOpen(!isOpen);
+  };
+
+  const handleClose = () => {
+    setIsOpen(false);
+    setSearchTerm('');
+  };
 
   if (loading) {
     return (
@@ -142,71 +167,85 @@ const PropertySelector: React.FC<{
   }
 
   return (
-    <div className="relative bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-4 shadow-lg border border-gray-200/50 dark:border-gray-700/50">
-      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
-        Property Filter
-      </label>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between p-3.5 bg-white dark:bg-gray-700 border-2 border-gray-200 dark:border-gray-600 rounded-xl hover:border-blue-300 dark:hover:border-blue-500 hover:bg-gray-50 dark:hover:bg-gray-600 transition-all duration-200 shadow-sm"
-      >
-        <span className="font-medium text-gray-900 dark:text-white">
-          {selectedProperty ? selectedProperty.name : 'All Properties'}
-        </span>
-        <ChevronDown className={`w-5 h-5 text-gray-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
+    <>
+      <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-4 shadow-lg border border-gray-200/50 dark:border-gray-700/50">
+        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+          Property Filter
+        </label>
+        <button
+          ref={buttonRef}
+          onClick={handleToggle}
+          className="w-full flex items-center justify-between p-3.5 bg-white dark:bg-gray-700 border-2 border-gray-200 dark:border-gray-600 rounded-xl hover:border-blue-300 dark:hover:border-blue-500 hover:bg-gray-50 dark:hover:bg-gray-600 transition-all duration-200 shadow-sm"
+        >
+          <span className="font-medium text-gray-900 dark:text-white">
+            {selectedProperty ? selectedProperty.name : 'All Properties'}
+          </span>
+          <ChevronDown className={`w-5 h-5 text-gray-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-gray-700 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-600 z-[9999] max-h-80 overflow-hidden">
-          <div className="p-3 border-b border-gray-200 dark:border-gray-600">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search properties..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-              />
-            </div>
-          </div>
-          <div className="max-h-64 overflow-y-auto">
-            <button
-              onClick={() => {
-                onSelect(null);
-                setIsOpen(false);
-                setSearchTerm('');
-              }}
-              className="w-full px-4 py-3 text-left hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-900 dark:text-white transition-colors duration-150 font-medium"
-            >
-              All Properties
-            </button>
-            {filteredProperties.map(property => (
-              <button
-                key={property.id}
-                onClick={() => {
-                  onSelect(property);
-                  setIsOpen(false);
-                  setSearchTerm('');
-                }}
-                className="w-full px-4 py-3 text-left hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-900 dark:text-white transition-colors duration-150"
-              >
-                <div className="font-medium">{property.name}</div>
-                {property.address && (
-                  <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">{property.address}</div>
-                )}
-              </button>
-            ))}
-            {filteredProperties.length === 0 && (
-              <div className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
-                <Building className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p>No properties found</p>
+        <div 
+          className="fixed inset-0 z-[50000] bg-black/10"
+          onClick={handleClose}
+        >
+          <div 
+            className="absolute bg-white dark:bg-gray-700 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-600 max-h-80 overflow-hidden"
+            style={{
+              top: dropdownPosition.top + 'px',
+              left: dropdownPosition.left + 'px',
+              width: dropdownPosition.width + 'px'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-3 border-b border-gray-200 dark:border-gray-600">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search properties..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                />
               </div>
-            )}
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+              <button
+                onClick={() => {
+                  onSelect(null);
+                  handleClose();
+                }}
+                className="w-full px-4 py-3 text-left hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-900 dark:text-white transition-colors duration-150 font-medium"
+              >
+                All Properties
+              </button>
+              {filteredProperties.map(property => (
+                <button
+                  key={property.id}
+                  onClick={() => {
+                    onSelect(property);
+                    handleClose();
+                  }}
+                  className="w-full px-4 py-3 text-left hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-900 dark:text-white transition-colors duration-150"
+                >
+                  <div className="font-medium">{property.name}</div>
+                  {property.address && (
+                    <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">{property.address}</div>
+                  )}
+                </button>
+              ))}
+              {filteredProperties.length === 0 && (
+                <div className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                  <Building className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p>No properties found</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 
@@ -575,6 +614,7 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
       // Load properties (assuming userId = 1 for demo)
       const propertiesData = await database.getProperties(userData.id);
       setProperties(propertiesData);
+      console.log('Loaded properties:', propertiesData);
 
       // Load dashboard data
       const dashData = await database.getDashboardData(
@@ -729,7 +769,7 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard
           title="Properties"
-          value={dashboardData?.totalProperties || 0}
+          value={properties.length || 0}
           icon={Building}
           color="bg-gradient-to-r from-blue-500 to-indigo-600"
           loading={loading}

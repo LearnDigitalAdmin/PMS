@@ -3,64 +3,12 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { formatCurrency, formatDate } from '../../utils/FormatUtils';
-import type { InvoiceWithDetails, Property, Payment } from '../database/Database';
+import type { InvoiceWithDetails, Property, Payment, User } from '../database/Database';
 import cogvanaMessages from '../../assets/cogvana.json';
 
-export interface PDFGenerationOptions {
-  includeCompanyLogo?: boolean;
-  template?: 'standard' | 'premium';
-  watermark?: string;
-  customHeader?: string;
-  paymentInstructions?: string;
-}
 
-export interface CompanyInfo {
-  name: string;
-  address?: string;
-  phone?: string;
-  email?: string;
-  logoUrl?: string;
-  website?: string;
-}
 
-export interface CogvanaMessage {
-  id: string;
-  category: string;
-  title: string;
-  message: string;
-  cta: string;
-  color: string;
-  icon: string;
-}
 
-// Fixed layout constants for proper A4 spacing
-const LAYOUT = {
-  MARGIN: 40,
-  LINE_HEIGHT: 15,
-  SECTION_SPACING: 25,
-  TABLE_ROW_HEIGHT: 22,
-  HEADER_HEIGHT: 100,
-  FOOTER_HEIGHT: 120,
-  CARD_PADDING: 12,
-  BORDER_RADIUS: 5,
-  TOP_MARGIN: 40, // Reduced from excessive margin
-  COGVANA_SPACING: 35 // Proper spacing between Cogvana and invoice data
-};
-
-const COLORS = {
-  PRIMARY: rgb(0.2, 0.4, 0.8),
-  SECONDARY: rgb(0.31, 0.27, 0.9),
-  ACCENT: rgb(0.1, 0.7, 0.3),
-  DARK: rgb(0.1, 0.1, 0.1),
-  LIGHT_GRAY: rgb(0.9, 0.9, 0.9),
-  MEDIUM_GRAY: rgb(0.6, 0.6, 0.6),
-  BORDER: rgb(0.8, 0.8, 0.8),
-  SUCCESS: rgb(0.2, 0.7, 0.2),
-  DANGER: rgb(0.8, 0.2, 0.2),
-  WHITE: rgb(1, 1, 1)
-};
-
-// Comprehensive emoji and special character sanitization
 function sanitizeTextForPDF(text: string): string {
   if (!text) return '';
   
@@ -699,7 +647,7 @@ async function drawEnhancedPaymentsTable(
   return currentY - 15;
 }
 
-// Fixed summary positioning to avoid overlap
+// Fixed summary positioning to avoid overlap - FIXED LINE ISSUE
 async function drawEnhancedSummary(
   page: any,
   font: any,
@@ -784,10 +732,10 @@ async function drawEnhancedSummary(
     });
     
     if (isLast) {
-      // Draw line above final total
+      // Draw line above final total - FIXED POSITIONING
       page.drawLine({
-        start: { x: summaryX + 15, y: summaryY + 3 },
-        end: { x: summaryX + 240, y: summaryY + 3 },
+        start: { x: summaryX + 15, y: summaryY + 8 }, // Moved line higher to avoid cutting through text
+        end: { x: summaryX + 240, y: summaryY + 8 },
         thickness: 1,
         color: COLORS.PRIMARY
       });
@@ -799,14 +747,20 @@ async function drawEnhancedSummary(
   return adjustedY - summaryHeight - 20;
 }
 
-// Fixed Cogvana banner with proper spacing
+// UPDATED Cogvana banner - only shows for free and basic users
 async function drawEnhancedCogvanaBanner(
   page: any,
   font: any,
   boldFont: any,
   yPosition: number,
-  width: number
+  width: number,
+  userTier: string
 ): Promise<number> {
+  // Hide Cogvana section for business and enterprise users
+  if (userTier === 'business' || userTier === 'enterprise') {
+    return yPosition; // Return same position, no banner drawn
+  }
+  
   const cogvanaMsg = getRandomCogvanaMessage();
   const [r, g, b] = hexToRgb(cogvanaMsg.color);
   const bannerHeight = 60;
@@ -937,6 +891,96 @@ async function drawEnhancedCogvanaBanner(
   return bannerY - bannerHeight - 10; // Return new Y position after banner
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export interface PDFGenerationOptions {
+  includeCompanyLogo?: boolean;
+  template?: 'standard' | 'premium';
+  watermark?: string;
+  customHeader?: string;
+  paymentInstructions?: string;
+}
+
+export interface CompanyInfo {
+  name: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  logoUrl?: string;
+  website?: string;
+}
+
+export interface CogvanaMessage {
+  id: string;
+  category: string;
+  title: string;
+  message: string;
+  cta: string;
+  color: string;
+  icon: string;
+}
+
+// Fixed layout constants for proper A4 spacing
+const LAYOUT = {
+  MARGIN: 40,
+  LINE_HEIGHT: 15,
+  SECTION_SPACING: 25,
+  TABLE_ROW_HEIGHT: 22,
+  HEADER_HEIGHT: 100,
+  FOOTER_HEIGHT: 120,
+  CARD_PADDING: 12,
+  BORDER_RADIUS: 5,
+  TOP_MARGIN: 40, // Reduced from excessive margin
+  COGVANA_SPACING: 35 // Proper spacing between Cogvana and invoice data
+};
+
+const COLORS = {
+  PRIMARY: rgb(0.2, 0.4, 0.8),
+  SECONDARY: rgb(0.31, 0.27, 0.9),
+  ACCENT: rgb(0.1, 0.7, 0.3),
+  DARK: rgb(0.1, 0.1, 0.1),
+  LIGHT_GRAY: rgb(0.9, 0.9, 0.9),
+  MEDIUM_GRAY: rgb(0.6, 0.6, 0.6),
+  BORDER: rgb(0.8, 0.8, 0.8),
+  SUCCESS: rgb(0.2, 0.7, 0.2),
+  DANGER: rgb(0.8, 0.2, 0.2),
+  WHITE: rgb(1, 1, 1)
+};
+
 // Enhanced footer with proper spacing and no overlap
 async function drawEnhancedFooter(
   page: any,
@@ -945,7 +989,8 @@ async function drawEnhancedFooter(
   _companyInfo: CompanyInfo,
   options: PDFGenerationOptions,
   yPosition: number,
-  width: number
+  width: number,
+  user: User | null
 ): Promise<void> {
   // Ensure footer doesn't go below page boundaries
   let currentY = Math.max(yPosition, 180);
@@ -1001,7 +1046,7 @@ async function drawEnhancedFooter(
   currentY -= LAYOUT.COGVANA_SPACING; // Proper spacing before Cogvana banner
   
   // Add Cogvana promotional section with proper positioning
-  currentY = await drawEnhancedCogvanaBanner(page, font, boldFont, currentY, width);
+  currentY = await drawEnhancedCogvanaBanner(page, font, boldFont, currentY, width, user ? user.tier : 'free');
   
   // Footer separator line
   page.drawLine({
@@ -1134,7 +1179,7 @@ async function generateEnhancedInvoicePDF(
       yPosition = await drawEnhancedSummary(newPage, font, boldFont, sanitizedInvoice, summaryY, width);
       
       // Draw enhanced footer with proper spacing
-      await drawEnhancedFooter(newPage, font, boldFont, sanitizedCompanyInfo, sanitizedOptions, Math.max(yPosition, 200), width);
+      await drawEnhancedFooter(newPage, font, boldFont, sanitizedCompanyInfo, sanitizedOptions, Math.max(yPosition, 200), width, user);
       
       // Add watermark for free version
       if (sanitizedOptions.template !== 'premium') {
@@ -1154,7 +1199,7 @@ async function generateEnhancedInvoicePDF(
       yPosition = await drawEnhancedSummary(page, font, boldFont, sanitizedInvoice, summaryY, width);
       
       // Draw enhanced footer with proper spacing
-      await drawEnhancedFooter(page, font, boldFont, sanitizedCompanyInfo, sanitizedOptions, Math.max(yPosition, 220), width);
+      await drawEnhancedFooter(page, font, boldFont, sanitizedCompanyInfo, sanitizedOptions, Math.max(yPosition, 220), width, user);
       
       // Add watermark for free version
       if (sanitizedOptions.template !== 'premium') {
@@ -1173,7 +1218,7 @@ async function generateEnhancedInvoicePDF(
 async function downloadEnhancedPDF(
   pdfBytes: Uint8Array,
   filename: string,
-  user: any
+  _user: any
 ): Promise<string> {
   try {
     // Convert to base64 with improved chunking

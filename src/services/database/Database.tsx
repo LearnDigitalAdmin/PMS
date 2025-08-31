@@ -1258,10 +1258,19 @@ async getProperties(userId: number): Promise<Property[]> {
       params.push(...user.selectedPropertyIds);
     } else if (limits.properties !== -1) {
       // Apply tier limits for non-unlimited users
-      query += ` AND is_restricted = 0 ORDER BY created_at ASC LIMIT ${limits.properties}`;
+      query += ` AND is_restricted = 0`;
+    } else {
+      // For unlimited users, still filter out restricted properties
+      query += ` AND is_restricted = 0`;
     }
 
+    // Add ORDER BY and LIMIT at the end
     query += ` ORDER BY created_at DESC`;
+    
+    // Apply limit only if not unlimited
+    if (limits.properties !== -1) {
+      query += ` LIMIT ${limits.properties}`;
+    }
     
     const result = await this.db!.query(query, params);
     return this.mapToProperties(result.values || []);
@@ -1442,13 +1451,12 @@ async getInvoices(filters: InvoiceFilters = {}): Promise<InvoiceWithDetails[]> {
 }
 
 // 9. FIX: Secure dashboard data (only count accessible data)
+
+
 async getDashboardData(userId: number, propertyId?: number, month?: string): Promise<DashboardData> {
   try {
-    // CRITICAL: Only count non-restricted data
-    let propertyFilter = propertyId ? 'AND p.id = ? AND p.is_restricted = 0' : 'AND p.is_restricted = 0';
-    let monthFilter = month ? 'AND i.billing_month = ?' : '';
-    
-    const query = `
+    // Build the base query
+    let query = `
       SELECT 
         COUNT(DISTINCT p.id) as total_properties,
         COUNT(DISTINCT CASE WHEN t.is_restricted = 0 THEN t.id END) as total_tenants,
@@ -1460,17 +1468,43 @@ async getDashboardData(userId: number, propertyId?: number, month?: string): Pro
         COUNT(CASE WHEN t.is_restricted = 0 THEN t.id END) as total_tenant_spaces
       FROM properties p
       LEFT JOIN tenants t ON p.id = t.property_id
-      LEFT JOIN invoices i ON t.id = i.tenant_id ${monthFilter}
-      WHERE p.user_id = ? ${propertyFilter}
-    `;
+      LEFT JOIN invoices i ON t.id = i.tenant_id`;
+
+    // Add month filter to JOIN condition if specified
+    if (month) {
+      query = query.replace(
+        'LEFT JOIN invoices i ON t.id = i.tenant_id',
+        'LEFT JOIN invoices i ON t.id = i.tenant_id AND i.billing_month = ?'
+      );
+    }
+
+    // Add WHERE clause
+    query += ` WHERE p.user_id = ? AND p.is_restricted = 0`;
+
+    // Add property filter if specified
+    if (propertyId) {
+      query += ` AND p.id = ?`;
+    }
+
+    // Build parameters array in correct order
+    const params: (number | string)[] = [];
     
-    const params: (number | string)[] = [userId];
-    if (month) params.push(month);
-    if (propertyId) params.push(propertyId);
+    // First add month parameter if it's in the JOIN
+    if (month) {
+      params.push(month);
+    }
     
+    // Then add userId (always present)
+    params.push(userId);
+    
+    // Finally add propertyId if specified
+    if (propertyId) {
+      params.push(propertyId);
+    }
+
     const result = await this.db!.query(query, params);
     const row = result.values?.[0] || {};
-    
+
     return {
       totalProperties: row.total_properties || 0,
       totalTenants: row.total_tenants || 0,

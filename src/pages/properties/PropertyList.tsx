@@ -249,6 +249,7 @@ const Properties: React.FC<PropertyListProps> = ({
       await database.createProperty(propertyInput);
       await loadProperties();
       setShowAddModal(false);
+      console.log('Property created successfully', propertyInput);
       resetForm();
     } catch (error) {
       console.error('Error creating property:', error);
