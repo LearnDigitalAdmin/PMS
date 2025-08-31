@@ -8,7 +8,7 @@ export interface User {
   id: number;
   name: string;
   email?: string;
-  phone?: string;
+  phone?: number;
   passwordHash?: string;
   isPremium: boolean;
   type: UserType; // New field for user type
@@ -2084,7 +2084,7 @@ async checkUserLimits(userId: number): Promise<{
             await this.updateUser(user.id, {
               name: cloudUser.name,
               email: cloudUser.email,
-              phone: cloudUser.phone,
+              phone: cloudUser.phone?.toString() || '',
               isPremium: cloudUser.isPremium
             });
             

@@ -16,7 +16,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
     // User details
     name: '',
     email: '',
-    phone: 0,
+    phone: 0, // Keep as number for database compatibility
     password: '',
     confirmPassword: '',
     // Company details
@@ -44,6 +44,11 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
       setError('Password must be at least 6 characters long');
       return false;
     }
+    // Validate phone number format if needed
+    if (!formData.phone || formData.phone === 0) {
+      setError('Please enter a valid phone number');
+      return false;
+    }
     return true;
   };
 
@@ -61,10 +66,10 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
     try {
       await database.createUserWithCompany({
         user: {
-          id: formData.phone,
+          id: formData.phone, // Number as expected by database
           name: formData.name,
           email: formData.email,
-          phone: formData.phone,
+          phone: formData.phone, // Number as expected by database
           password: formData.password
         },
         company: {
@@ -177,8 +182,12 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
                     <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <input
                       type="tel"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.valueAsNumber })}
+                      value={formData.phone || ''} // Display empty string if phone is 0
+                      onChange={(e) => {
+                        // Only allow numeric input and convert to number
+                        const value = e.target.value.replace(/\D/g, '');
+                        setFormData({ ...formData, phone: value ? parseInt(value, 10) : 0 });
+                      }}
                       className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
                       placeholder="Enter your phone number"
                     />
@@ -353,6 +362,8 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
         onClose={handlePricingModalClose}
         canDismiss={false} // Cannot dismiss after signup - must select a plan
         currentPlan="free"
+        userId={formData.phone}
+        userPhone={formData.phone}
       />
     </>
   );

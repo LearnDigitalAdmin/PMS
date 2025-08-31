@@ -326,13 +326,14 @@ const PropertiesWrapper = () => {
 };
 
 const InvoicesWrapper = () => {
-  useAuth();
+  const {user} = useAuth();
+  const {company} = useAuth();
   
   const handleNavigate = (page: string, params?: any) => {
     console.log('Navigate to:', page, params);
   };
 
-  return <Invoices onNavigate={handleNavigate} />;
+  return <Invoices onNavigate={handleNavigate} user = {user} userCompany = {company} />;
 };
 
 const DashboardWrapper = () => {

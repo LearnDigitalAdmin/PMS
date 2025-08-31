@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1037620305589",
+    "project_id": "plot-9fd6e",
+    "storage_bucket": "plot-9fd6e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1037620305589:android:6fbb1b0af789312bb068fc",
+        "android_client_info": {
+          "package_name": "com.plotyangu.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBFrUqecRN0uhAKsQTaFmUkV8WRjRWT2HY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

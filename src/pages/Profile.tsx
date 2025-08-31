@@ -269,6 +269,8 @@ const Profile: React.FC = () => {
         onClose={handlePricingModalClose}
         canDismiss={true} // Can dismiss from profile page
         currentPlan={user?.tier || 'free'}
+        userId={user?.id}
+        userPhone={user?.phone}
       />
     </>
   );

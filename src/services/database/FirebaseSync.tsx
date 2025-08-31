@@ -743,7 +743,7 @@ async performFullSync(userId: number): Promise<SyncStatus> {
         await database.updateUser(userId, {
           name: latestUser.name,
           email: latestUser.email,
-          phone: latestUser.phone,
+          phone: latestUser.phone?.toString() || '',
           isPremium: latestUser.isPremium
         });
         

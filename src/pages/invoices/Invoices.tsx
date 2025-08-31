@@ -15,7 +15,7 @@ import {
   Clock,
   AlertCircle
 } from 'lucide-react';
-import { database, type InvoiceWithDetails, type Property, type InvoiceFilters, type Invoice, type Payment } from '../../services/database/Database';
+import { database, type InvoiceWithDetails, type Property, type InvoiceFilters, type Invoice, type Payment, type User, type Company } from '../../services/database/Database';
 import { generateInvoicePDF, sharePDF, generatePDFFilename } from '../../services/pdf/PDFService';
 import { shareInvoiceSummary, shareViaWhatsApp, shareViaEmail } from '../../services/sharing/ShareService';
 import AddInvoice from './AddInvoice';
@@ -23,9 +23,11 @@ import AnInvoice from './AnInvoice';
 
 interface InvoicesProps {
   onNavigate?: (page: string, params?: any) => void;
+  user: User | null;
+  userCompany: Company | null;
 }
 
-const Invoices: React.FC<InvoicesProps> = ({ }) => {
+const Invoices: React.FC<InvoicesProps> = ({ user, userCompany }) => {
   const [invoices, setInvoices] = useState<InvoiceWithDetails[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,7 +50,7 @@ const Invoices: React.FC<InvoicesProps> = ({ }) => {
 
   // Company info for PDF generation
   const [companyInfo] = useState({
-    name: 'SMB KENYA LTD',
+    name: 'SMB KENYA LTD: PLOT YANGU',
     address: 'Naivasha, Nakuru, Kenya',
     phone: '+254 791 286 165',
     email: 'info@smbkenya.com',
@@ -83,7 +85,6 @@ const Invoices: React.FC<InvoicesProps> = ({ }) => {
   };
 
   const loadProperties = async () => {
-    // Assuming userId = 1 for demo
     const result = await database.getProperties(1);
     setProperties(result);
   };
