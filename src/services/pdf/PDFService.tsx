@@ -757,7 +757,7 @@ async function drawEnhancedCogvanaBanner(
   userTier: string
 ): Promise<number> {
   // Hide Cogvana section for business and enterprise users
-  if (userTier === 'business' || userTier === 'enterprise') {
+  if (userTier === 'business' || userTier === 'pro' || userTier === 'enterprise') {
     return yPosition; // Return same position, no banner drawn
   }
   

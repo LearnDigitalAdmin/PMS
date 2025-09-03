@@ -53,7 +53,8 @@ const Profile: React.FC = () => {
     const plans = {
       free: { name: 'Free Forever', color: 'text-gray-600', bgColor: 'bg-gray-100' },
       starter: { name: 'Starter', color: 'text-blue-600', bgColor: 'bg-blue-100' },
-      professional: { name: 'Professional', color: 'text-green-600', bgColor: 'bg-green-100' },
+      business: { name: 'Business', color: 'text-green-600', bgColor: 'bg-green-100' },
+      professional: { name: 'Professional', color: 'text-black-600', bgColor: 'bg-black-100' },
       enterprise: { name: 'Enterprise', color: 'text-purple-600', bgColor: 'bg-purple-100' }
     };
     return plans[tier as keyof typeof plans] || plans.free;

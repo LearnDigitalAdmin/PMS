@@ -336,36 +336,10 @@ export class DatabaseManager {
   public db: SQLiteDBConnection | null = null;
   private readonly DB_NAME = 'Plot';
   // 2. FIX: Add missing USER_LIMITS constant
-USER_LIMITS: any = {};
+USER_LIMITS: any = {USER_LIMITS};
 
   constructor() {
     this.connectionManager = SQLiteConnectionManager.getInstance();
-    // 2. FIX: Add missing USER_LIMITS constant
-this.USER_LIMITS = {
-  free: { 
-    properties: 2, 
-    tenantsPerProperty: 12, 
-    totalTenants: 24,
-    storage: false 
-  },
-  low: { 
-    properties: 7, 
-    tenantsPerProperty: 15, 
-    totalTenants: 105,
-    storage: false
-  },
-  business: { 
-    properties: 15, 
-    tenantsPerProperty: 20, 
-    totalTenants: 300,
-    storage: true 
-  },
-  enterprise: { 
-    properties: -1,
-    tenantsPerProperty: -1,
-    totalTenants: -1,
-    storage: true 
-  }};
   }
 
   // ==================== INITIALIZATION ====================
@@ -1001,7 +975,7 @@ async exportUserDataOffline(userId: number): Promise<{
         password_hash TEXT NOT NULL,
         is_premium INTEGER DEFAULT 0,
         type TEXT DEFAULT 'free' CHECK (type IN ('free', 'paid')),
-        tier TEXT DEFAULT 'free' CHECK (tier IN ('free', 'low', 'business', 'enterprise')),
+        tier TEXT DEFAULT 'free' CHECK (tier IN ('free', 'low', 'business', pro, 'enterprise')),
         storage INTEGER DEFAULT 0,
         revenuecat_user_id TEXT,
         selected_property_ids TEXT, -- JSON array of property IDs for restricted users
@@ -2211,7 +2185,7 @@ async checkUserLimits(userId: number): Promise<{
 
   private canUserSync(user: User): boolean {
     // Business and enterprise users always have sync
-    if (user.tier === 'business' || user.tier === 'enterprise') {
+    if (user.tier === 'business' || user.tier === 'pro' || user.tier === 'enterprise') {
       return true;
     }
     

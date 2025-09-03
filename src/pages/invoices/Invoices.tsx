@@ -52,7 +52,7 @@ const Invoices: React.FC<InvoicesProps> = ({ user, userCompany }) => {
   // Company info for PDF generation
   const companyInfo = useMemo(() => {
     // Use user's company for business/enterprise tiers, otherwise use default
-    if (user?.tier === 'business' || user?.tier === 'enterprise') {
+    if (user?.tier === 'business' || user?.tier === 'pro' || user?.tier === 'enterprise') {
       return userCompany ? {
         name: userCompany.name,
         address: userCompany.address || '',

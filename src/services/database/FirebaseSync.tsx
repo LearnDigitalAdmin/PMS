@@ -14,13 +14,24 @@ import {
   orderBy,
   limit,
   onSnapshot,
-  type Unsubscribe
+  type Unsubscribe,
+  deleteDoc
 } from 'firebase/firestore';
 import { database } from '../database/Database';
 import type { 
   User, 
   Property, 
   Tenant} from '../database/Database';
+  
+// Add these imports at the top of FirebaseSync.tsx
+import { 
+  getStorage, 
+  ref, 
+  uploadBytes, 
+  getDownloadURL, 
+  deleteObject 
+} from 'firebase/storage';
+import { generateInvoicePDF } from '../pdf/PDFService';
 
 // Firebase config - replace with your actual config
 const firebaseConfig = {
@@ -36,6 +47,7 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 // Sync interfaces
 export interface SyncStatus {
@@ -59,21 +71,27 @@ export interface SyncLog {
 // User tier limits
 export const USER_LIMITS = {
   free: { 
-    properties: 2, 
+    properties: 1, 
     tenantsPerProperty: 12, 
-    totalTenants: 24,
+    totalTenants: 12,
     storage: false 
   },
   low: { 
-    properties: 7, 
+    properties: 4, 
     tenantsPerProperty: 15, 
-    totalTenants: 105,
+    totalTenants: 75,
     storage: false // Can be upgraded with IAP
   },
   business: { 
-    properties: 15, 
+    properties: 10, 
     tenantsPerProperty: 20, 
-    totalTenants: 300,
+    totalTenants: 230,
+    storage: true 
+  },
+  pro: { 
+    properties: 20, 
+    tenantsPerProperty: 25, 
+    totalTenants: 500,
     storage: true 
   },
   enterprise: { 
@@ -85,7 +103,7 @@ export const USER_LIMITS = {
 } as const;
 
 export type UserType = 'free' | 'paid';
-export type UserTier = 'free' | 'low' | 'business' | 'enterprise';
+export type UserTier = 'free' | 'low' | 'business' | 'pro' | 'enterprise';
 
 export class FirebaseSyncService {
   private static instance: FirebaseSyncService;
@@ -100,34 +118,149 @@ export class FirebaseSyncService {
     return this.instance;
   }
 
-  // ==================== USER SYNC OPERATIONS ====================
-
-  async syncUserToFirestore(user: User): Promise<void> {
-    if (!this.canUserSync(user)) {
-      console.log('User cannot sync - no storage permission');
-      return;
-    }
-
-    try {
-      const userRef = doc(db, 'users', user.id.toString());
-      const userData = {
-        ...user,
-        lastSyncTime: serverTimestamp(),
-        localId: user.id // Keep reference to local ID
-      };
-
-      await setDoc(userRef, userData, { merge: true });
-      console.log('User synced to Firestore:', user.email);
-    } catch (error) {
-      console.error('Error syncing user to Firestore:', error);
-      throw error;
-    }
+// Add this helper function to generate company info based on user tier
+private getCompanyInfoForPDF(user: User, userCompany: any): any {
+  if (user.tier === 'business' || user.tier === 'enterprise') {
+    return userCompany ? {
+      name: userCompany.name,
+      address: userCompany.address || '',
+      phone: userCompany.phone || '',
+      email: userCompany.email || '',
+      website: 'www.cogvana.com'
+    } : {
+      name: 'SMB KENYA LTD: PLOT YANGU',
+      address: 'Naivasha, Nakuru, Kenya',
+      phone: '+254 791 286 165',
+      email: 'info@smbkenya.com',
+      website: 'www.cogvana.com'
+    };
   }
+  
+  return {
+    name: 'SMB KENYA LTD: PLOT YANGU',
+    address: 'Naivasha, Nakuru, Kenya',
+    phone: '+254 791 286 165',
+    email: 'info@smbkenya.com',
+    website: 'www.cogvana.com'
+  };
+}
 
+// Add this helper function to get stored payment instructions
+private getStoredPaymentInstructions(): string {
+  try {
+    const stored = localStorage.getItem('defaultPaymentInstructions');
+    const instructions = stored ? JSON.parse(stored) : {};
+    
+    const parts = [];
+    
+    if (instructions.mpesaTillNumber) {
+      parts.push(`M-Pesa Till Number: ${instructions.mpesaTillNumber}`);
+    }
+    
+    if (instructions.bankName && instructions.accountNumber) {
+      parts.push(`Bank Transfer: ${instructions.bankName} - Account: ${instructions.accountNumber}`);
+    }
+    
+    if (instructions.customInstructions) {
+      parts.push(instructions.customInstructions);
+    }
+    
+    return parts.length > 0 
+      ? parts.join('. ') 
+      : 'Please make payment within 7 days of the due date. Contact us for payment methods.';
+  } catch {
+    return 'Please make payment within 7 days of the due date. Contact us for payment methods.';
+  }
+}
 
-  // ==================== CRITICAL FIXES FOR FIREBASESYNC.TSX ====================
+// Add this method to generate and upload PDF
+private async generateAndUploadInvoicePDF(
+  userId: number, 
+  invoice: any, 
+  statusSuffix: string
+): Promise<string | null> {
+  try {
+    console.log(`Generating PDF for invoice ${invoice.id} with status: ${statusSuffix}`);
+    
+    // Get user and company data
+    const user = await database.getUserById(userId);
+    if (!user) {
+      console.error('User not found for PDF generation');
+      return null;
+    }
+    
+    const userCompany = await database.getCompanyByUserId(userId);
+    const property = await database.getPropertyById(invoice.propertyId);
+    
+    if (!property) {
+      console.error('Property not found for PDF generation');
+      return null;
+    }
+    
+    // Get payment history
+    const payments = await database.getPaymentsByInvoice(invoice.id);
+    
+    // Get company info and payment instructions
+    const companyInfo = this.getCompanyInfoForPDF(user, userCompany);
+    const paymentInstructions = this.getStoredPaymentInstructions();
+    
+    // Generate PDF
+    const pdfBytes = await generateInvoicePDF(
+      invoice,
+      property,
+      payments,
+      companyInfo,
+      {
+        template: 'standard',
+        paymentInstructions: paymentInstructions,
+        includeCompanyLogo: true
+      },
+      user
+    );
+    
+    // Create storage path with status suffix
+    const filename = `invoices/${userId}/${invoice.id}_${statusSuffix}.pdf`;
+    const storageRef = ref(storage, filename);
+    
+    // Upload to Firebase Storage
+    console.log(`Uploading PDF to storage: ${filename}`);
+    const uploadResult = await uploadBytes(storageRef, pdfBytes);
+    
+    // Get download URL
+    const downloadURL = await getDownloadURL(uploadResult.ref);
+    console.log(`PDF uploaded successfully: ${downloadURL}`);
+    
+    return downloadURL;
+    
+  } catch (error) {
+    console.error('Error generating and uploading PDF:', error);
+    return null;
+  }
+}
 
-// 1. FIX: Complete syncUserDataToFirestore with ALL data types
+// Add this method to delete old PDF from storage
+private async deleteOldPDFFromStorage(pdfUrl: string): Promise<void> {
+  try {
+    if (!pdfUrl || !pdfUrl.includes('firebase')) return;
+    
+    // Extract storage path from download URL
+    const urlParts = pdfUrl.split('/o/')[1];
+    if (!urlParts) return;
+    
+    const storagePath = decodeURIComponent(urlParts.split('?')[0]);
+    const storageRef = ref(storage, storagePath);
+    
+    console.log(`Deleting old PDF from storage: ${storagePath}`);
+    await deleteObject(storageRef);
+    console.log('Old PDF deleted successfully');
+    
+  } catch (error) {
+    console.error('Error deleting old PDF from storage:', error);
+    // Don't throw error - continue with sync even if delete fails
+  }
+}
+
+// Update the syncUserDataToFirestore method to include PDF generation
 private async syncUserDataToFirestore(userId: number): Promise<void> {
   const user = await database.getUserById(userId);
   if (!user || !this.canUserSync(user)) {
@@ -138,11 +271,10 @@ private async syncUserDataToFirestore(userId: number): Promise<void> {
   try {
     console.log('Starting complete data upload for user:', user.email);
     
-    // Create multiple batches to handle large datasets
     const batches = [];
     let currentBatch = writeBatch(db);
     let operationCount = 0;
-    const maxBatchSize = 400; // Stay under Firestore's 500 operation limit
+    const maxBatchSize = 400;
 
     const addToBatch = (ref: any, data: any) => {
       if (operationCount >= maxBatchSize) {
@@ -154,30 +286,24 @@ private async syncUserDataToFirestore(userId: number): Promise<void> {
       operationCount++;
     };
 
-    // 1. Sync user data first
+    // 1. Sync user data with company embedded
+    const company = await database.getCompanyByUserId(userId);
     const userRef = doc(db, 'users', userId.toString());
     addToBatch(userRef, {
       ...user,
       lastSyncTime: serverTimestamp(),
-      localId: user.id
-    });
-
-    // 2. Sync company data
-    const company = await database.getCompanyByUserId(userId);
-    if (company) {
-      const companyRef = doc(db, 'companies', `${userId}_${company.id}`);
-      addToBatch(companyRef, {
+      localId: user.id,
+      company: company ? {
         ...company,
-        userId,
         localId: company.id,
         lastSyncTime: serverTimestamp()
-      });
-    }
+      } : null
+    });
 
-    // 3. Sync ALL accessible properties (respecting tier limits)
+    // 2. Sync properties and their nested data
     const properties = await this.getFilteredPropertiesForSync(userId);
     for (const property of properties) {
-      const propertyRef = doc(db, 'properties', `${userId}_${property.id}`);
+      const propertyRef = doc(db, 'users', userId.toString(), 'properties', property.id.toString());
       addToBatch(propertyRef, {
         ...property,
         userId,
@@ -185,10 +311,10 @@ private async syncUserDataToFirestore(userId: number): Promise<void> {
         lastSyncTime: serverTimestamp()
       });
 
-      // 4. Sync units for each property
+      // 3. Sync units
       const units = await database.getUnitsByProperty(property.id);
       for (const unit of units) {
-        const unitRef = doc(db, 'units', `${userId}_${unit.id}`);
+        const unitRef = doc(db, 'users', userId.toString(), 'properties', property.id.toString(), 'units', unit.id.toString());
         addToBatch(unitRef, {
           ...unit,
           userId,
@@ -198,35 +324,75 @@ private async syncUserDataToFirestore(userId: number): Promise<void> {
         });
       }
 
-      // 5. Sync ALL accessible tenants for each property
+      // 4. Sync tenants
       const tenants = await this.getFilteredTenantsForSync(property.id, user);
       for (const tenant of tenants) {
-        const tenantRef = doc(db, 'tenants', `${userId}_${tenant.id}`);
+        const phoneDocId = tenant.phone ? tenant.phone.replace(/[^\w]/g, '') : `tenant_${tenant.id}`;
+        const tenantRef = doc(db, 'users', userId.toString(), 'properties', property.id.toString(), 'tenants', phoneDocId);
         addToBatch(tenantRef, {
           ...tenant,
           userId,
           propertyLocalId: property.id,
           localId: tenant.id,
+          phoneDocId,
           lastSyncTime: serverTimestamp()
         });
 
-        // 6. Sync ALL invoices for each tenant
+        // 5. Sync invoices WITH PDF generation
         const invoices = await database.getInvoices({ tenantId: tenant.id });
         for (const invoice of invoices) {
-          const invoiceRef = doc(db, 'invoices', `${userId}_${invoice.id}`);
+          const invoiceRef = doc(db, 'users', userId.toString(), 'properties', property.id.toString(), 'tenants', phoneDocId, 'invoices', invoice.id.toString());
+          
+          // Check if we need to generate PDF
+          let pdfUrl = null;
+          const statusSuffix = invoice.totalAmount <= invoice.amountPaid ? 'paid' : 'pending';
+          
+          // Get existing invoice from Firestore to compare status
+          try {
+            const existingInvoiceDoc = await getDoc(invoiceRef);
+            const existingInvoice = existingInvoiceDoc.exists() ? existingInvoiceDoc.data() : null;
+            
+            // Generate PDF if:
+            // 1. No existing invoice (new invoice)
+            // 2. Status changed (existing status different from current status)
+            const shouldGeneratePDF = !existingInvoice || 
+              (existingInvoice.pdfStatus !== statusSuffix);
+            
+            if (shouldGeneratePDF) {
+              console.log(`PDF generation needed for invoice ${invoice.id} - Status: ${statusSuffix}`);
+              
+              // Delete old PDF if status changed
+              if (existingInvoice && existingInvoice.pdfUrl && existingInvoice.pdfStatus !== statusSuffix) {
+                await this.deleteOldPDFFromStorage(existingInvoice.pdfUrl);
+              }
+              
+              // Generate new PDF
+              pdfUrl = await this.generateAndUploadInvoicePDF(userId, invoice, statusSuffix);
+            } else {
+              // Keep existing PDF URL
+              pdfUrl = existingInvoice?.pdfUrl || null;
+            }
+          } catch (pdfError) {
+            console.error(`Error handling PDF for invoice ${invoice.id}:`, pdfError);
+            // Continue with sync without PDF
+          }
+          
+          // Add invoice to batch with PDF data
           addToBatch(invoiceRef, {
             ...invoice,
             userId,
             tenantLocalId: tenant.id,
             propertyLocalId: property.id,
             localId: invoice.id,
+            pdfUrl: pdfUrl,
+            pdfStatus: statusSuffix,
             lastSyncTime: serverTimestamp()
           });
 
-          // 7. Sync ALL payments for each invoice
+          // 6. Sync payments
           const payments = await database.getPaymentsByInvoice(invoice.id);
           for (const payment of payments) {
-            const paymentRef = doc(db, 'payments', `${userId}_${payment.id}`);
+            const paymentRef = doc(db, 'users', userId.toString(), 'properties', property.id.toString(), 'tenants', phoneDocId, 'invoices', invoice.id.toString(), 'payments', payment.id.toString());
             addToBatch(paymentRef, {
               ...payment,
               userId,
@@ -250,14 +416,172 @@ private async syncUserDataToFirestore(userId: number): Promise<void> {
       console.log(`Batch ${i + 1}/${batches.length} committed successfully`);
     }
 
-    console.log('Complete user data synced to Firestore');
+    console.log('Complete user data synced to Firestore with PDF generation');
   } catch (error) {
     console.error('Error syncing user data to Firestore:', error);
     throw error;
   }
 }
 
-// 2. FIX: Complete downloadAndMergeData with ALL data types
+// Update the syncTenantInvoicesAndPayments method to handle PDF data (but not generate PDFs on download)
+private async syncTenantInvoicesAndPayments(userId: number, propertyDocId: string, tenantPhoneId: string, localTenantId: number): Promise<void> {
+  try {
+    // Sync invoices
+    const invoicesQuery = query(
+      collection(db, 'users', userId.toString(), 'properties', propertyDocId, 'tenants', tenantPhoneId, 'invoices'),
+      orderBy('lastSyncTime', 'desc')
+    );
+    
+    const invoicesSnapshot = await getDocs(invoicesQuery);
+    
+    for (const invoiceDoc of invoicesSnapshot.docs) {
+      const invoiceData = invoiceDoc.data();
+      const localInvoice = await database.getInvoiceById(invoiceData.localId);
+      
+      if (!localInvoice) {
+        try {
+          await database.createInvoice({
+            id: invoiceData.localId,
+            tenantId: localTenantId,
+            propertyId: invoiceData.propertyLocalId,
+            billingMonth: invoiceData.billingMonth,
+            rentAmount: invoiceData.rentAmount,
+            waterCurrentReading: invoiceData.waterCurrentReading,
+            waterPreviousReading: invoiceData.waterPreviousReading,
+            waterStandingFee: invoiceData.waterStandingFee,
+            waterUnitPrice: invoiceData.waterUnitPrice,
+            powerCurrentReading: invoiceData.powerCurrentReading,
+            powerPreviousReading: invoiceData.powerPreviousReading,
+            powerUnitPrice: invoiceData.powerUnitPrice,
+            otherCharges: invoiceData.otherCharges,
+            otherChargesDescription: invoiceData.otherChargesDescription,
+            dueDate: invoiceData.dueDate
+          });
+          
+          console.log(`Created invoice ${invoiceData.localId} - PDF available at: ${invoiceData.pdfUrl || 'No PDF'}`);
+        } catch (error) {
+          console.error('Failed to create invoice during sync:', error);
+        }
+      } else {
+        await database.updateInvoice(invoiceData.localId, {
+          billingMonth: invoiceData.billingMonth,
+          rentAmount: invoiceData.rentAmount,
+          waterCurrentReading: invoiceData.waterCurrentReading,
+          waterPreviousReading: invoiceData.waterPreviousReading,
+          waterStandingFee: invoiceData.waterStandingFee,
+          waterUnitPrice: invoiceData.waterUnitPrice,
+          powerCurrentReading: invoiceData.powerCurrentReading,
+          powerPreviousReading: invoiceData.powerPreviousReading,
+          powerUnitPrice: invoiceData.powerUnitPrice,
+          otherCharges: invoiceData.otherCharges,
+          otherChargesDescription: invoiceData.otherChargesDescription,
+          dueDate: invoiceData.dueDate
+        });
+        
+        console.log(`Updated invoice ${invoiceData.localId} - PDF available at: ${invoiceData.pdfUrl || 'No PDF'}`);
+      }
+
+      // Sync payments for this invoice
+      const paymentsQuery = query(
+        collection(db, 'users', userId.toString(), 'properties', propertyDocId, 'tenants', tenantPhoneId, 'invoices', invoiceDoc.id, 'payments'),
+        orderBy('lastSyncTime', 'desc')
+      );
+      
+      const paymentsSnapshot = await getDocs(paymentsQuery);
+      
+      for (const paymentDoc of paymentsSnapshot.docs) {
+        const paymentData = paymentDoc.data();
+        const existingPayments = await database.getPaymentsByInvoice(invoiceData.localId);
+        const paymentExists = existingPayments.some(p => p.id === paymentData.localId);
+        
+        if (!paymentExists) {
+          try {
+            await database.createPayment({
+              invoiceId: invoiceData.localId,
+              amount: paymentData.amount,
+              paymentDate: paymentData.paymentDate,
+              paymentMethod: paymentData.paymentMethod,
+              notes: paymentData.notes
+            });
+          } catch (error) {
+            console.error('Failed to create payment during sync:', error);
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error syncing tenant invoices and payments:', error);
+  }
+}
+
+// Add method to clean up orphaned PDFs (optional - for maintenance)
+async cleanupOrphanedPDFs(_userId: number): Promise<void> {
+  try {
+    console.log('Starting cleanup of orphaned PDFs...');
+    
+    // This is a maintenance function that could be called periodically
+    // to clean up any PDFs in storage that no longer have corresponding invoices
+    
+    // Note: This is a complex operation that would require listing all files
+    // in the user's storage folder and comparing with existing invoices
+    // For now, we'll just log that cleanup is available
+    
+    console.log('PDF cleanup completed (placeholder implementation)');
+  } catch (error) {
+    console.error('Error during PDF cleanup:', error);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  // ==================== USER SYNC OPERATIONS ====================
+
+
+  // Updated functions for subcollection structure and tenant deletion logic
+
+async syncUserToFirestore(user: User): Promise<void> {
+  if (!this.canUserSync(user)) {
+    console.log('User cannot sync - no storage permission');
+    return;
+  }
+
+  try {
+    const userRef = doc(db, 'users', user.id.toString());
+    
+    // Get company data to include in user doc
+    const company = await database.getCompanyByUserId(user.id);
+    
+    const userData = {
+      ...user,
+      lastSyncTime: serverTimestamp(),
+      localId: user.id,
+      company: company ? {
+        ...company,
+        localId: company.id,
+        lastSyncTime: serverTimestamp()
+      } : null
+    };
+
+    await setDoc(userRef, userData, { merge: true });
+    console.log('User synced to Firestore:', user.email);
+  } catch (error) {
+    console.error('Error syncing user to Firestore:', error);
+    throw error;
+  }
+}
+
 private async downloadAndMergeData(userId: number): Promise<void> {
   const user = await database.getUserById(userId);
   if (!user || !this.canUserSync(user)) {
@@ -268,42 +592,36 @@ private async downloadAndMergeData(userId: number): Promise<void> {
   try {
     console.log('Starting complete data download for user:', user.email);
     
-    // 1. Download and merge company data
-    const companyQuery = query(
-      collection(db, 'companies'),
-      where('userId', '==', userId),
-      orderBy('lastSyncTime', 'desc'),
-      limit(1)
-    );
+    // 1. Download and merge company data from user doc
+    const userRef = doc(db, 'users', userId.toString());
+    const userDoc = await getDoc(userRef);
     
-    const companySnapshot = await getDocs(companyQuery);
-    if (!companySnapshot.empty) {
-      const companyData = companySnapshot.docs[0].data();
-      const localCompany = await database.getCompanyByUserId(userId);
-      
-      if (!localCompany && user.type === 'paid') {
-        // Create company if user is premium and doesn't have one locally
-        await database.createCompany(userId, {
-          name: companyData.name,
-          address: companyData.address,
-          phone: companyData.phone,
-          email: companyData.email
-        });
-      } else if (localCompany) {
-        // Update existing company
-        await database.updateCompany(localCompany.id, {
-          name: companyData.name,
-          address: companyData.address,
-          phone: companyData.phone,
-          email: companyData.email
-        });
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
+      if (userData.company) {
+        const localCompany = await database.getCompanyByUserId(userId);
+        
+        if (!localCompany && user.type === 'paid') {
+          await database.createCompany(userId, {
+            name: userData.company.name,
+            address: userData.company.address,
+            phone: userData.company.phone,
+            email: userData.company.email
+          });
+        } else if (localCompany) {
+          await database.updateCompany(localCompany.id, {
+            name: userData.company.name,
+            address: userData.company.address,
+            phone: userData.company.phone,
+            email: userData.company.email
+          });
+        }
       }
     }
 
-    // 2. Download and merge properties
+    // 2. Download and merge properties from subcollection
     const propertiesQuery = query(
-      collection(db, 'properties'),
-      where('userId', '==', userId),
+      collection(db, 'users', userId.toString(), 'properties'),
       orderBy('lastSyncTime', 'desc')
     );
     
@@ -315,7 +633,6 @@ private async downloadAndMergeData(userId: number): Promise<void> {
       const localProperty = await database.getPropertyById(propertyData.localId);
       
       if (!localProperty) {
-        // Create new property if within limits
         const canCreate = await database.canCreateProperty?.(userId);
         if (canCreate?.allowed !== false) {
           try {
@@ -335,7 +652,6 @@ private async downloadAndMergeData(userId: number): Promise<void> {
           }
         }
       } else {
-        // Update existing property if not restricted
         if (!localProperty.isRestricted) {
           await database.updateProperty(propertyData.localId, {
             name: propertyData.name,
@@ -348,207 +664,44 @@ private async downloadAndMergeData(userId: number): Promise<void> {
         }
         propertyIdMapping[doc.id] = localProperty.id;
       }
-    }
 
-    // 3. Download and merge units
-    const unitsQuery = query(
-      collection(db, 'units'),
-      where('userId', '==', userId),
-      orderBy('lastSyncTime', 'desc')
-    );
-    
-    const unitsSnapshot = await getDocs(unitsQuery);
-    const unitIdMapping: { [cloudId: string]: number } = {};
-    
-    for (const doc of unitsSnapshot.docs) {
-      const unitData = doc.data();
-      const localPropertyId = propertyIdMapping[`${userId}_${unitData.propertyLocalId}`] || unitData.propertyLocalId;
+      // 3. Download and merge units for each property
+      const unitsQuery = query(
+        collection(db, 'users', userId.toString(), 'properties', doc.id, 'units'),
+        orderBy('lastSyncTime', 'desc')
+      );
       
-      // Only sync units for accessible properties
-      const property = await database.getPropertyById(localPropertyId);
-      if (property && !property.isRestricted) {
-        const localUnit = await database.getUnitById(unitData.localId);
+      const unitsSnapshot = await getDocs(unitsQuery);
+      
+      for (const unitDoc of unitsSnapshot.docs) {
+        const unitData = unitDoc.data();
+        const localPropertyId = propertyIdMapping[doc.id] || propertyData.localId;
         
-        if (!localUnit) {
-          try {
-            const createdUnit = await database.createUnit({
-              propertyId: localPropertyId,
+        const property = await database.getPropertyById(localPropertyId);
+        if (property && !property.isRestricted) {
+          const localUnit = await database.getUnitById(unitData.localId);
+          
+          if (!localUnit) {
+            try {
+              await database.createUnit({
+                propertyId: localPropertyId,
+                unitNumber: unitData.unitNumber,
+                rentAmount: unitData.rentAmount
+              });
+            } catch (error) {
+              console.error('Failed to create unit during sync:', error);
+            }
+          } else {
+            await database.updateUnit(unitData.localId, {
               unitNumber: unitData.unitNumber,
               rentAmount: unitData.rentAmount
             });
-            unitIdMapping[doc.id] = createdUnit.id;
-          } catch (error) {
-            console.error('Failed to create unit during sync:', error);
           }
-        } else {
-          await database.updateUnit(unitData.localId, {
-            unitNumber: unitData.unitNumber,
-            rentAmount: unitData.rentAmount
-          });
-          unitIdMapping[doc.id] = localUnit.id;
         }
       }
-    }
 
-    // 4. Download and merge tenants
-    const tenantsQuery = query(
-      collection(db, 'tenants'),
-      where('userId', '==', userId),
-      orderBy('lastSyncTime', 'desc')
-    );
-    
-    const tenantsSnapshot = await getDocs(tenantsQuery);
-    const tenantIdMapping: { [cloudId: string]: number } = {};
-    
-    for (const doc of tenantsSnapshot.docs) {
-      const tenantData = doc.data();
-      const localPropertyId = propertyIdMapping[`${userId}_${tenantData.propertyLocalId}`] || tenantData.propertyLocalId;
-      
-      // Only sync tenants for accessible properties
-      const property = await database.getPropertyById(localPropertyId);
-      if (property && !property.isRestricted) {
-        const localTenant = await database.getTenantById(tenantData.localId);
-        
-        if (!localTenant) {
-          const canCreate = await database.canCreateTenant?.(localPropertyId);
-          if (canCreate?.allowed !== false) {
-            try {
-              const createdTenant = await database.createTenant({
-                propertyId: localPropertyId,
-                name: tenantData.name,
-                phone: tenantData.phone,
-                email: tenantData.email,
-                unitNumber: tenantData.unitNumber,
-                rentAmount: tenantData.rentAmount,
-                standingFees: tenantData.standingFees,
-                depositAmount: tenantData.depositAmount,
-                leaseStart: tenantData.leaseStart,
-                leaseEnd: tenantData.leaseEnd
-              });
-              tenantIdMapping[doc.id] = createdTenant.id;
-            } catch (error) {
-              console.error('Failed to create tenant during sync:', error);
-            }
-          }
-        } else {
-          // Update existing tenant if not restricted
-          if (!localTenant.isRestricted) {
-            await database.updateTenant(tenantData.localId, {
-              name: tenantData.name,
-              phone: tenantData.phone,
-              email: tenantData.email,
-              unitNumber: tenantData.unitNumber,
-              rentAmount: tenantData.rentAmount,
-              standingFees: tenantData.standingFees,
-              depositAmount: tenantData.depositAmount,
-              leaseStart: tenantData.leaseStart,
-              leaseEnd: tenantData.leaseEnd
-            });
-          }
-          tenantIdMapping[doc.id] = localTenant.id;
-        }
-      }
-    }
-
-    // 5. Download and merge invoices
-    const invoicesQuery = query(
-      collection(db, 'invoices'),
-      where('userId', '==', userId),
-      orderBy('lastSyncTime', 'desc')
-    );
-    
-    const invoicesSnapshot = await getDocs(invoicesQuery);
-    const invoiceIdMapping: { [cloudId: string]: number } = {};
-    
-    for (const doc of invoicesSnapshot.docs) {
-      const invoiceData = doc.data();
-      const localTenantId = tenantIdMapping[`${userId}_${invoiceData.tenantLocalId}`] || invoiceData.tenantLocalId;
-      const localPropertyId = propertyIdMapping[`${userId}_${invoiceData.propertyLocalId}`] || invoiceData.propertyLocalId;
-      
-      // Only sync invoices for accessible tenants and properties
-      const tenant = await database.getTenantById(localTenantId);
-      const property = await database.getPropertyById(localPropertyId);
-      
-      if (tenant && property && !tenant.isRestricted && !property.isRestricted) {
-        const localInvoice = await database.getInvoiceById(invoiceData.localId);
-        
-        if (!localInvoice) {
-          try {
-            const createdInvoice = await database.createInvoice({
-              id: invoiceData.localId, // Use the cloud ID structure
-              tenantId: localTenantId,
-              propertyId: localPropertyId,
-              billingMonth: invoiceData.billingMonth,
-              rentAmount: invoiceData.rentAmount,
-              waterCurrentReading: invoiceData.waterCurrentReading,
-              waterPreviousReading: invoiceData.waterPreviousReading,
-              waterStandingFee: invoiceData.waterStandingFee,
-              waterUnitPrice: invoiceData.waterUnitPrice,
-              powerCurrentReading: invoiceData.powerCurrentReading,
-              powerPreviousReading: invoiceData.powerPreviousReading,
-              powerUnitPrice: invoiceData.powerUnitPrice,
-              otherCharges: invoiceData.otherCharges,
-              otherChargesDescription: invoiceData.otherChargesDescription,
-              dueDate: invoiceData.dueDate
-            });
-            invoiceIdMapping[doc.id] = createdInvoice.id;
-          } catch (error) {
-            console.error('Failed to create invoice during sync:', error);
-          }
-        } else {
-          // Update existing invoice
-          await database.updateInvoice(invoiceData.localId, {
-            billingMonth: invoiceData.billingMonth,
-            rentAmount: invoiceData.rentAmount,
-            waterCurrentReading: invoiceData.waterCurrentReading,
-            waterPreviousReading: invoiceData.waterPreviousReading,
-            waterStandingFee: invoiceData.waterStandingFee,
-            waterUnitPrice: invoiceData.waterUnitPrice,
-            powerCurrentReading: invoiceData.powerCurrentReading,
-            powerPreviousReading: invoiceData.powerPreviousReading,
-            powerUnitPrice: invoiceData.powerUnitPrice,
-            otherCharges: invoiceData.otherCharges,
-            otherChargesDescription: invoiceData.otherChargesDescription,
-            dueDate: invoiceData.dueDate
-          });
-          invoiceIdMapping[doc.id] = localInvoice.id;
-        }
-      }
-    }
-
-    // 6. Download and merge payments
-    const paymentsQuery = query(
-      collection(db, 'payments'),
-      where('userId', '==', userId),
-      orderBy('lastSyncTime', 'desc')
-    );
-    
-    const paymentsSnapshot = await getDocs(paymentsQuery);
-    
-    for (const doc of paymentsSnapshot.docs) {
-      const paymentData = doc.data();
-      const localInvoiceId = invoiceIdMapping[`${userId}_${paymentData.invoiceLocalId}`] || paymentData.invoiceLocalId;
-      
-      // Only sync payments for accessible invoices
-      const invoice = await database.getInvoiceById(localInvoiceId);
-      if (invoice) {
-        const existingPayments = await database.getPaymentsByInvoice(localInvoiceId);
-        const paymentExists = existingPayments.some(p => p.id === paymentData.localId);
-        
-        if (!paymentExists) {
-          try {
-            await database.createPayment({
-              invoiceId: localInvoiceId,
-              amount: paymentData.amount,
-              paymentDate: paymentData.paymentDate,
-              paymentMethod: paymentData.paymentMethod,
-              notes: paymentData.notes
-            });
-          } catch (error) {
-            console.error('Failed to create payment during sync:', error);
-          }
-        }
-      }
+      // 4. Handle tenant deletion and sync
+      await this.syncTenantsWithDeletion(userId, doc.id, propertyIdMapping[doc.id] || propertyData.localId);
     }
 
     console.log('Complete data download and merge completed');
@@ -557,6 +710,303 @@ private async downloadAndMergeData(userId: number): Promise<void> {
     throw error;
   }
 }
+
+private async syncTenantsWithDeletion(userId: number, propertyDocId: string, localPropertyId: number): Promise<void> {
+  try {
+    const property = await database.getPropertyById(localPropertyId);
+    if (!property || property.isRestricted) return;
+
+    // Get local tenants with phones
+    const localTenants = await database.getTenantsByProperty(localPropertyId);
+    const localPhones = new Set(
+      localTenants
+        .filter(t => t.phone !== undefined && t.phone !== null && t.phone.trim() !== '')
+        .map(t => t.phone?.replace(/[^\w]/g, ''))
+    );
+
+    console.log(`Local phones for property ${localPropertyId}:`, Array.from(localPhones));
+
+    // Get Firestore tenants
+    const tenantsQuery = query(
+      collection(db, 'users', userId.toString(), 'properties', propertyDocId, 'tenants'),
+      orderBy('lastSyncTime', 'desc')
+    );
+    
+    const tenantsSnapshot = await getDocs(tenantsQuery);
+    const tenantIdMapping: { [cloudId: string]: number } = {};
+    
+    // Check for deletions and sync existing tenants
+    for (const tenantDoc of tenantsSnapshot.docs) {
+      const tenantData = tenantDoc.data();
+      const phoneDocId = tenantDoc.id;
+      
+      // If tenant exists in Firestore but not locally (by phone), delete from Firestore
+      if (!localPhones.has(phoneDocId) && phoneDocId.startsWith('254') || phoneDocId.startsWith('0') || phoneDocId.startsWith('+')) {
+        console.log(`Deleting tenant from Firestore - phone ${phoneDocId} not found locally`);
+        
+        // Delete all subcollections (invoices and payments) first
+        await this.deleteTenantsSubcollections(userId, propertyDocId, phoneDocId);
+        
+        // Delete the tenant document
+        await deleteDoc(tenantDoc.ref);
+        continue;
+      }
+
+      // Sync existing tenant
+      const localTenant = localTenants.find(t => 
+        t.phone && t.phone.replace(/[^\w]/g, '') === phoneDocId
+      );
+
+      if (localTenant) {
+        if (!localTenant.isRestricted) {
+          await database.updateTenant(localTenant.id, {
+            name: tenantData.name,
+            phone: tenantData.phone,
+            email: tenantData.email,
+            unitNumber: tenantData.unitNumber,
+            rentAmount: tenantData.rentAmount,
+            standingFees: tenantData.standingFees,
+            depositAmount: tenantData.depositAmount,
+            leaseStart: tenantData.leaseStart,
+            leaseEnd: tenantData.leaseEnd
+          });
+        }
+        tenantIdMapping[tenantDoc.id] = localTenant.id;
+
+        // Sync invoices and payments for this tenant
+        await this.syncTenantInvoicesAndPayments(userId, propertyDocId, phoneDocId, localTenant.id);
+      } else if (phoneDocId.startsWith('tenant_')) {
+        // Handle tenants without phones (fallback ID system)
+        const tenantLocalId = parseInt(tenantData.localId);
+        const localTenantById = await database.getTenantById(tenantLocalId);
+        
+        if (localTenantById && !localTenantById.isRestricted) {
+          await database.updateTenant(tenantLocalId, {
+            name: tenantData.name,
+            phone: tenantData.phone,
+            email: tenantData.email,
+            unitNumber: tenantData.unitNumber,
+            rentAmount: tenantData.rentAmount,
+            standingFees: tenantData.standingFees,
+            depositAmount: tenantData.depositAmount,
+            leaseStart: tenantData.leaseStart,
+            leaseEnd: tenantData.leaseEnd
+          });
+          tenantIdMapping[tenantDoc.id] = localTenantById.id;
+          await this.syncTenantInvoicesAndPayments(userId, propertyDocId, phoneDocId, localTenantById.id);
+        } else if (!localTenantById) {
+          // Delete from Firestore if local tenant doesn't exist
+          console.log(`Deleting tenant from Firestore - local tenant ${tenantLocalId} not found`);
+          await this.deleteTenantsSubcollections(userId, propertyDocId, phoneDocId);
+          await deleteDoc(tenantDoc.ref);
+        }
+      }
+    }
+
+    // Create new tenants that exist locally but not in Firestore
+    for (const localTenant of localTenants) {
+      if (!localTenant.isRestricted && localTenant.phone) {
+        const phoneDocId = localTenant.phone.replace(/[^\w]/g, '');
+        const tenantExists = tenantsSnapshot.docs.some(doc => doc.id === phoneDocId);
+        
+        if (!tenantExists) {
+          console.log(`Creating new tenant in Firestore for phone: ${phoneDocId}`);
+          // This tenant will be created in the next upload sync cycle
+        }
+      }
+    }
+
+  } catch (error) {
+    console.error('Error in syncTenantsWithDeletion:', error);
+  }
+}
+
+private async deleteTenantsSubcollections(userId: number, propertyDocId: string, tenantPhoneId: string): Promise<void> {
+  try {
+    // Delete all invoices and their payments
+    const invoicesQuery = query(
+      collection(db, 'users', userId.toString(), 'properties', propertyDocId, 'tenants', tenantPhoneId, 'invoices')
+    );
+    
+    const invoicesSnapshot = await getDocs(invoicesQuery);
+    
+    for (const invoiceDoc of invoicesSnapshot.docs) {
+      // Delete all payments for this invoice
+      const paymentsQuery = query(
+        collection(db, 'users', userId.toString(), 'properties', propertyDocId, 'tenants', tenantPhoneId, 'invoices', invoiceDoc.id, 'payments')
+      );
+      
+      const paymentsSnapshot = await getDocs(paymentsQuery);
+      const deletePaymentsBatch = writeBatch(db);
+      
+      paymentsSnapshot.docs.forEach(paymentDoc => {
+        deletePaymentsBatch.delete(paymentDoc.ref);
+      });
+      
+      if (paymentsSnapshot.docs.length > 0) {
+        await deletePaymentsBatch.commit();
+      }
+      
+      // Delete the invoice
+      await deleteDoc(invoiceDoc.ref);
+    }
+    
+    console.log(`Deleted all subcollections for tenant ${tenantPhoneId}`);
+  } catch (error) {
+    console.error('Error deleting tenant subcollections:', error);
+  }
+}
+
+async downloadUserFromFirestore(localUserId: number): Promise<User | null> {
+  try {
+    console.log('Downloading user data from Firestore for user ID:', localUserId);
+    
+    const userRef = doc(db, 'users', localUserId.toString());
+    let userDoc = await getDoc(userRef);
+
+    if (!userDoc.exists()) {
+      const localUser = await database.getUserById(localUserId);
+      if (localUser?.email) {
+        console.log('Trying to find user by email:', localUser.email);
+        const usersQuery = query(
+          collection(db, 'users'),
+          where('email', '==', localUser.email.toLowerCase()),
+          limit(1)
+        );
+        const querySnapshot = await getDocs(usersQuery);
+        if (!querySnapshot.empty) {
+          userDoc = querySnapshot.docs[0];
+          console.log('Found user by email in Firestore');
+        }
+      }
+    }
+
+    if (userDoc.exists()) {
+      const firestoreUser = userDoc.data();
+      console.log('Successfully downloaded user from Firestore');
+      
+      return {
+        id: localUserId,
+        name: firestoreUser.name,
+        email: firestoreUser.email,
+        phone: firestoreUser.phone,
+        passwordHash: firestoreUser.passwordHash,
+        isPremium: firestoreUser.isPremium || false,
+        type: firestoreUser.type || 'free',
+        tier: firestoreUser.tier || 'free',
+        storage: firestoreUser.storage || false,
+        revenuekatUserId: firestoreUser.revenuekatUserId,
+        selectedPropertyIds: firestoreUser.selectedPropertyIds || [],
+        restrictedAccess: firestoreUser.restrictedAccess || false,
+        createdAt: firestoreUser.createdAt,
+        updatedAt: firestoreUser.updatedAt
+      };
+    }
+    
+    console.log('User not found in Firestore');
+    return null;
+  } catch (error) {
+    console.error('Error downloading user from Firestore:', error);
+    return null;
+  }
+}
+
+private async logSyncOperation(
+  userId: number, 
+  action: 'upload' | 'download' | 'full_sync', 
+  status: 'success' | 'error',
+  details: string,
+  errorMessage?: string
+): Promise<void> {
+  try {
+    const userRef = doc(db, 'users', userId.toString());
+    const syncLog = {
+      id: `${Date.now()}_${action}`,
+      userId,
+      action,
+      status,
+      details,
+      errorMessage: errorMessage || null,
+      timestamp: serverTimestamp()
+    };
+
+    // Add sync log to user document syncLogs array
+    await setDoc(userRef, {
+      syncLogs: [syncLog], // This will be merged, creating an array or adding to existing
+      lastSyncLog: syncLog
+    }, { merge: true });
+  } catch (error) {
+    console.error('Error logging sync operation:', error);
+  }
+}
+
+static async handleRevenueCatWebhook(data: {
+  localUserId: number;
+  firestoreUserId: string;
+  tier: UserTier;
+  type: UserType;
+  storage: boolean;
+  revenuekatUserId: string;
+}): Promise<void> {
+  try {
+    // Update Firestore user document directly
+    const userRef = doc(db, 'users', data.firestoreUserId);
+    await setDoc(userRef, {
+      tier: data.tier,
+      type: data.type,
+      storage: data.storage,
+      revenuekatUserId: data.revenuekatUserId,
+      isPremium: data.type === 'paid',
+      lastUpdated: serverTimestamp()
+    }, { merge: true });
+    
+    // Local update if available
+    try {
+      const localUser = await database.getUserById(data.localUserId);
+      if (localUser) {
+        await database.updateUserTierAndType(data.localUserId, data.tier, data.type, data.storage);
+        console.log('Local user tier updated immediately via webhook');
+      }
+    } catch (localError) {
+      console.log('Local update not available, will sync on next app open');
+    }
+    
+    console.log('User tier updated via RevenueCat webhook:', data);
+  } catch (error) {
+    console.error('Error handling RevenueCat webhook:', error);
+    throw error;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // 3. FIX: Secure property filtering for sync (respects tier limits)
 private async getFilteredPropertiesForSync(userId: number): Promise<Property[]> {
@@ -731,7 +1181,7 @@ async performFullSync(userId: number): Promise<SyncStatus> {
     }
     
     if (!this.canUserSync(user)) {
-      throw new Error('User does not have sync permissions. Upgrade to business or enterprise tier, or purchase cloud storage.');
+      throw new Error('User does not have sync permissions. Upgrade to business, pro, or enterprise tier, or purchase cloud storage.');
     }
 
     console.log('Starting complete full sync for user:', user.email);
@@ -871,45 +1321,6 @@ setupUserListener(userId: number, onUserUpdate: (user: User) => void): void {
   this.syncListeners.push(unsubscribe);
 }
 
-// 11. FIX: RevenueCat webhook handler with immediate local enforcement
-static async handleRevenueCatWebhook(data: {
-  localUserId: number;
-  firestoreUserId: string;
-  tier: UserTier;
-  type: UserType;
-  storage: boolean;
-  revenuekatUserId: string;
-}): Promise<void> {
-  try {
-    // Update Firestore
-    const userRef = doc(db, 'users', data.firestoreUserId);
-    await setDoc(userRef, {
-      tier: data.tier,
-      type: data.type,
-      storage: data.storage,
-      revenuekatUserId: data.revenuekatUserId,
-      isPremium: data.type === 'paid',
-      lastUpdated: serverTimestamp()
-    }, { merge: true });
-    
-    // CRITICAL: If we have local access, update immediately
-    try {
-      const localUser = await database.getUserById(data.localUserId);
-      if (localUser) {
-        await database.updateUserTierAndType(data.localUserId, data.tier, data.type, data.storage);
-        console.log('Local user tier updated immediately via webhook');
-      }
-    } catch (localError) {
-      console.log('Local update not available, will sync on next app open');
-    }
-    
-    console.log('User tier updated via RevenueCat webhook:', data);
-  } catch (error) {
-    console.error('Error handling RevenueCat webhook:', error);
-    throw error;
-  }
-}
-
 // 12. FIX: Add method to validate user access to specific entities
 async validateUserAccess(userId: number, entityType: 'property' | 'tenant' | 'invoice', entityId: number): Promise<boolean> {
   try {
@@ -999,64 +1410,6 @@ async performOfflineFirstSync(userId: number): Promise<SyncStatus> {
       pendingDownloads: 0,
       errors: ['Sync failed - operating offline: ' + (error instanceof Error ? error.message : 'Unknown error')]
     };
-  }
-}
-
-// 14. FIX: Enhanced downloadUserFromFirestore with better error handling
-async downloadUserFromFirestore(localUserId: number): Promise<User | null> {
-  try {
-    console.log('Downloading user data from Firestore for user ID:', localUserId);
-    
-    // First try by local ID mapping
-    const userRef = doc(db, 'users', localUserId.toString());
-    let userDoc = await getDoc(userRef);
-
-    if (!userDoc.exists()) {
-      // Try by email if local ID mapping doesn't work
-      const localUser = await database.getUserById(localUserId);
-      if (localUser?.id) {
-        console.log('Trying to find user by email:', localUser.email);
-        const usersQuery = query(
-          collection(db, 'users'),
-          where('userId', '==', localUser.id),
-          limit(1)
-        );
-        const querySnapshot = await getDocs(usersQuery);
-        if (!querySnapshot.empty) {
-          userDoc = querySnapshot.docs[0];
-          console.log('Found user by email in Firestore');
-        }
-      }
-    }
-
-    if (userDoc.exists()) {
-      const firestoreUser = userDoc.data();
-      console.log('Successfully downloaded user from Firestore');
-      
-      return {
-        id: localUserId, // Keep local ID
-        name: firestoreUser.name,
-        email: firestoreUser.email,
-        phone: firestoreUser.phone,
-        passwordHash: firestoreUser.passwordHash,
-        isPremium: firestoreUser.storage || true,
-        type: firestoreUser.type || 'free',
-        tier: firestoreUser.tier || 'free',
-        storage: firestoreUser.storage || false,
-        revenuekatUserId: firestoreUser.revenuekatUserId || null,
-        selectedPropertyIds: firestoreUser.selectedPropertyIds || [],
-        restrictedAccess: firestoreUser.restrictedAccess || false,
-        createdAt: firestoreUser.createdAt,
-        updatedAt: firestoreUser.updatedAt
-      };
-    }
-    
-    console.log('User not found in Firestore');
-    return null;
-  } catch (error) {
-    console.error('Error downloading user from Firestore:', error);
-    // Don't throw - allow offline operation
-    return null;
   }
 }
 
@@ -1167,11 +1520,12 @@ startAutomaticSync(userId: number): void {
     return timeSinceLastSync > hoursInMs;
   }
 
+
   // ==================== HELPER METHODS ====================
 
   private canUserSync(user: any): boolean {
     // Business and enterprise users always have sync
-    if (user.tier === 'business' || user.tier === 'enterprise') {
+    if (user.tier === 'business' || user.tier === 'pro' || user.tier === 'enterprise') {
       return true;
     }
     
@@ -1181,28 +1535,6 @@ startAutomaticSync(userId: number): void {
 
   private getUserLimits(user: any) {
     return USER_LIMITS[user.tier as UserTier] || USER_LIMITS.free;
-  }
-
-  private async logSyncOperation(
-    userId: number, 
-    action: 'upload' | 'download' | 'full_sync', 
-    status: 'success' | 'error',
-    details: string,
-    errorMessage?: string
-  ): Promise<void> {
-    try {
-      const logRef = doc(collection(db, 'syncLogs'));
-      await setDoc(logRef, {
-        userId,
-        action,
-        status,
-        details,
-        errorMessage: errorMessage || null,
-        timestamp: serverTimestamp()
-      });
-    } catch (error) {
-      console.error('Error logging sync operation:', error);
-    }
   }
 
   // ==================== PUBLIC UTILITY METHODS ====================

@@ -287,8 +287,8 @@ const PricingModal: React.FC<PricingModalProps> = ({
     },
     {
       id: 'business',
-      name: 'Professional',
-      popular: true,
+      name: 'Business',
+      popular: false,
       color: 'bg-green-50 border-green-300',
       headerColor: 'bg-green-100',
       buttonColor: 'bg-green-600 hover:bg-green-700',
@@ -304,6 +304,34 @@ const PricingModal: React.FC<PricingModalProps> = ({
         { name: 'Up to 10 Properties', included: true },
         { name: 'Up to 200 Tenants', included: true },
         { name: 'Invoice Generation', included: true },
+        { name: 'Multi-device Cloud Sync', included: true },
+        { name: 'Custom Logo/Branding', included: true },
+        { name: 'Advanced Reports', included: true },
+        { name: 'Excel/PDF Export', included: true },
+        { name: 'Priority Support', included: true },
+        { name: 'Arrears Tracking', included: true }
+      ]
+    },
+    {
+      id: 'pro',
+      name: 'Professional',
+      popular: true,
+      color: 'bg-black-50 border-black-300',
+      headerColor: 'bg-black-100',
+      buttonColor: 'bg-black-600 hover:bg-black-700',
+      offeringId: 'pro', // Maps to RevenueCat offering ID
+      limits: {
+        properties: 20,
+        tenants: 500,
+        sync: true,
+        branding: 'Your logo, no PlotYangu branding',
+        support: 'Priority email, Priority WhatsApp'
+      },
+      features: [
+        { name: 'Up to 20 Properties', included: true },
+        { name: 'Up to 500 Tenants', included: true },
+        { name: 'Invoice Generation', included: true },
+        { name: 'Automated WhatsApp Notifications', included: true },
         { name: 'Multi-device Cloud Sync', included: true },
         { name: 'Custom Logo/Branding', included: true },
         { name: 'Advanced Reports', included: true },
@@ -331,6 +359,8 @@ const PricingModal: React.FC<PricingModalProps> = ({
         { name: 'Unlimited Properties', included: true },
         { name: 'Unlimited Tenants', included: true },
         { name: 'Full White-label Invoices', included: true },
+        { name: 'Automated WhatsApp Notifications', included: true },
+        { name: 'Automated SMS Notifications (Coming on Jan 2026)', included: true },
         { name: 'Multi-device + Team Access', included: true },
         { name: 'Bulk Invoice Sending', included: true },
         { name: 'Advanced Analytics', included: true },

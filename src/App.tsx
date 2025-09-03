@@ -72,6 +72,7 @@ const StatusBar = () => {
   const getTierColor = (tier: string) => {
     switch (tier) {
       case 'enterprise': return 'text-purple-600';
+      case 'pro': return 'text-blue-600';
       case 'business': return 'text-blue-600';
       case 'low': return 'text-green-600';
       default: return 'text-gray-500';
@@ -89,7 +90,7 @@ const StatusBar = () => {
           {getTierIcon(user.tier)}
           <span className="text-white font-medium capitalize">{user.tier} Plan</span>
         </span>
-        {!user.storage && user.tier !== 'business' && user.tier !== 'enterprise' && (
+        {!user.storage && user.tier !== 'business' && user.tier !== 'pro' && user.tier !== 'enterprise' && (
           <AlertCircle className="w-3 h-3 text-yellow-300" />
         )}
       </div>
@@ -153,6 +154,7 @@ const BottomNavigation = () => {
             // Check if user can access this feature
             const canAccess = !restricted || (user && (
               user.tier === 'business' || 
+              user.tier === 'pro' || 
               user.tier === 'enterprise' || 
               user.type === 'paid'
             ));
@@ -461,7 +463,7 @@ const App: React.FC = () => {
             localStorage.setItem('currentUser', JSON.stringify(dbUser));
             
             // NOW set up sync based on updated permissions
-            if (dbUser.tier === 'business' || dbUser.tier === 'enterprise' || dbUser.storage) {
+            if (dbUser.tier === 'business' || dbUser.tier === 'pro' || dbUser.tier === 'enterprise' || dbUser.storage) {
               console.log('Setting up sync for user:', dbUser.email, 'Tier:', dbUser.tier);
               
               // Set up real-time user listener
@@ -558,7 +560,7 @@ const App: React.FC = () => {
           localStorage.setItem('currentUser', JSON.stringify(updatedUser));
           
           // If user now has sync permissions, set up listener
-          if ((updatedUser.tier === 'business' || updatedUser.tier === 'enterprise' || updatedUser.storage) &&
+          if ((updatedUser.tier === 'business' || updatedUser.tier === 'pro' || updatedUser.tier === 'enterprise' || updatedUser.storage) &&
               (user.tier === 'free' || (!user.storage && user.tier === 'low'))) {
             console.log('Setting up sync for newly upgraded user');
             
@@ -573,7 +575,7 @@ const App: React.FC = () => {
       }
       
       // Also perform catch-up sync if user has permissions
-      if (user.tier === 'business' || user.tier === 'enterprise' || user.storage) {
+      if (user.tier === 'business' || user.tier === 'pro' || user.tier === 'enterprise' || user.storage) {
         const status = await firebaseSyncService.getSyncStatus(user.id);
         const timeSinceLastSync = status.lastSyncTime === 'Never' ? 
           Infinity : Date.now() - new Date(status.lastSyncTime).getTime();
