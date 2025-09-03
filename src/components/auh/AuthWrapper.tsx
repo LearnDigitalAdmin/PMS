@@ -87,7 +87,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         updateUserState(refreshedUser);
         
         // Refresh company if user is premium
-        if (refreshedUser.type === 'premium') {
+        if (refreshedUser.type === 'paid') {
           const refreshedCompany = await database.getCompanyByUserId(refreshedUser.id);
           setCompany(refreshedCompany || null);
           
@@ -131,7 +131,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               setUser(dbUser);
               
               // For premium users, load company
-              if (dbUser.type === 'premium') {
+              if (dbUser.type === 'paid') {
                 let companyData: Company | null = null;
                 
                 if (savedCompany) {
@@ -238,7 +238,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         updateUserState(updatedUser);
         
         // Refresh company if needed
-        if (updatedUser.type === 'premium') {
+        if (updatedUser.type === 'paid') {
           const company = await database.getCompanyByUserId(updatedUser.id);
           setCompany(company || null);
           if (company) {
@@ -288,7 +288,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         localStorage.setItem('currentUser', JSON.stringify(result.user));
         
         // Set company state (only for premium users)
-        if (result.user.type === 'premium' && result.company) {
+        if (result.user.type === 'paid' && result.company) {
           setCompany(result.company);
           localStorage.setItem('currentCompany', JSON.stringify(result.company));
         } else {

@@ -63,7 +63,7 @@ export interface UserWithCompanyInput {
     email: string;
     phone?: number;
     password: string;
-    type?: "free" | "premium";
+    type?: "free" | "paid";
     tier?: UserTier;
   };
   company?: CompanyInput;
@@ -901,7 +901,7 @@ async exportUserDataOffline(userId: number): Promise<{
   }
 
   // Export only accessible data (respects tier limits)
-  const companies = user.type === 'premium' ? 
+  const companies = user.type === 'paid' ? 
     [await this.getCompanyByUserId(userId)].filter(Boolean) as Company[] : [];
   
   const properties = await this.getProperties(userId);
@@ -994,13 +994,13 @@ async exportUserDataOffline(userId: number): Promise<{
     )`,
 
     `CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT UNIQUE NOT NULL,
         name TEXT NOT NULL,
         email TEXT UNIQUE NOT NULL,
         phone TEXT,
         password_hash TEXT NOT NULL,
         is_premium INTEGER DEFAULT 0,
-        type TEXT DEFAULT 'free' CHECK (type IN ('free', 'premium')),
+        type TEXT DEFAULT 'free' CHECK (type IN ('free', 'paid')),
         tier TEXT DEFAULT 'free' CHECK (tier IN ('free', 'low', 'business', 'enterprise')),
         storage INTEGER DEFAULT 0,
         revenuecat_user_id TEXT,
@@ -1172,10 +1172,9 @@ async updateUserTierAndType(userId: number, tier: UserTier, type: UserType, stor
     WHERE id = ?
   `;
   
-  const isPremium = type === 'premium' ? 1 : 0;
+  const isPremium = type === 'paid' ? 1 : 0;
   await this.db!.run(query, [tier, type, storage ? 1 : 0, isPremium, userId]);
   
-  // Immediately enforce limits after tier change
   await this.enforceTierLimitsImmediate(userId);
 }
 
@@ -2030,66 +2029,66 @@ async checkUserLimits(userId: number): Promise<{
   // ==================== ENHANCED AUTHENTICATION ====================
 
   async createUserWithCompany(data: UserWithCompanyInput): Promise<AuthResult> {
-    // Normalize email
-    const normalizedEmail = data.user.email.toLowerCase().trim();
-    
-    // Check if user exists first
-    const existingUserQuery = 'SELECT * FROM users WHERE LOWER(email) = ?';
-    const existingUserResult = await this.db!.query(existingUserQuery, [normalizedEmail]);
-    
-    if (existingUserResult.values && existingUserResult.values.length > 0) {
-      throw new Error('User with this email already exists');
-    }
-
-    const passwordHash = await this.hashPassword(data.user.password);
-
-    const statements = [
-      {
-        statement: `
-          INSERT INTO users (name, email, phone, password_hash, is_premium, type, tier, storage)
-          VALUES (?, ?, ?, ?, 0, ?, ?, 0)
-        `,
-        values: [
-          data.user.name.trim(),
-          normalizedEmail,
-          data.user.phone || '',
-          passwordHash,
-          data.user.type || 'free',
-          data.user.tier || 'free'
-        ]
-      }
-    ];
-
-    // Only premium users get companies&& (data.user.type === 'premium')
-    if (data.company && data.company.name?.trim()) {
-      statements.push({
-        statement: `
-          INSERT INTO companies (user_id, name, address, phone, email)
-          VALUES (last_insert_rowid(), ?, ?, ?, ?)
-        `,
-        values: [
-          data.company.name.trim(),
-          data.company.address?.trim() || '',
-          data.company.phone?.trim() || '',
-          data.company.email?.toLowerCase().trim() || ''
-        ]
-      });
-    }
-
-    const results = await this.executeInTransaction(statements);
-    const userId = results.changes!.lastId!;
-
-    const user = await this.getUserById(userId);
-    if (!user) {
-      throw new Error('Failed to retrieve created user');
-    }
-
-    // Only get company for premium users
-    const company = (user.type === 'premium' && data.company) ? 
-      await this.getCompanyByUserId(userId) : null;
-
-    return { user, company: company || undefined };
+  // Normalize email
+  const normalizedEmail = data.user.email.toLowerCase().trim();
+  
+  // Check if user exists first
+  const existingUserQuery = 'SELECT * FROM users WHERE LOWER(email) = ?';
+  const existingUserResult = await this.db!.query(existingUserQuery, [normalizedEmail]);
+  
+  if (existingUserResult.values && existingUserResult.values.length > 0) {
+    throw new Error('User with this email already exists');
   }
+
+  const passwordHash = await this.hashPassword(data.user.password);
+
+  const statements = [
+    {
+      statement: `
+        INSERT INTO users (id, name, email, phone, password_hash, is_premium, type, tier, storage)
+        VALUES (?, ?, ?, ?, ?, 0, ?, ?, 0)
+      `,
+      values: [
+        data.user.id,
+        data.user.name.trim(),
+        normalizedEmail,
+        data.user.phone || '',
+        passwordHash,
+        data.user.type || 'free',
+        data.user.tier || 'free'
+      ]
+    }
+  ];
+
+  if (data.company && data.company.name?.trim()) {
+    statements.push({
+      statement: `
+        INSERT INTO companies (user_id, name, address, phone, email)
+        VALUES (?, ?, ?, ?, ?)
+      `,
+      values: [
+        data.user.id, // Use the actual user ID instead of last_insert_rowid()
+        data.company.name.trim(),
+        data.company.address?.trim() || '',
+        data.company.phone?.trim() || '',
+        data.company.email?.toLowerCase().trim() || ''
+      ]
+    });
+  }
+
+  await this.executeInTransaction(statements);
+
+  const user = await this.getUserById(data.user.id); //const results =  Use the actual user ID
+  if (!user) {
+    throw new Error('Failed to retrieve created user');
+  }
+
+  // Only get company for premium users
+  const company = (user.type === 'paid' && data.company) ? 
+    await this.getCompanyByUserId(data.user.id) : null; // Use the actual user ID
+
+  return { user, company: company || undefined };
+}
 
   async authenticateUser(email: string, password: string): Promise<AuthResult | null> {
     try {
@@ -2145,7 +2144,7 @@ async checkUserLimits(userId: number): Promise<{
       }
 
       // Get company only for premium users
-      const company = user.type === 'premium' ? 
+      const company = user.type === 'paid' ? 
         await this.getCompanyByUserId(user.id) : null;
       
       console.log('Authentication successful for user:', normalizedEmail);

@@ -84,7 +84,7 @@ export const USER_LIMITS = {
   }
 } as const;
 
-export type UserType = 'free' | 'premium';
+export type UserType = 'free' | 'paid';
 export type UserTier = 'free' | 'low' | 'business' | 'enterprise';
 
 export class FirebaseSyncService {
@@ -281,7 +281,7 @@ private async downloadAndMergeData(userId: number): Promise<void> {
       const companyData = companySnapshot.docs[0].data();
       const localCompany = await database.getCompanyByUserId(userId);
       
-      if (!localCompany && user.type === 'premium') {
+      if (!localCompany && user.type === 'paid') {
         // Create company if user is premium and doesn't have one locally
         await database.createCompany(userId, {
           name: companyData.name,
@@ -888,7 +888,7 @@ static async handleRevenueCatWebhook(data: {
       type: data.type,
       storage: data.storage,
       revenuekatUserId: data.revenuekatUserId,
-      isPremium: data.type === 'premium',
+      isPremium: data.type === 'paid',
       lastUpdated: serverTimestamp()
     }, { merge: true });
     
@@ -1014,11 +1014,11 @@ async downloadUserFromFirestore(localUserId: number): Promise<User | null> {
     if (!userDoc.exists()) {
       // Try by email if local ID mapping doesn't work
       const localUser = await database.getUserById(localUserId);
-      if (localUser?.email) {
+      if (localUser?.id) {
         console.log('Trying to find user by email:', localUser.email);
         const usersQuery = query(
           collection(db, 'users'),
-          where('email', '==', localUser.email.toLowerCase()),
+          where('userId', '==', localUser.id),
           limit(1)
         );
         const querySnapshot = await getDocs(usersQuery);
@@ -1039,11 +1039,11 @@ async downloadUserFromFirestore(localUserId: number): Promise<User | null> {
         email: firestoreUser.email,
         phone: firestoreUser.phone,
         passwordHash: firestoreUser.passwordHash,
-        isPremium: firestoreUser.isPremium || false,
+        isPremium: firestoreUser.storage || true,
         type: firestoreUser.type || 'free',
         tier: firestoreUser.tier || 'free',
         storage: firestoreUser.storage || false,
-        revenuekatUserId: firestoreUser.revenuekatUserId,
+        revenuekatUserId: firestoreUser.revenuekatUserId || null,
         selectedPropertyIds: firestoreUser.selectedPropertyIds || [],
         restrictedAccess: firestoreUser.restrictedAccess || false,
         createdAt: firestoreUser.createdAt,
@@ -1156,28 +1156,6 @@ startAutomaticSync(userId: number): void {
   });
 }
 
-// 17. FIX: Enhanced error handling and recovery
-// private async handleSyncError(userId: number, operation: string, error: any): Promise<void> {
-//   console.error(`Sync error during ${operation}:`, error);
-  
-//   // Log error but don't break offline functionality
-//   try {
-//     await this.logSyncOperation(
-//       userId, 
-//       'full_sync', 
-//       'error', 
-//       `${operation} failed`,
-//       error instanceof Error ? error.message : 'Unknown error'
-//     );
-//   } catch (logError) {
-//     console.error('Failed to log sync error:', logError);
-//   }
-
-//   // Set app to graceful offline mode
-//   localStorage.setItem('syncStatus', 'offline');
-//   localStorage.setItem('lastSyncError', new Date().toISOString());
-// }
-
 
   private shouldPerformCatchupSync(): boolean {
     const lastSyncTime = localStorage.getItem('lastSyncTime');
@@ -1204,50 +1182,6 @@ startAutomaticSync(userId: number): void {
   private getUserLimits(user: any) {
     return USER_LIMITS[user.tier as UserTier] || USER_LIMITS.free;
   }
-
-  // private async canCreateTenant(propertyId: number): Promise<boolean> {
-  //   const property = await database.getPropertyById(propertyId);
-  //   if (!property) return false;
-
-  //   const user = await database.getUserById(property.userId);
-  //   if (!user) return false;
-
-  //   const limits = this.getUserLimits(user);
-  //   if (limits.tenantsPerProperty === -1) return true;
-
-  //   const currentTenants = await database.getTenantsByProperty(propertyId);
-  //   return currentTenants.length < limits.tenantsPerProperty;
-  // }
-
-  // private async getFilteredProperties(userId: number): Promise<Property[]> {
-  //   const user = await database.getUserById(userId);
-  //   if (!user) return [];
-
-  //   const limits = this.getUserLimits(user);
-  //   const allProperties = await database.getProperties(userId);
-    
-  //   if (limits.properties === -1) {
-  //     return allProperties;
-  //   }
-
-  //   // For restricted users, return selected properties or first N
-  //   if (user.selectedPropertyIds && user.selectedPropertyIds.length > 0) {
-  //     return allProperties.filter(p => user.selectedPropertyIds!.includes(p.id));
-  //   }
-    
-  //   return allProperties.slice(0, limits.properties);
-  // }
-
-  // private async getFilteredTenants(propertyId: number, user: any): Promise<Tenant[]> {
-  //   const limits = this.getUserLimits(user);
-  //   const allTenants = await database.getTenantsByProperty(propertyId);
-    
-  //   if (limits.tenantsPerProperty === -1) {
-  //     return allTenants;
-  //   }
-    
-  //   return allTenants.slice(0, limits.tenantsPerProperty);
-  // }
 
   private async logSyncOperation(
     userId: number, 

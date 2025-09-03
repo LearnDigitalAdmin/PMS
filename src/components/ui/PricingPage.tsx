@@ -20,7 +20,7 @@ interface PlanData {
   color: string;
   headerColor: string;
   buttonColor: string;
-  productIds: { monthly: string | null; annual: string | null };
+  offeringId: string | null; // Changed from productIds to offeringId
   limits: {
     properties: number | string;
     tenants: number | string;
@@ -218,8 +218,7 @@ const PricingModal: React.FC<PricingModalProps> = ({
   const [selectedPlanForPurchase, setSelectedPlanForPurchase] = useState<PlanData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(true);
-  const [, setAllOfferings] = useState<Record<string, any> | null>(null);
-  const [allPackages, setAllPackages] = useState<PurchasesPackage[]>([]);
+  const [allOfferings, setAllOfferings] = useState<Record<string, any> | null>(null);
   const [storagePackage, setStoragePackage] = useState<PurchasesPackage | null>(null);
 
   const marketingMessages = [
@@ -230,7 +229,7 @@ const PricingModal: React.FC<PricingModalProps> = ({
     "📋 Professional Tenant Screening Services"
   ];
 
-  // Hardcoded plan structure (descriptions won't change)
+  // Plan structure mapped to RevenueCat offerings
   const planStructure = [
     {
       id: 'free',
@@ -239,7 +238,7 @@ const PricingModal: React.FC<PricingModalProps> = ({
       color: 'bg-gray-50 border-gray-200',
       headerColor: 'bg-gray-100',
       buttonColor: 'bg-gray-600 hover:bg-gray-700',
-      productIds: { monthly: null, annual: null },
+      offeringId: null, // Free plan has no offering
       limits: {
         properties: 2,
         tenants: 24,
@@ -266,7 +265,7 @@ const PricingModal: React.FC<PricingModalProps> = ({
       color: 'bg-blue-50 border-blue-200',
       headerColor: 'bg-blue-100',
       buttonColor: 'bg-blue-600 hover:bg-blue-700',
-      productIds: { monthly: 'low_monthly', annual: 'low_annual' },
+      offeringId: 'starter', // Maps to RevenueCat offering ID
       limits: {
         properties: 7,
         tenants: 105,
@@ -293,7 +292,7 @@ const PricingModal: React.FC<PricingModalProps> = ({
       color: 'bg-green-50 border-green-300',
       headerColor: 'bg-green-100',
       buttonColor: 'bg-green-600 hover:bg-green-700',
-      productIds: { monthly: 'business_monthly', annual: 'business_annual' },
+      offeringId: 'business', // Maps to RevenueCat offering ID
       limits: {
         properties: 10,
         tenants: 200,
@@ -320,7 +319,7 @@ const PricingModal: React.FC<PricingModalProps> = ({
       color: 'bg-purple-50 border-purple-300',
       headerColor: 'bg-purple-100',
       buttonColor: 'bg-purple-600 hover:bg-purple-700',
-      productIds: { monthly: 'enterprise_monthly', annual: 'enterprise_annual' },
+      offeringId: 'enterprise', // Maps to RevenueCat offering ID
       limits: {
         properties: '∞',
         tenants: '∞',
@@ -381,7 +380,7 @@ const PricingModal: React.FC<PricingModalProps> = ({
         await Purchases.setAttributes( attributes );
       }
 
-      // Load ALL offerings from RevenueCat (not just current)
+      // Load ALL offerings from RevenueCat
       const offeringsResult = await Purchases.getOfferings();
       
       console.log('RevenueCat offerings result:', offeringsResult);
@@ -389,36 +388,20 @@ const PricingModal: React.FC<PricingModalProps> = ({
       if (offeringsResult.all && Object.keys(offeringsResult.all).length > 0) {
         setAllOfferings(offeringsResult.all);
         
-        // Collect all packages from all offerings
-        const allAvailablePackages: PurchasesPackage[] = [];
+        console.log('All offerings loaded:', Object.keys(offeringsResult.all));
+        console.log('Offering details:', offeringsResult.all);
         
+        // Find storage package across all offerings
+        let storageProduct: PurchasesPackage | null = null;
         Object.values(offeringsResult.all).forEach((offering: any) => {
-          if (offering.availablePackages) {
-            allAvailablePackages.push(...offering.availablePackages);
+          if (offering.availablePackages && !storageProduct) {
+            storageProduct = offering.availablePackages.find(
+              (pkg: PurchasesPackage) => pkg.identifier === 'storage_onetime'
+            );
           }
         });
-
-        setAllPackages(allAvailablePackages);
+        setStoragePackage(storageProduct);
         
-        // Find storage package in all packages
-        const storageProduct = allAvailablePackages.find(
-          (pkg: PurchasesPackage) => pkg.identifier === 'storage_onetime'
-        );
-        setStoragePackage(storageProduct || null);
-
-        console.log('All offerings loaded:', Object.keys(offeringsResult.all));
-        console.log('Available packages:', allAvailablePackages.map(pkg => pkg.identifier));
-        console.log('Looking for product IDs:', planStructure.flatMap(p => [p.productIds.monthly, p.productIds.annual]).filter(Boolean));
-        
-      } else if (offeringsResult.current) {
-        // Fallback to current offering if all is empty
-        console.log('Using current offering as fallback');
-        setAllPackages(offeringsResult.current.availablePackages || []);
-        
-        const storageProduct = offeringsResult.current.availablePackages?.find(
-          (pkg: PurchasesPackage) => pkg.identifier === 'storage_onetime'
-        );
-        setStoragePackage(storageProduct || null);
       } else {
         console.warn('No offerings available from RevenueCat');
       }
@@ -431,27 +414,44 @@ const PricingModal: React.FC<PricingModalProps> = ({
     }
   };
 
-  // Build plans with real RevenueCat pricing data
+  // Build plans with real RevenueCat pricing data using offerings
   const plansWithPricing: PlanData[] = planStructure.map(planStruct => {
-    if (allPackages.length === 0) {
+    // Free plan doesn't need RevenueCat data
+    if (planStruct.id === 'free') {
       return { ...planStruct, monthlyPackage: undefined, annualPackage: undefined };
     }
 
-    // Search for packages across all available packages
-    const monthlyPackage = allPackages.find(
-      (pkg: PurchasesPackage) => pkg.identifier === planStruct.productIds.monthly
+    // Find the offering for this plan
+    const offering = allOfferings?.[planStruct.offeringId!];
+    
+    if (!offering?.availablePackages) {
+      console.warn(`Offering not found for ${planStruct.id}: ${planStruct.offeringId}`);
+      return { ...planStruct, monthlyPackage: undefined, annualPackage: undefined };
+    }
+
+    // Look for monthly and annual packages in this offering
+    // Assuming monthly packages have 'month' in duration and annual have 'year'
+    const monthlyPackage = offering.availablePackages.find((pkg: PurchasesPackage) => 
+      pkg.product.subscriptionPeriod?.includes('P1M') || // ISO 8601 for 1 month
+      pkg.identifier.toLowerCase().includes('monthly') ||
+      pkg.packageType === 'MONTHLY' // If RevenueCat sets this
     );
-    const annualPackage = allPackages.find(
-      (pkg: PurchasesPackage) => pkg.identifier === planStruct.productIds.annual
+    
+    const annualPackage = offering.availablePackages.find((pkg: PurchasesPackage) => 
+      pkg.product.subscriptionPeriod?.includes('P1Y') || // ISO 8601 for 1 year
+      pkg.identifier.toLowerCase().includes('annual') ||
+      pkg.packageType === 'ANNUAL' // If RevenueCat sets this
     );
 
-    // Debug logging for package matching
-    if (planStruct.productIds.monthly && !monthlyPackage) {
-      console.warn(`Monthly package not found for ${planStruct.id}: ${planStruct.productIds.monthly}`);
-    }
-    if (planStruct.productIds.annual && !annualPackage) {
-      console.warn(`Annual package not found for ${planStruct.id}: ${planStruct.productIds.annual}`);
-    }
+    // Debug logging
+    console.log(`Plan ${planStruct.id} (offering: ${planStruct.offeringId}):`);
+    console.log('Available packages:', offering.availablePackages.map((p: any) => ({
+      id: p.identifier,
+      period: p.product.subscriptionPeriod,
+      type: p.packageType
+    })));
+    console.log('Monthly found:', monthlyPackage?.identifier);
+    console.log('Annual found:', annualPackage?.identifier);
 
     return {
       ...planStruct,
@@ -623,8 +623,8 @@ const PricingModal: React.FC<PricingModalProps> = ({
                 {process.env.NODE_ENV === 'development' && (
                   <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4 text-xs">
                     <p><strong>Debug Info:</strong></p>
-                    <p>Total packages loaded: {allPackages.length}</p>
-                    <p>Package IDs: {allPackages.map(pkg => pkg.identifier).join(', ')}</p>
+                    <p>Total offerings loaded: {allOfferings ? Object.keys(allOfferings).length : 0}</p>
+                    <p>Offering IDs: {allOfferings ? Object.keys(allOfferings).join(', ') : 'none'}</p>
                     <p>Plans with pricing data: {plansWithPricing.filter(p => p.monthlyPackage || p.annualPackage).length}/{plansWithPricing.length}</p>
                   </div>
                 )}
@@ -820,13 +820,13 @@ const PricingModal: React.FC<PricingModalProps> = ({
                   })}
                 </div>
 
-                {/* No Packages Available Warning */}
-                {allPackages.length === 0 && !loadingProducts && (
+                {/* No Offerings Available Warning */}
+                {(!allOfferings || Object.keys(allOfferings).length === 0) && !loadingProducts && (
                   <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
                     <div className="flex items-center text-red-800">
                       <X className="w-5 h-5 mr-2" />
                       <span className="font-medium text-sm">
-                        No subscription packages available. Please check your RevenueCat configuration.
+                        No subscription offerings available. Please check your RevenueCat configuration.
                       </span>
                     </div>
                   </div>

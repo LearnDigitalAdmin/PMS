@@ -17,6 +17,7 @@ interface AddInvoiceProps {
   onSave?: (invoice: Invoice) => void;
   onCancel?: () => void;
   isModal?: boolean; // Add this line
+  userId: number; // Add this line
   onNavigate?: (page: string, params?: any) => void;
 }
 
@@ -69,7 +70,8 @@ const AddInvoice: React.FC<AddInvoiceProps> = ({
   onSave,
   onCancel,
   onNavigate,
-  isModal = false 
+  isModal = false,
+  userId
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [properties, setProperties] = useState<Property[]>([]);
@@ -172,7 +174,7 @@ const updateFormData = (field: keyof FormData, value: any) => {
     setLoading(true);
     try {
       // Load properties (assuming userId = 1 for demo)
-      const propertiesData = await database.getProperties(1);
+      const propertiesData = await database.getProperties(userId);
       setProperties(propertiesData);
 
       // If editing existing invoice, load invoice data

@@ -825,6 +825,7 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
               invoiceId={editingInvoiceId}
               onSave={handleInvoiceSaved}
               onCancel={handleCloseModal}
+              userId={user!.id}
               isModal={true}
             />
           </div>
