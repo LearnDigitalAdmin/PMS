@@ -975,7 +975,7 @@ async exportUserDataOffline(userId: number): Promise<{
         password_hash TEXT NOT NULL,
         is_premium INTEGER DEFAULT 0,
         type TEXT DEFAULT 'free' CHECK (type IN ('free', 'paid')),
-        tier TEXT DEFAULT 'free' CHECK (tier IN ('free', 'low', 'business', pro, 'enterprise')),
+        tier TEXT DEFAULT 'free' CHECK (tier IN ('free', 'low', 'business', 'pro', 'enterprise')),
         storage INTEGER DEFAULT 0,
         revenuecat_user_id TEXT,
         selected_property_ids TEXT, -- JSON array of property IDs for restricted users

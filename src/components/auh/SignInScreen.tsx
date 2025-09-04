@@ -50,10 +50,10 @@ const SignInScreen: React.FC<SignInScreenProps> = ({ onSwitchToSignUp }) => {
     try {
       console.log('Attempting login with:', { email: formData.email });
       
-      const success = await login(formData.email.toLowerCase().trim(), formData.password);
+      const result = await login(formData.email.toLowerCase().trim(), formData.password);
       
-      if (!success) {
-        setError('Invalid email or password. Please check your credentials and try again.');
+      if (!result.success) {
+        setError(result.error || 'Invalid email or password. Please check your credentials and try again.');
         console.log('Login failed for user:', formData.email);
       } else {
         console.log('Login successful for user:', formData.email);

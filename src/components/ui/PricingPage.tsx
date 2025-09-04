@@ -240,8 +240,8 @@ const PricingModal: React.FC<PricingModalProps> = ({
       buttonColor: 'bg-gray-600 hover:bg-gray-700',
       offeringId: null, // Free plan has no offering
       limits: {
-        properties: 2,
-        tenants: 24,
+        properties: 1,
+        tenants: 12,
         sync: false,
         branding: 'Heavy PlotYangu branding',
         support: 'Community'
@@ -267,15 +267,15 @@ const PricingModal: React.FC<PricingModalProps> = ({
       buttonColor: 'bg-blue-600 hover:bg-blue-700',
       offeringId: 'starter', // Maps to RevenueCat offering ID
       limits: {
-        properties: 7,
-        tenants: 105,
+        properties: 4,
+        tenants: 60,
         sync: false,
         branding: 'Light footer branding',
         support: 'Email'
       },
       features: [
-        { name: 'Up to 7 Properties', included: true },
-        { name: 'Up to 105 Tenants', included: true },
+        { name: 'Up to 4 Properties', included: true },
+        { name: 'Up to 60 Tenants', included: true },
         { name: 'Invoice Generation', included: true },
         { name: 'Local Storage', included: true },
         { name: 'WhatsApp/Email Sharing', included: true },
@@ -316,9 +316,9 @@ const PricingModal: React.FC<PricingModalProps> = ({
       id: 'pro',
       name: 'Professional',
       popular: true,
-      color: 'bg-black-50 border-black-300',
-      headerColor: 'bg-black-100',
-      buttonColor: 'bg-black-600 hover:bg-black-700',
+      color: 'bg-orange-50 border-orange-300',
+      headerColor: 'bg-orange-100',
+      buttonColor: 'bg-orange-600 hover:bg-orange-700',
       offeringId: 'pro', // Maps to RevenueCat offering ID
       limits: {
         properties: 20,

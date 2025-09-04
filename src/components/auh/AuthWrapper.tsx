@@ -1,16 +1,24 @@
-// components/auth/AuthWrapper.tsx - Enhanced with User State Management and Sync
+// components/auth/AuthWrapper.tsx - Enhanced with Multi-Device Support
 import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { database } from '../../services/database/Database';
 import { firebaseSyncService } from '../../services/database/FirebaseSync';
 import SignInScreen from './SignInScreen';
 import SignUpScreen from './SignUpScreen';
 import type { User, Company, AuthResult } from '../../services/database/Database';
+import { 
+  getFirestore, 
+  query, 
+  collection, 
+  where, 
+  getDocs, 
+  limit 
+} from 'firebase/firestore';
 
 // Enhanced Auth Context Interface
 interface AuthContextType {
   user: User | null;
   company: Company | null;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   updateUserState: (updatedUser: User) => void;
@@ -106,6 +114,171 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.error('Error refreshing user data:', error);
     }
   }, [user, updateUserState]);
+
+  // Password verification helper
+  const verifyPassword = async (password: string, hash: string): Promise<boolean> => {
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(password + 'propertyflow_salt_2024');
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const passwordHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      return passwordHash === hash;
+    } catch (error) {
+      console.error('Error verifying password:', error);
+      return false;
+    }
+  };
+
+  // Multi-device login helper - check Firestore for user account
+  const loginFromFirestore = async (email: string, password: string): Promise<{ success: boolean; user?: any; error?: string }> => {
+    try {
+      console.log('Attempting Firestore login for:', email);
+      const db = getFirestore();
+      
+      // Search for user by email in Firestore
+      const usersQuery = query(
+        collection(db, 'users'),
+        where('email', '==', email.toLowerCase().trim()),
+        limit(1)
+      );
+      
+      const querySnapshot = await getDocs(usersQuery);
+      
+      if (querySnapshot.empty) {
+        console.log('User not found in Firestore');
+        return { success: false, error: 'Account not found' };
+      }
+
+      const userDoc = querySnapshot.docs[0];
+      const firestoreUser = userDoc.data();
+      
+      console.log('Found user in Firestore:', firestoreUser.email);
+
+      // Verify password against Firestore hash
+      if (!firestoreUser.passwordHash) {
+        return { success: false, error: 'Invalid account data' };
+      }
+
+      const isValidPassword = await verifyPassword(password, firestoreUser.passwordHash);
+      if (!isValidPassword) {
+        console.log('Invalid password for Firestore user');
+        return { success: false, error: 'Invalid password' };
+      }
+
+      console.log('Password verified for Firestore user');
+      return { 
+        success: true, 
+        user: {
+          ...firestoreUser,
+          firestoreId: userDoc.id,
+          localId: firestoreUser.localId || firestoreUser.id
+        }
+      };
+      
+    } catch (error) {
+      console.error('Error during Firestore login:', error);
+      return { success: false, error: 'Connection error' };
+    }
+  };
+
+  // Create local user from Firestore data
+  const createLocalUserFromFirestore = async (firestoreUser: any): Promise<User | null> => {
+    try {
+      console.log('Creating local user from Firestore data');
+      
+      // Check if user already exists locally (by ID or email)
+      let existingUser = await database.getUserById(firestoreUser.localId);
+      if (!existingUser && firestoreUser.email) {
+        existingUser = await database.getUserByEmail(firestoreUser.email);
+      }
+
+      if (existingUser) {
+        console.log('User already exists locally, updating...');
+        // Update existing local user with Firestore data
+        await database.updateUser(existingUser.id, {
+          name: firestoreUser.name,
+          email: firestoreUser.email,
+          phone: firestoreUser.phone?.toString() || '',
+          isPremium: firestoreUser.isPremium || false
+        });
+
+        // Update tier and type
+        await database.updateUserTierAndType(
+          existingUser.id,
+          firestoreUser.tier || 'free',
+          firestoreUser.type || 'free',
+          firestoreUser.storage || false
+        );
+
+        return await database.getUserById(existingUser.id);
+      }
+
+      // Create new local user
+      const userData = {
+        user: {
+          id: firestoreUser.localId,
+          name: firestoreUser.name,
+          email: firestoreUser.email,
+          phone: firestoreUser.phone || 0,
+          password: 'FIRESTORE_SYNCED', // Placeholder - password hash already exists
+          type: firestoreUser.type || 'free',
+          tier: firestoreUser.tier || 'free'
+        },
+        company: firestoreUser.company ? {
+          name: firestoreUser.company.name,
+          address: firestoreUser.company.address || '',
+          phone: firestoreUser.company.phone || '',
+          email: firestoreUser.company.email || ''
+        } : undefined
+      };
+
+      // Override the createUserWithCompany to use existing hash
+      const result = await database.createUserWithCompany(userData);
+      
+      // Update password hash to match Firestore
+      const query = `
+        UPDATE users 
+        SET password_hash = ?, tier = ?, type = ?, storage = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `;
+      await database.db!.run(query, [
+        firestoreUser.passwordHash,
+        firestoreUser.tier || 'free',
+        firestoreUser.type || 'free',
+        firestoreUser.storage ? 1 : 0,
+        firestoreUser.localId
+      ]);
+
+      console.log('Local user created from Firestore data');
+      return result.user;
+      
+    } catch (error) {
+      console.error('Error creating local user from Firestore:', error);
+      return null;
+    }
+  };
+
+  // Download user's complete data from Firestore
+  const downloadCompleteUserData = async (userId: number): Promise<void> => {
+    try {
+      console.log('Downloading complete user data from Firestore...');
+      
+      const user = await database.getUserById(userId);
+      if (!user || !canUserSync(user)) {
+        console.log('User cannot sync or user not found');
+        return;
+      }
+
+      // Perform full data sync
+      await firebaseSyncService.performFullSync(userId);
+      console.log('Complete user data downloaded and synced');
+      
+    } catch (error) {
+      console.error('Error downloading complete user data:', error);
+      // Don't throw error - user can still work offline
+    }
+  };
 
   // Initialize auth state on app start
   useEffect(() => {
@@ -268,57 +441,110 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // Enhanced login function
-  const login = async (email: string, password: string): Promise<boolean> => {
+  // Enhanced login function with multi-device support
+  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      console.log('Attempting login for:', email);
+      console.log('Attempting multi-device login for:', email);
       
       // Ensure database is initialized
       await database.initializeDatabase();
       
-      // Authenticate user
-      const result: AuthResult | null = await database.authenticateUser(email, password);
+      // Step 1: Try local authentication first
+      console.log('Trying local authentication...');
+      const localResult: AuthResult | null = await database.authenticateUser(email, password);
       
-      if (result) {
-        console.log('Authentication successful for:', result.user.email);
-        console.log('User tier:', result.user.tier, 'Type:', result.user.type, 'Storage:', result.user.storage);
+      if (localResult) {
+        console.log('Local authentication successful');
         
         // Set user state
-        setUser(result.user);
-        localStorage.setItem('currentUser', JSON.stringify(result.user));
+        setUser(localResult.user);
+        localStorage.setItem('currentUser', JSON.stringify(localResult.user));
         
         // Set company state (only for premium users)
-        if (result.user.type === 'paid' && result.company) {
-          setCompany(result.company);
-          localStorage.setItem('currentCompany', JSON.stringify(result.company));
+        if (localResult.user.type === 'paid' && localResult.company) {
+          setCompany(localResult.company);
+          localStorage.setItem('currentCompany', JSON.stringify(localResult.company));
         } else {
           setCompany(null);
           localStorage.removeItem('currentCompany');
         }
         
         // Initialize sync if user is eligible
-        if (canUserSync(result.user)) {
-          await initializeUserSync(result.user);
+        if (canUserSync(localResult.user)) {
+          await initializeUserSync(localResult.user);
           
-          // Perform initial sync
+          // Perform sync to get latest data
           try {
             console.log('Performing post-login sync...');
-            await firebaseSyncService.performFullSync(result.user.id);
-            await updateSyncStatus(result.user.id);
+            await firebaseSyncService.performFullSync(localResult.user.id);
+            await updateSyncStatus(localResult.user.id);
           } catch (syncError) {
             console.error('Post-login sync failed:', syncError);
             // Don't fail login if sync fails - app works offline
           }
         }
         
-        return true;
-      } else {
-        console.log('Authentication failed for:', email);
-        return false;
+        return { success: true };
       }
+
+      // Step 2: Try Firestore authentication
+      console.log('Local authentication failed, trying Firestore...');
+      const firestoreResult = await loginFromFirestore(email, password);
+      
+      if (!firestoreResult.success) {
+        console.log('Firestore authentication failed:', firestoreResult.error);
+        return { success: false, error: firestoreResult.error || 'Authentication failed' };
+      }
+
+      console.log('Firestore authentication successful');
+      
+      // Step 3: Create/update local user from Firestore data
+      const localUser = await createLocalUserFromFirestore(firestoreResult.user!);
+      if (!localUser) {
+        return { success: false, error: 'Failed to create local account' };
+      }
+
+      // Step 4: Set user state
+      setUser(localUser);
+      localStorage.setItem('currentUser', JSON.stringify(localUser));
+
+      // Step 5: Set company state (only for premium users)
+      if (localUser.type === 'paid') {
+        const company = await database.getCompanyByUserId(localUser.id);
+        setCompany(company || null);
+        if (company) {
+          localStorage.setItem('currentCompany', JSON.stringify(company));
+        }
+      } else {
+        setCompany(null);
+        localStorage.removeItem('currentCompany');
+      }
+
+      // Step 6: Initialize sync and download complete data
+      if (canUserSync(localUser)) {
+        await initializeUserSync(localUser);
+        
+        // Download complete user data in background
+        setTimeout(async () => {
+          try {
+            console.log('Downloading complete user data...');
+            await downloadCompleteUserData(localUser.id);
+            await updateSyncStatus(localUser.id);
+          } catch (error) {
+            console.error('Background data download failed:', error);
+          }
+        }, 2000);
+      }
+
+      console.log('Multi-device login completed successfully');
+      return { success: true };
+      
     } catch (error) {
       console.error('Login error:', error);
-      return false;
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Authentication failed' 
+      };
     }
   };
 

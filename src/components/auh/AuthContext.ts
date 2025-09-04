@@ -1,12 +1,20 @@
 import React from "react";
 
-// Auth Context
+// Enhanced Auth Context Interface
 interface AuthContextType {
   user: any | null;
   company: any | null;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
+  updateUserState: (updatedUser: any) => void;
   isAuthenticated: boolean;
+  isLoading: boolean;
+  syncStatus: {
+    canSync: boolean;
+    lastSync: string;
+    isOnline: boolean;
+  };
 }
 
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
