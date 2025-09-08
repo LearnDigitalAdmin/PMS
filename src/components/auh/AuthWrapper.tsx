@@ -1,4 +1,4 @@
-// components/auth/AuthWrapper.tsx - Enhanced with Multi-Device Support
+// components/auth/AuthWrapper.tsx - Enhanced with Multi-Device Support and Fixed User Data Handling
 import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { database } from '../../services/database/Database';
 import { firebaseSyncService } from '../../services/database/FirebaseSync';
@@ -53,7 +53,7 @@ const LoadingSpinner = () => (
       </div>
     </div>
   </div>
-);
+  );
 
 // Auth Wrapper Screen (handles sign in/sign up switching)
 const AuthWrapperScreen = () => {
@@ -182,10 +182,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // Create local user from Firestore data
+  // Create/Update local user from Firestore data - COMPLETE REPLACEMENT
   const createLocalUserFromFirestore = async (firestoreUser: any): Promise<User | null> => {
     try {
-      console.log('Creating local user from Firestore data');
+      console.log('Creating/updating local user from Firestore data - COMPLETE REPLACEMENT');
       
       // Check if user already exists locally (by ID or email)
       let existingUser = await database.getUserById(firestoreUser.localId);
@@ -194,8 +194,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
 
       if (existingUser) {
-        console.log('User already exists locally, updating...');
-        // Update existing local user with Firestore data
+        console.log('User exists locally - REPLACING ALL DATA with Firestore data');
+        
+        // COMPLETE REPLACEMENT: Update ALL user data with Firestore data
         await database.updateUser(existingUser.id, {
           name: firestoreUser.name,
           email: firestoreUser.email,
@@ -203,7 +204,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           isPremium: firestoreUser.isPremium || false
         });
 
-        // Update tier and type
+        // Update tier, type, and storage
         await database.updateUserTierAndType(
           existingUser.id,
           firestoreUser.tier || 'free',
@@ -211,21 +212,51 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           firestoreUser.storage || false
         );
 
+        // Update password hash to match Firestore
+        const updateHashQuery = `
+          UPDATE users 
+          SET password_hash = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `;
+        await database.db!.run(updateHashQuery, [firestoreUser.passwordHash, existingUser.id]);
+
+        // Handle company data for paid users
+        if (firestoreUser.company && firestoreUser.type === 'paid') {
+          const existingCompany = await database.getCompanyByUserId(existingUser.id);
+          if (existingCompany) {
+            await database.updateCompany(existingCompany.id, {
+              name: firestoreUser.company.name,
+              address: firestoreUser.company.address || '',
+              phone: firestoreUser.company.phone || '',
+              email: firestoreUser.company.email || ''
+            });
+          } else {
+            await database.createCompany(existingUser.id, {
+              name: firestoreUser.company.name,
+              address: firestoreUser.company.address || '',
+              phone: firestoreUser.company.phone || '',
+              email: firestoreUser.company.email || ''
+            });
+          }
+        }
+
+        console.log('Local user completely updated with Firestore data');
         return await database.getUserById(existingUser.id);
       }
 
       // Create new local user
+      console.log('Creating new local user from Firestore');
       const userData = {
         user: {
           id: firestoreUser.localId,
           name: firestoreUser.name,
           email: firestoreUser.email,
           phone: firestoreUser.phone || 0,
-          password: 'FIRESTORE_SYNCED', // Placeholder - password hash already exists
+          password: 'FIRESTORE_SYNCED', // Placeholder - will be overwritten
           type: firestoreUser.type || 'free',
           tier: firestoreUser.tier || 'free'
         },
-        company: firestoreUser.company ? {
+        company: firestoreUser.company && firestoreUser.type === 'paid' ? {
           name: firestoreUser.company.name,
           address: firestoreUser.company.address || '',
           phone: firestoreUser.company.phone || '',
@@ -233,16 +264,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         } : undefined
       };
 
-      // Override the createUserWithCompany to use existing hash
       const result = await database.createUserWithCompany(userData);
       
       // Update password hash to match Firestore
-      const query = `
+      const updateHashQuery = `
         UPDATE users 
         SET password_hash = ?, tier = ?, type = ?, storage = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `;
-      await database.db!.run(query, [
+      await database.db!.run(updateHashQuery, [
         firestoreUser.passwordHash,
         firestoreUser.tier || 'free',
         firestoreUser.type || 'free',
@@ -250,19 +280,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         firestoreUser.localId
       ]);
 
-      console.log('Local user created from Firestore data');
+      console.log('New local user created from Firestore data');
       return result.user;
       
     } catch (error) {
-      console.error('Error creating local user from Firestore:', error);
+      console.error('Error creating/updating local user from Firestore:', error);
       return null;
     }
   };
 
-  // Download user's complete data from Firestore
+  // Download user's complete data from Firestore - REPLACES ALL DATA
   const downloadCompleteUserData = async (userId: number): Promise<void> => {
     try {
-      console.log('Downloading complete user data from Firestore...');
+      console.log('Downloading and REPLACING all user data from Firestore...');
       
       const user = await database.getUserById(userId);
       if (!user || !canUserSync(user)) {
@@ -270,9 +300,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return;
       }
 
-      // Perform full data sync
+      // Clear existing data first to ensure clean replacement
+      console.log('Clearing existing local data before Firestore import...');
+      
+      // Note: We don't delete the user record, but we will replace all related data
+      // during the sync process. The new flattened sync structure handles this better.
+
+      // Perform full data sync - this will replace all data
       await firebaseSyncService.performFullSync(userId);
-      console.log('Complete user data downloaded and synced');
+      console.log('Complete user data downloaded and ALL LOCAL DATA REPLACED');
       
     } catch (error) {
       console.error('Error downloading complete user data:', error);
@@ -398,32 +434,47 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return user.tier === 'business' || user.tier === 'pro' || user.tier === 'enterprise' || user.storage === true;
   };
 
-  // Initialize sync for eligible users
+  // Initialize sync for eligible users - UPDATED for new flattened structure
   const initializeUserSync = async (user: User) => {
     try {
-      console.log('Setting up sync for user:', user.email);
+      console.log('Setting up sync for user with flattened structure:', user.email);
       
-      // Set up real-time user listener
+      // Set up real-time user listener with RESTRICTED updates for local users
       firebaseSyncService.setupUserListener(user.id, async (updatedUser) => {
-        console.log('User updated via Firestore listener:', updatedUser.email);
+        console.log('User updated via Firestore listener - TIER/TYPE/STORAGE ONLY:', updatedUser.email);
         
-        // Update local user state
-        updateUserState(updatedUser);
-        
-        // Refresh company if needed
-        if (updatedUser.type === 'paid') {
-          const company = await database.getCompanyByUserId(updatedUser.id);
-          setCompany(company || null);
-          if (company) {
-            localStorage.setItem('currentCompany', JSON.stringify(company));
+        // CRITICAL: Only update tier, type, and storage - never core user data for local users
+        const currentUser = await database.getUserById(user.id);
+        if (currentUser) {
+          // Only update tier, type, and storage
+          await database.updateUserTierAndType(
+            user.id,
+            updatedUser.tier || 'free',
+            updatedUser.type || 'free', 
+            updatedUser.storage || false
+          );
+          
+          // Get the updated user with new tier info
+          const refreshedUser = await database.getUserById(user.id);
+          if (refreshedUser) {
+            updateUserState(refreshedUser);
           }
-        } else {
-          setCompany(null);
-          localStorage.removeItem('currentCompany');
+          
+          // Refresh company if needed
+          if (updatedUser.type === 'paid') {
+            const company = await database.getCompanyByUserId(user.id);
+            setCompany(company || null);
+            if (company) {
+              localStorage.setItem('currentCompany', JSON.stringify(company));
+            }
+          } else {
+            setCompany(null);
+            localStorage.removeItem('currentCompany');
+          }
         }
       });
 
-      // Start automatic sync
+      // Start automatic sync with new flattened structure
       firebaseSyncService.startAutomaticSync(user.id);
       
     } catch (error) {
@@ -441,10 +492,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // Enhanced login function with multi-device support
+  // Enhanced login function with proper data handling
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      console.log('Attempting multi-device login for:', email);
+      console.log('Attempting login for:', email);
       
       // Ensure database is initialized
       await database.initializeDatabase();
@@ -454,7 +505,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const localResult: AuthResult | null = await database.authenticateUser(email, password);
       
       if (localResult) {
-        console.log('Local authentication successful');
+        console.log('LOCAL LOGIN SUCCESS - Local user data preserved');
         
         // Set user state
         setUser(localResult.user);
@@ -469,17 +520,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           localStorage.removeItem('currentCompany');
         }
         
-        // Initialize sync if user is eligible
+        // Initialize sync if user is eligible - LOCAL USER SYNC
         if (canUserSync(localResult.user)) {
           await initializeUserSync(localResult.user);
           
-          // Perform sync to get latest data
+          // Perform GENTLE sync - only updates tier/type/storage, uploads local data
           try {
-            console.log('Performing post-login sync...');
+            console.log('Performing LOCAL USER sync (preserves local data, only syncs tier updates)...');
             await firebaseSyncService.performFullSync(localResult.user.id);
             await updateSyncStatus(localResult.user.id);
           } catch (syncError) {
-            console.error('Post-login sync failed:', syncError);
+            console.error('Local user sync failed:', syncError);
             // Don't fail login if sync fails - app works offline
           }
         }
@@ -487,7 +538,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return { success: true };
       }
 
-      // Step 2: Try Firestore authentication
+      // Step 2: Try Firestore authentication - COMPLETE DATA REPLACEMENT
       console.log('Local authentication failed, trying Firestore...');
       const firestoreResult = await loginFromFirestore(email, password);
       
@@ -496,9 +547,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return { success: false, error: firestoreResult.error || 'Authentication failed' };
       }
 
-      console.log('Firestore authentication successful');
+      console.log('FIRESTORE LOGIN SUCCESS - Will REPLACE all local data');
       
-      // Step 3: Create/update local user from Firestore data
+      // Step 3: Create/update local user from Firestore data - COMPLETE REPLACEMENT
       const localUser = await createLocalUserFromFirestore(firestoreResult.user!);
       if (!localUser) {
         return { success: false, error: 'Failed to create local account' };
@@ -520,23 +571,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         localStorage.removeItem('currentCompany');
       }
 
-      // Step 6: Initialize sync and download complete data
+      // Step 6: Initialize sync and REPLACE all local data with Firestore data
       if (canUserSync(localUser)) {
         await initializeUserSync(localUser);
         
-        // Download complete user data in background
+        // Download and REPLACE complete user data
         setTimeout(async () => {
           try {
-            console.log('Downloading complete user data...');
+            console.log('REPLACING all local data with Firestore data...');
             await downloadCompleteUserData(localUser.id);
             await updateSyncStatus(localUser.id);
+            console.log('Data replacement completed');
           } catch (error) {
-            console.error('Background data download failed:', error);
+            console.error('Background data replacement failed:', error);
           }
         }, 2000);
       }
 
-      console.log('Multi-device login completed successfully');
+      console.log('Firestore login completed - local data will be replaced');
       return { success: true };
       
     } catch (error) {
