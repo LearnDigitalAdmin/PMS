@@ -16,7 +16,7 @@ const db = getFirestore();
 // Configuration - Replace with your actual values
 const WHATSAPP_CONFIG = {
     ACCESS_TOKEN: 'EAASC7YgLv0YBPRIdAASQas8IdC1vLwtsiKYcVvuC0MtZAEKQAnfaIM9Vgtnn1HNeH92ZBNlQ1kZA8Wgg7fxuoihZC6mH17frZBsAyQvk6igPZAJxK7kdI0dJ7ZAzxsKZCpUCiDZAxnnCYNgTc5zZCEeTQ3Xn8EeykvjfxxqBNZAcsxMwL6PLbQVZB7TFtLXxlFiVdgZDZD',
-    PHONE_NUMBER_ID: '744556782079507',
+    PHONE_NUMBER_ID: '813756918480708',
     VERSION: 'v18.0',
     BASE_URL: 'https://graph.facebook.com'
 };
@@ -71,6 +71,28 @@ function checkRateLimit(identifier: string): boolean {
     current.count++;
     rateLimitStore.set(key, current);
     return true;
+}
+
+// NEW: Function to process Firebase URL for WhatsApp template
+function processFirebaseUrlForWhatsApp(pdfUrl: string): string {
+    if (!pdfUrl) {
+        console.warn('No PDF URL provided');
+        return '';
+    }
+
+    const firebaseBaseUrl = 'https://firebasestorage.googleapis.com/';
+    
+    // Check if URL starts with Firebase Storage URL
+    if (pdfUrl.startsWith(firebaseBaseUrl)) {
+        // Extract everything after the base URL
+        const urlPath = pdfUrl.substring(firebaseBaseUrl.length);
+        console.log(`Processed Firebase URL: ${firebaseBaseUrl} + ${urlPath}`);
+        return urlPath;
+    }
+    
+    // If it's not a Firebase URL, return as is (for other URLs)
+    console.log(`Non-Firebase URL passed through: ${pdfUrl}`);
+    return pdfUrl;
 }
 
 // RevenueCat helper functions
@@ -233,6 +255,124 @@ const handleSubscriptionEvent = async (event: RevenueCatEvent): Promise<void> =>
     }
 };
 
+// UPDATED: New invoice notification function with URL processing
+async function sendNewInvoiceNotification(invoice: any, fallbackInvoiceId: string | null = null): Promise<boolean> {
+    try {
+        const invoiceLocalId = invoice.localId || fallbackInvoiceId || 'unknown';
+        console.log(`Sending new invoice notification for invoice ${invoiceLocalId}`);
+        const { tenant, property, user, company } = await getInvoiceContext(invoice, fallbackInvoiceId);
+        
+        if (!canSendNotification(user, 'invoice')) {
+            console.log(`User ${user.localId} cannot receive invoice notifications`);
+            return false;
+        }
+
+        const shouldSendNewNotification = !invoice.hasOwnProperty('isNew') || invoice.isNew === true;
+        
+        if (!shouldSendNewNotification) {
+            console.log(`Invoice ${invoiceLocalId} already processed for new invoice (isNew=false)`);
+            return false;
+        }
+
+        if (invoice.pdfStatus === 'paid' || invoice.status === 'paid') {
+            console.log(`Invoice ${invoiceLocalId} is already paid, skipping new invoice notification`);
+            return false;
+        }
+
+        if (!tenant.phone) {
+            console.error(`No phone number found for tenant ${tenant.name}`);
+            return false;
+        }
+
+        const templateParams = [
+            tenant.name,
+            invoice.billingMonth,
+            property.name,
+            company?.name || user.name,
+            company?.phone || user.phone || '',
+            company?.email || user.email
+        ];
+
+        // UPDATED: Process the PDF URL for WhatsApp template
+        const processedUrl = processFirebaseUrlForWhatsApp(invoice.pdfUrl);
+
+        console.log(`Sending NEW INVOICE to phone: ${tenant.phone}, template: ${TEMPLATES.NEW_INVOICE}`);
+        console.log(`Template params:`, templateParams);
+        console.log(`Original PDF URL: ${invoice.pdfUrl}`);
+        console.log(`Processed URL parameter: ${processedUrl}`);
+        
+        const success = await sendWhatsAppMessage(tenant.phone, TEMPLATES.NEW_INVOICE, templateParams, processedUrl);
+        
+        if (success) {
+            await updateInvoiceFlags(invoice.userId, invoiceLocalId, { isNew: false });
+            console.log(`Successfully sent new invoice notification for invoice ${invoiceLocalId}`);
+        }
+        
+        return success;
+    } catch (error) {
+        console.error('Error sending new invoice notification:', error);
+        return false;
+    }
+}
+
+// UPDATED: Payment success notification function with URL processing
+async function sendPaymentSuccessNotification(invoice: any, fallbackInvoiceId: string | null = null): Promise<boolean> {
+    try {
+        const invoiceLocalId = invoice.localId || fallbackInvoiceId || 'unknown';
+        console.log(`Sending payment success notification for invoice ${invoiceLocalId}`);
+        const { tenant, property, user } = await getInvoiceContext(invoice, fallbackInvoiceId);
+        
+        if (!canSendNotification(user, 'payment')) {
+            console.log(`User ${user.localId} cannot receive payment notifications`);
+            return false;
+        }
+
+        const isInvoicePaid = invoice.pdfStatus === 'paid' || invoice.status === 'paid';
+        const notificationAlreadySent = invoice.isPaid === true;
+        
+        if (!isInvoicePaid) {
+            console.log(`Invoice ${invoiceLocalId} is not paid yet, skipping payment notification`);
+            return false;
+        }
+        
+        if (notificationAlreadySent) {
+            console.log(`Invoice ${invoiceLocalId} payment notification already sent (isPaid=true)`);
+            return false;
+        }
+
+        if (!tenant.phone) {
+            console.error(`No phone number found for tenant ${tenant.name}`);
+            return false;
+        }
+
+        const templateParams = [
+            tenant.name,
+            formatCurrency(invoice.amountPaid),
+            `${property.name} ${tenant.unitNumber || ''}`
+        ];
+
+        // UPDATED: Process the PDF URL for WhatsApp template
+        const processedUrl = processFirebaseUrlForWhatsApp(invoice.pdfUrl);
+
+        console.log(`Sending PAYMENT SUCCESS to phone: ${tenant.phone}, template: ${TEMPLATES.PAYMENT_SUCCESS}`);
+        console.log(`Template params:`, templateParams);
+        console.log(`Original PDF URL: ${invoice.pdfUrl}`);
+        console.log(`Processed URL parameter: ${processedUrl}`);
+        
+        const success = await sendWhatsAppMessage(tenant.phone, TEMPLATES.PAYMENT_SUCCESS, templateParams, processedUrl);
+        
+        if (success) {
+            await updateInvoiceFlags(invoice.userId, invoiceLocalId, { isPaid: true });
+            console.log(`Successfully sent payment success notification for invoice ${invoiceLocalId}`);
+        }
+        
+        return success;
+    } catch (error) {
+        console.error('Error sending payment success notification:', error);
+        return false;
+    }
+}
+
 // WhatsApp API helper functions
 // Enhanced error handling for WhatsApp API
 async function sendWhatsAppMessage(
@@ -265,7 +405,7 @@ async function sendWhatsAppMessage(
             type: 'template',
             template: {
                 name: templateName,
-                language: { code: 'en' },
+                language: { code: 'en_US' },
                 components: [
                     {
                         type: 'body',
@@ -278,13 +418,18 @@ async function sendWhatsAppMessage(
             }
         };
 
-        if (buttonUrl) {
+        // UPDATED: Use processed URL directly (already cut from Firebase base)
+        if (buttonUrl && buttonUrl.trim() !== '') {
             messagePayload.template.components.push({
                 type: 'button',
                 sub_type: 'url',
                 index: '0',
-                parameters: [{ type: 'text', text: buttonUrl }]
+                parameters: [{ 
+                    type: 'text', 
+                    text: buttonUrl // This is now the processed URL path
+                }]
             });
+            console.log(`Added button URL parameter: ${buttonUrl}`);
         }
 
         console.log('WhatsApp payload:', JSON.stringify(messagePayload, null, 2));
@@ -302,13 +447,13 @@ async function sendWhatsAppMessage(
         );
 
         if (response.status === 200) {
-            console.log(`✅ WhatsApp message sent successfully to ${formattedPhone}`);
+            console.log(`WhatsApp message sent successfully to ${formattedPhone}`);
             return true;
         } else {
             throw new Error(`WhatsApp API returned status ${response.status}`);
         }
     } catch (error: any) {
-        console.error(`❌ Error sending WhatsApp message (attempt ${retryCount + 1}):`, error.message);
+        console.error(`Error sending WhatsApp message (attempt ${retryCount + 1}):`, error.message);
         
         if (axios.isAxiosError(error)) {
             const status = error.response?.status;
@@ -330,19 +475,19 @@ async function sendWhatsAppMessage(
                 // Common error codes and their meanings
                 switch (errorCode) {
                     case 131032:
-                        console.error('❌ SOLUTION: Phone number not registered as test recipient. Add it in Meta Developer Console.');
+                        console.error('SOLUTION: Phone number not registered as test recipient. Add it in Meta Developer Console.');
                         break;
                     case 131026:
-                        console.error('❌ SOLUTION: Template not found or not approved. Check template name and approval status.');
+                        console.error('SOLUTION: Template not found or not approved. Check template name and approval status.');
                         break;
                     case 131047:
-                        console.error('❌ SOLUTION: Re-engagement message required. User needs to initiate conversation first.');
+                        console.error('SOLUTION: Re-engagement message required. User needs to initiate conversation first.');
                         break;
                     case 131051:
-                        console.error('❌ SOLUTION: Template parameter count mismatch. Check template parameters.');
+                        console.error('SOLUTION: Template parameter count mismatch. Check template parameters.');
                         break;
                     default:
-                        console.error('❌ SOLUTION: Check WhatsApp Business API documentation for error code:', errorCode);
+                        console.error('SOLUTION: Check WhatsApp Business API documentation for error code:', errorCode);
                 }
                 
                 // Log to Firestore for tracking
@@ -376,7 +521,7 @@ async function sendWhatsAppMessage(
             return sendWhatsAppMessage(to, templateName, templateParams, buttonUrl, retryCount + 1);
         }
         
-        console.error('❌ All retry attempts exhausted');
+        console.error('All retry attempts exhausted');
         return false;
     }
 }
@@ -494,53 +639,7 @@ function getDaysOverdue(dueDate: string): number {
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 }
 
-// Send new invoice notification
-async function sendNewInvoiceNotification(invoice: any, fallbackInvoiceId: string | null = null): Promise<boolean> {
-    try {
-        const invoiceLocalId = invoice.localId || fallbackInvoiceId || 'unknown';
-        console.log(`Sending new invoice notification for invoice ${invoiceLocalId}`);
-        const { tenant, property, user, company } = await getInvoiceContext(invoice, fallbackInvoiceId);
-        
-        if (!canSendNotification(user, 'invoice')) {
-            console.log(`User ${user.localId} cannot receive invoice notifications`);
-            return false;
-        }
-
-        if (invoice.isNew === false) {
-            console.log(`Invoice ${invoiceLocalId} already marked as notified for new invoice`);
-            return false;
-        }
-
-        if (!tenant.phone) {
-            console.error(`No phone number found for tenant ${tenant.name}`);
-            return false;
-        }
-
-        const templateParams = [
-            tenant.name,
-            invoice.billingMonth,
-            property.name,
-            company?.name || user.name,
-            company?.phone || user.phone || '',
-            company?.email || user.email
-        ];
-
-        console.log(`Sending to phone: ${tenant.phone}, template: ${TEMPLATES.NEW_INVOICE}`);
-        const success = await sendWhatsAppMessage(tenant.phone, TEMPLATES.NEW_INVOICE, templateParams, invoice.pdfUrl);
-        
-        if (success) {
-            await updateInvoiceFlags(invoice.userId, invoiceLocalId, { isNew: false });
-            console.log(`Successfully sent new invoice notification for invoice ${invoiceLocalId}`);
-        }
-        
-        return success;
-    } catch (error) {
-        console.error('Error sending new invoice notification:', error);
-        return false;
-    }
-}
-
-// Send overdue notification
+// UPDATED: Send overdue notification with URL processing
 async function sendOverdueNotification(invoice: any, fallbackInvoiceId: string | null = null): Promise<boolean> {
     try {
         const invoiceLocalId = invoice.localId || fallbackInvoiceId || 'unknown';
@@ -567,8 +666,14 @@ async function sendOverdueNotification(invoice: any, fallbackInvoiceId: string |
             'late fees'
         ];
 
+        // UPDATED: Process the PDF URL for WhatsApp template
+        const processedUrl = processFirebaseUrlForWhatsApp(invoice.pdfUrl);
+
         console.log(`Sending overdue to phone: ${tenant.phone}, days overdue: ${daysOverdue}`);
-        const success = await sendWhatsAppMessage(tenant.phone, TEMPLATES.OVERDUE, templateParams, invoice.pdfUrl);
+        console.log(`Original PDF URL: ${invoice.pdfUrl}`);
+        console.log(`Processed URL parameter: ${processedUrl}`);
+        
+        const success = await sendWhatsAppMessage(tenant.phone, TEMPLATES.OVERDUE, templateParams, processedUrl);
         
         if (success) {
             await updateInvoiceFlags(invoice.userId, invoiceLocalId, { isDue: true });
@@ -578,49 +683,6 @@ async function sendOverdueNotification(invoice: any, fallbackInvoiceId: string |
         return success;
     } catch (error) {
         console.error('Error sending overdue notification:', error);
-        return false;
-    }
-}
-
-// Send payment success notification
-async function sendPaymentSuccessNotification(invoice: any, fallbackInvoiceId: string | null = null): Promise<boolean> {
-    try {
-        const invoiceLocalId = invoice.localId || fallbackInvoiceId || 'unknown';
-        console.log(`Sending payment success notification for invoice ${invoiceLocalId}`);
-        const { tenant, property, user } = await getInvoiceContext(invoice, fallbackInvoiceId);
-        
-        if (!canSendNotification(user, 'payment')) {
-            console.log(`User ${user.localId} cannot receive payment notifications`);
-            return false;
-        }
-
-        if (invoice.isPaid === true) {
-            console.log(`Invoice ${invoiceLocalId} already marked as notified for payment`);
-            return false;
-        }
-
-        if (!tenant.phone) {
-            console.error(`No phone number found for tenant ${tenant.name}`);
-            return false;
-        }
-
-        const templateParams = [
-            tenant.name,
-            formatCurrency(invoice.amountPaid),
-            `${property.name} ${tenant.unitNumber}`
-        ];
-
-        console.log(`Sending payment success to phone: ${tenant.phone}, amount: ${invoice.amountPaid}`);
-        const success = await sendWhatsAppMessage(tenant.phone, TEMPLATES.PAYMENT_SUCCESS, templateParams, invoice.pdfUrl);
-        
-        if (success) {
-            await updateInvoiceFlags(invoice.userId, invoiceLocalId, { isPaid: true });
-            console.log(`Successfully sent payment success notification for invoice ${invoiceLocalId}`);
-        }
-        
-        return success;
-    } catch (error) {
-        console.error('Error sending payment success notification:', error);
         return false;
     }
 }
@@ -714,7 +776,7 @@ export const processInvoiceNotifications = onDocumentWritten({
 }, async (event) => {
     try {
         const { userId, invoiceId } = event.params;
-        console.log(`🔥 TRIGGER FIRED! Processing invoice ${invoiceId} for user ${userId} in South Africa region`);
+        console.log(`TRIGGER FIRED! Processing invoice ${invoiceId} for user ${userId} in South Africa region`);
         
         if (!event.data?.after.exists) {
             console.log(`Invoice ${invoiceId} was deleted, skipping notifications`);
@@ -724,75 +786,107 @@ export const processInvoiceNotifications = onDocumentWritten({
         const invoice = event.data.after.data();
         const previousInvoice = event.data.before?.exists ? event.data.before.data() : null;
         
+        if (!invoice) {
+            console.error('No invoice data found in event');
+            return;
+        }
+
         // Add localId from document path if missing
-        if (invoice) {
-          if (!invoice.localId) {
+        if (!invoice.localId) {
             console.log(`Invoice missing localId, using document ID: ${invoiceId}`);
             invoice.localId = invoiceId;
         }
         
         console.log(`Raw invoice data:`, JSON.stringify(invoice, null, 2));
         
-        const isNewInvoice = !previousInvoice;
-        const isPaid = invoice.totalAmount <= invoice.amountPaid;
-        const wasPreviouslyPaid = previousInvoice ? previousInvoice.totalAmount <= previousInvoice.amountPaid : false;
-        const statusChanged = wasPreviouslyPaid !== isPaid;
+        // Determine notification needs based on YOUR logic
+        const isInvoicePaid = invoice.pdfStatus === 'paid' || invoice.status === 'paid';
+        const wasPreviouslyPaid = previousInvoice ? 
+            (previousInvoice.pdfStatus === 'paid' || previousInvoice.status === 'paid') : false;
+        
+        const paymentStatusChanged = wasPreviouslyPaid !== isInvoicePaid;
 
-        console.log(`Invoice analysis: isNew=${isNewInvoice}, isPaid=${isPaid}, statusChanged=${statusChanged}`);
+        console.log(`Invoice analysis:`);
+        console.log(`- Current status: ${invoice.pdfStatus || invoice.status || 'pending'}`);
+        console.log(`- Previous status: ${previousInvoice?.pdfStatus || previousInvoice?.status || 'none'}`);
+        console.log(`- isInvoicePaid: ${isInvoicePaid}`);
+        console.log(`- wasPreviouslyPaid: ${wasPreviouslyPaid}`);
+        console.log(`- paymentStatusChanged: ${paymentStatusChanged}`);
+        console.log(`- isNew flag: ${invoice.isNew}`);
+        console.log(`- isPaid flag: ${invoice.isPaid}`);
+        console.log(`- isDue flag: ${invoice.isDue}`);
 
         let notificationsSent = 0;
 
         // 1. New Invoice Notification
-        if (isNewInvoice && !isPaid) {
+        // Send if: isNew flag missing OR isNew=true, AND invoice not paid
+        const shouldSendNewNotification = (!invoice.hasOwnProperty('isNew') || invoice.isNew === true) && !isInvoicePaid;
+        
+        if (shouldSendNewNotification) {
+            console.log(`Attempting new invoice notification for invoice ${invoiceId}`);
             const success = await sendNewInvoiceNotification(invoice, invoiceId);
-            if (success) notificationsSent++;
+            if (success) {
+                notificationsSent++;
+                console.log(`New invoice notification sent successfully`);
+            } else {
+                console.log(`New invoice notification failed`);
+            }
+        } else {
+            console.log(`Skipping new invoice notification - conditions not met`);
         }
 
         // 2. Payment Success Notification
-        if (isPaid && (!wasPreviouslyPaid || invoice.isPaid !== true)) {
+        // Send if: invoice is paid AND (isPaid flag missing OR isPaid=false)
+        const shouldSendPaymentNotification = isInvoicePaid && (!invoice.hasOwnProperty('isPaid') || invoice.isPaid === false);
+        
+        if (shouldSendPaymentNotification) {
+            console.log(`Attempting payment success notification for invoice ${invoiceId}`);
             const success = await sendPaymentSuccessNotification(invoice, invoiceId);
-            if (success) notificationsSent++;
+            if (success) {
+                notificationsSent++;
+                console.log(`Payment success notification sent successfully`);
+            } else {
+                console.log(`Payment success notification failed`);
+            }
+        } else {
+            console.log(`Skipping payment success notification - conditions not met`);
         }
 
         // 3. Overdue Notification
-        if (!isPaid) {
+        if (!isInvoicePaid) {
+            console.log(`Attempting overdue notification for invoice ${invoiceId}`);
             const success = await sendOverdueNotification(invoice, invoiceId);
-            if (success) notificationsSent++;
+            if (success) {
+                notificationsSent++;
+                console.log(`Overdue notification sent successfully`);
+            } else {
+                console.log(`Overdue notification failed or not needed`);
+            }
         }
 
-        console.log(`Processed invoice ${invoiceId}: ${notificationsSent} notifications sent`);
+        console.log(`PROCESSING COMPLETE: Invoice ${invoiceId} processed, ${notificationsSent} notifications sent`);
 
-        // Log the processing result safely
-        const logData: any = {};
-        
-        if (invoice.localId || invoiceId) {
-            logData.invoiceId = invoice.localId || invoiceId;
-        }
-        if (userId) {
-            logData.userId = parseInt(userId);
-        }
-        if (invoice.tenantId !== undefined) {
-            logData.tenantId = invoice.tenantId;
-        }
-        if (invoice.propertyId !== undefined) {
-            logData.propertyId = invoice.propertyId;
-        }
-        logData.timestamp = FieldValue.serverTimestamp();
-        logData.notificationsSent = notificationsSent;
-        logData.isNewInvoice = isNewInvoice;
-        logData.isPaid = isPaid;
-        logData.statusChanged = statusChanged;
-        logData.processedAt = new Date().toISOString();
-
-        await db.collection('notification_logs').add(logData);
-        } else {
-            console.error('No invoice data found in event');
-        }
-        
-        
+        // Log the processing result
+        await db.collection('notification_logs').add({
+            invoiceId: invoice.localId || invoiceId,
+            userId: parseInt(userId),
+            tenantId: invoice.tenantId,
+            propertyId: invoice.propertyId,
+            timestamp: FieldValue.serverTimestamp(),
+            notificationsSent,
+            isInvoicePaid,
+            wasPreviouslyPaid,
+            paymentStatusChanged,
+            processedAt: new Date().toISOString(),
+            flags: {
+                isNew: invoice.isNew,
+                isPaid: invoice.isPaid,
+                isDue: invoice.isDue
+            }
+        });
         
     } catch (error: any) {
-        console.error('Error in processInvoiceNotifications:', error);
+        console.error('ERROR in processInvoiceNotifications:', error);
         await db.collection('notification_errors').add({
             invoiceId: event.params.invoiceId,
             userId: event.params.userId,

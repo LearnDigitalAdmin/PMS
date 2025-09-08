@@ -16,11 +16,17 @@ import {
   AlertCircle,
   Plus,
   Menu,
-  X
+  X,
+  FileText,
+  ClipboardList,
+  PenTool
 } from 'lucide-react';
 import { database, type PropertyWithTenants, type DashboardData, type MonthlyStats } from '../../services/database/Database';
 import TenantsList from '../tenants/TenantsList';
 import AddTenant from '../tenants/AddTenant';
+import Transcript from './Transcript';
+import Sheet from './Sheet';
+import TranscriptEditor from './TranscriptEditor';
 
 interface PropertyProps {
   propertyId: number;
@@ -62,6 +68,11 @@ const Property: React.FC<PropertyProps> = ({
     agentCommissionRate: 0
   });
   const [formErrors, setFormErrors] = useState<Partial<PropertyFormData>>({});
+
+  // New state for report modals
+  const [showTranscript, setShowTranscript] = useState(false);
+  const [showSheet, setShowSheet] = useState(false);
+  const [showTranscriptEditor, setShowTranscriptEditor] = useState(false);
 
   useEffect(() => {
     loadPropertyData();
@@ -179,6 +190,28 @@ const Property: React.FC<PropertyProps> = ({
     setSelectedMonth(newMonth);
   };
 
+  // New handlers for report modals
+  const handleOpenTranscript = () => {
+    setShowTranscript(true);
+    setShowMobileMenu(false);
+  };
+
+  const handleOpenSheet = () => {
+    setShowSheet(true);
+    setShowMobileMenu(false);
+  };
+
+  const handleOpenTranscriptEditor = () => {
+    setShowTranscriptEditor(true);
+    setShowMobileMenu(false);
+  };
+
+  const handleTranscriptSaved = () => {
+    // Refresh data when transcript is saved
+    loadPropertyData();
+    setShowTranscriptEditor(false);
+  };
+
   if (loading || !property) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -243,7 +276,28 @@ return (
             </div>
             
             {/* Desktop Actions */}
-            <div className="hidden sm:flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-2">
+              <button
+                onClick={handleOpenTranscriptEditor}
+                className="inline-flex items-center px-3 py-2 text-sm text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-all"
+              >
+                <PenTool className="w-4 h-4 mr-2" />
+                Add/Edit Transcript
+              </button>
+              <button
+                onClick={handleOpenTranscript}
+                className="inline-flex items-center px-3 py-2 text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-all"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                Transcript
+              </button>
+              <button
+                onClick={handleOpenSheet}
+                className="inline-flex items-center px-3 py-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-all"
+              >
+                <ClipboardList className="w-4 h-4 mr-2" />
+                Sheet
+              </button>
               <button
                 onClick={openEditModal}
                 className="inline-flex items-center px-4 py-2 text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-all"
@@ -265,6 +319,27 @@ return (
           {/* Mobile Dropdown Menu */}
           {showMobileMenu && (
             <div className="sm:hidden border-t border-gray-100 py-2">
+              <button
+                onClick={handleOpenTranscriptEditor}
+                className="w-full flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 transition-all"
+              >
+                <PenTool className="w-4 h-4 mr-3" />
+                Add/Edit Transcript
+              </button>
+              <button
+                onClick={handleOpenTranscript}
+                className="w-full flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 transition-all"
+              >
+                <FileText className="w-4 h-4 mr-3" />
+                Transcript
+              </button>
+              <button
+                onClick={handleOpenSheet}
+                className="w-full flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 transition-all"
+              >
+                <ClipboardList className="w-4 h-4 mr-3" />
+                Sheet
+              </button>
               <button
                 onClick={openEditModal}
                 className="w-full flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 transition-all"
@@ -659,6 +734,33 @@ return (
             setShowAddTenant(false);
             loadPropertyData();
           }}
+        />
+      )}
+
+      {/* Report Modals */}
+      {showTranscript && (
+        <Transcript
+          propertyId={propertyId}
+          selectedMonth={selectedMonth}
+          onClose={() => setShowTranscript(false)}
+        />
+      )}
+
+      {showSheet && (
+        <Sheet
+          propertyId={propertyId}
+          selectedMonth={selectedMonth}
+          onClose={() => setShowSheet(false)}
+        />
+      )}
+
+      {showTranscriptEditor && (
+        <TranscriptEditor
+          propertyId={propertyId}
+          selectedMonth={selectedMonth}
+          userId={userId}
+          onClose={() => setShowTranscriptEditor(false)}
+          onSaved={handleTranscriptSaved}
         />
       )}
     </div>
