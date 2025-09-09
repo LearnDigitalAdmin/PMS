@@ -17,6 +17,8 @@ import {
   User
 } from 'lucide-react';
 import { reportsDatabase, type RentRecordWithDetails } from '../../services/database/ReportsDatabase';
+import { reportsPDFService } from '../../services/pdf/ReportsPDF';
+import { Toast } from '@capacitor/toast';
 
 interface SheetProps {
   propertyId: number;
@@ -33,6 +35,7 @@ const Sheet: React.FC<SheetProps> = ({
   const [loading, setLoading] = useState(true);
   const [currentMonth, setCurrentMonth] = useState(selectedMonth);
   const [error, setError] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     loadRentRecord();
@@ -53,8 +56,7 @@ const Sheet: React.FC<SheetProps> = ({
       } else {
         // Generate new rent record for this month
         try {
-          const userId = 1; // This should come from auth context
-          const newRecord = await reportsDatabase.generateRentRecordSheet(propertyId, currentMonth, userId);
+          const newRecord = await reportsDatabase.generateRentRecordSheet(propertyId, currentMonth);
           setRentRecord(newRecord);
         } catch (generateError) {
           console.error('Error generating rent record:', generateError);
@@ -90,14 +92,43 @@ const Sheet: React.FC<SheetProps> = ({
   };
 
   const handleDownload = async () => {
-    if (!rentRecord) return;
+    if (!rentRecord || isProcessing) return;
     
     try {
-      // This would integrate with PDF generation
-      console.log('Downloading rent record sheet for', rentRecord.property.name, currentMonth);
-      // await reportsDatabase.exportRentRecordToPDF(rentRecord.id);
+      setIsProcessing(true);
+      
+      // Show loading toast
+      await Toast.show({
+        text: 'Generating PDF report...',
+        duration: 'short',
+        position: 'bottom'
+      });
+
+      const result = await reportsPDFService.generateAndSaveRentRecordPDF(rentRecord, {
+        customBranding: {
+          companyName: 'PLOT YANGU',
+          contactInfo: 'SMB KENYA LTD | +254791286165'
+        }
+      });
+
+      if (result.success) {
+        await Toast.show({
+          text: `PDF saved successfully: ${result.filename}`,
+          duration: 'long',
+          position: 'bottom'
+        });
+      } else {
+        throw new Error(result.error || 'Failed to generate PDF');
+      }
     } catch (error) {
       console.error('Error downloading rent record:', error);
+      await Toast.show({
+        text: 'Failed to download rent record. Please try again.',
+        duration: 'long',
+        position: 'bottom'
+      });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -107,20 +138,146 @@ const Sheet: React.FC<SheetProps> = ({
     try {
       // Save the rent record (in case of any modifications)
       console.log('Saving rent record for', rentRecord.property.name, currentMonth);
+      await Toast.show({
+        text: 'Rent record saved successfully',
+        duration: 'short',
+        position: 'bottom'
+      });
     } catch (error) {
       console.error('Error saving rent record:', error);
+      await Toast.show({
+        text: 'Failed to save rent record',
+        duration: 'short',
+        position: 'bottom'
+      });
     }
   };
 
+  const showShareOptions = (): Promise<'whatsapp' | 'general' | null> => {
+    return new Promise((resolve) => {
+      const options = document.createElement('div');
+      options.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+      options.innerHTML = `
+        <div class="bg-white rounded-xl p-6 max-w-sm w-full mx-4">
+          <h3 class="text-lg font-bold text-gray-900 mb-4">Share Report</h3>
+          <p class="text-gray-600 mb-6">How would you like to share this rent record sheet?</p>
+          <div class="flex flex-col gap-3">
+            <button id="whatsapp-share" class="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+              <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                <span class="text-white text-sm font-bold">W</span>
+              </div>
+              <span class="text-gray-900">Share via WhatsApp</span>
+            </button>
+            <button id="general-share" class="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+              <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                <span class="text-white text-sm font-bold">📤</span>
+              </div>
+              <span class="text-gray-900">Share via Other Apps</span>
+            </button>
+            <button id="cancel-share" class="mt-2 px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors">
+              Cancel
+            </button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(options);
+
+      const cleanup = () => {
+        document.body.removeChild(options);
+      };
+
+      options.querySelector('#whatsapp-share')?.addEventListener('click', () => {
+        cleanup();
+        resolve('whatsapp');
+      });
+
+      options.querySelector('#general-share')?.addEventListener('click', () => {
+        cleanup();
+        resolve('general');
+      });
+
+      options.querySelector('#cancel-share')?.addEventListener('click', () => {
+        cleanup();
+        resolve(null);
+      });
+
+      // Close on backdrop click
+      options.addEventListener('click', (e) => {
+        if (e.target === options) {
+          cleanup();
+          resolve(null);
+        }
+      });
+    });
+  };
+
   const handleSend = async () => {
-    if (!rentRecord) return;
+    if (!rentRecord || isProcessing) return;
     
     try {
-      // Archive the record as a way to mark it as sent
-      await reportsDatabase.archiveRentRecord(rentRecord.id);
-      await loadRentRecord(); // Reload to update status
+      setIsProcessing(true);
+
+      // Show options dialog
+      const shareMethod = await showShareOptions();
+      if (!shareMethod) return;
+
+      await Toast.show({
+        text: 'Preparing report for sharing...',
+        duration: 'short',
+        position: 'bottom'
+      });
+
+      let result;
+      if (shareMethod === 'whatsapp') {
+        // You could add phone number input here
+        result = await reportsPDFService.generateAndShareRentRecordPDF(
+          rentRecord, 
+          'whatsapp',
+          undefined, // Phone number - could be obtained from landlord contact
+          {
+            customBranding: {
+              companyName: 'PLOT YANGU',
+              contactInfo: 'SMB KENYA LTD | +254791286165'
+            }
+          }
+        );
+      } else {
+        result = await reportsPDFService.generateAndShareRentRecordPDF(
+          rentRecord,
+          'general',
+          undefined,
+          {
+            customBranding: {
+              companyName: 'PLOT YANGU',
+              contactInfo: 'SMB KENYA LTD | +254791286165'
+            }
+          }
+        );
+      }
+
+      if (result.success) {
+        // Archive the record as a way to mark it as sent
+        await reportsDatabase.archiveRentRecord(rentRecord.id);
+        await loadRentRecord(); // Reload to update status
+        
+        await Toast.show({
+          text: 'Report shared successfully!',
+          duration: 'long',
+          position: 'bottom'
+        });
+      } else {
+        throw new Error(result.error || 'Failed to share report');
+      }
     } catch (error) {
       console.error('Error sending rent record:', error);
+      await Toast.show({
+        text: 'Failed to share rent record. Please try again.',
+        duration: 'long',
+        position: 'bottom'
+      });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -447,15 +604,25 @@ const Sheet: React.FC<SheetProps> = ({
             <div className="flex flex-wrap gap-3 justify-end">
               <button
                 onClick={handleDownload}
-                className="flex items-center gap-2 px-4 py-2 text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                disabled={isProcessing}
+                className={`flex items-center gap-2 px-4 py-2 text-blue-700 bg-blue-50 border border-blue-200 rounded-lg transition-colors ${
+                  isProcessing 
+                    ? 'opacity-50 cursor-not-allowed' 
+                    : 'hover:bg-blue-100'
+                }`}
               >
                 <Download className="w-4 h-4" />
-                Download
+                {isProcessing ? 'Generating...' : 'Download'}
               </button>
               
               <button
                 onClick={handleSave}
-                className="flex items-center gap-2 px-4 py-2 text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+                disabled={isProcessing}
+                className={`flex items-center gap-2 px-4 py-2 text-green-700 bg-green-50 border border-green-200 rounded-lg transition-colors ${
+                  isProcessing 
+                    ? 'opacity-50 cursor-not-allowed' 
+                    : 'hover:bg-green-100'
+                }`}
               >
                 <Save className="w-4 h-4" />
                 Save
@@ -464,10 +631,15 @@ const Sheet: React.FC<SheetProps> = ({
               {rentRecord.status !== 'archived' && (
                 <button
                   onClick={handleSend}
-                  className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+                  disabled={isProcessing}
+                  className={`flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg transition-colors ${
+                    isProcessing 
+                      ? 'opacity-50 cursor-not-allowed' 
+                      : 'hover:bg-teal-700'
+                  }`}
                 >
                   <Send className="w-4 h-4" />
-                  Send Report
+                  {isProcessing ? 'Sharing...' : 'Send Report'}
                 </button>
               )}
             </div>

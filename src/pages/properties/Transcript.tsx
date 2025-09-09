@@ -12,8 +12,12 @@ import {
   Phone,
   MapPin,
   FileText,
-  AlertCircle} from 'lucide-react';
+  AlertCircle,
+  Eye
+} from 'lucide-react';
 import { reportsDatabase, type TranscriptWithDetails } from '../../services/database/ReportsDatabase';
+import { reportsPDFService } from '../../services/pdf/ReportsPDF';
+import { Toast } from '@capacitor/toast';
 
 interface TranscriptProps {
   propertyId: number;
@@ -30,6 +34,7 @@ const Transcript: React.FC<TranscriptProps> = ({
   const [loading, setLoading] = useState(true);
   const [currentMonth, setCurrentMonth] = useState(selectedMonth);
   const [error, setError] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     loadTranscript();
@@ -79,15 +84,76 @@ const Transcript: React.FC<TranscriptProps> = ({
     setCurrentMonth(newMonth);
   };
 
+  const handlePreview = async () => {
+    if (!transcript || isProcessing) return;
+
+    try {
+      setIsProcessing(true);
+      
+      await Toast.show({
+        text: 'Generating preview...',
+        duration: 'short',
+        position: 'bottom'
+      });
+
+      const previewUrl = await reportsPDFService.generateTranscriptPreview(transcript);
+      
+      // Open preview in a new window/tab
+      const previewWindow = window.open(previewUrl, '_blank');
+      if (!previewWindow) {
+        throw new Error('Please allow pop-ups to view the preview');
+      }
+
+    } catch (error) {
+      console.error('Error generating preview:', error);
+      await Toast.show({
+        text: 'Failed to generate preview. Please try again.',
+        duration: 'long',
+        position: 'bottom'
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleDownload = async () => {
-    if (!transcript) return;
+    if (!transcript || isProcessing) return;
     
     try {
-      // This would integrate with PDF generation
-      console.log('Downloading transcript for', transcript.property.name, currentMonth);
-      // await reportsDatabase.exportTranscriptToPDF(transcript.id);
+      setIsProcessing(true);
+      
+      // Show loading toast
+      await Toast.show({
+        text: 'Generating PDF transcript...',
+        duration: 'short',
+        position: 'bottom'
+      });
+
+      const result = await reportsPDFService.generateAndSaveTranscriptPDF(transcript, {
+        customBranding: {
+          companyName: 'PLOT YANGU',
+          contactInfo: 'SMB KENYA LTD | +254791286165'
+        }
+      });
+
+      if (result.success) {
+        await Toast.show({
+          text: `PDF saved successfully: ${result.filename}`,
+          duration: 'long',
+          position: 'bottom'
+        });
+      } else {
+        throw new Error(result.error || 'Failed to generate PDF');
+      }
     } catch (error) {
       console.error('Error downloading transcript:', error);
+      await Toast.show({
+        text: 'Failed to download transcript. Please try again.',
+        duration: 'long',
+        position: 'bottom'
+      });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -97,19 +163,212 @@ const Transcript: React.FC<TranscriptProps> = ({
     try {
       // Save the transcript (in case of any modifications)
       console.log('Saving transcript for', transcript.property.name, currentMonth);
+      await Toast.show({
+        text: 'Transcript saved successfully',
+        duration: 'short',
+        position: 'bottom'
+      });
     } catch (error) {
       console.error('Error saving transcript:', error);
+      await Toast.show({
+        text: 'Failed to save transcript',
+        duration: 'short',
+        position: 'bottom'
+      });
     }
   };
 
+  const showTranscriptShareOptions = (): Promise<{ method: 'whatsapp' | 'general'; phoneNumber?: string } | null> => {
+    return new Promise((resolve) => {
+      const options = document.createElement('div');
+      options.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+      options.innerHTML = `
+        <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+          <h3 class="text-lg font-bold text-gray-900 mb-4">Send Transcript to Landlord</h3>
+          <p class="text-gray-600 mb-6">Choose how to send the monthly remittance transcript to <strong>${transcript?.landlordName}</strong></p>
+          
+          <div class="space-y-4">
+            <!-- WhatsApp Option -->
+            <div class="border border-gray-200 rounded-lg p-4">
+              <label class="flex items-start gap-3 cursor-pointer">
+                <input type="radio" name="shareMethod" value="whatsapp" class="mt-1" ${transcript?.landlordContact ? 'checked' : ''}>
+                <div class="flex-1">
+                  <div class="flex items-center gap-2 mb-2">
+                    <div class="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                      <span class="text-white text-xs font-bold">W</span>
+                    </div>
+                    <span class="font-medium text-gray-900">Send via WhatsApp</span>
+                  </div>
+                  <input type="tel" 
+                         id="phoneInput" 
+                         placeholder="Enter landlord's phone number" 
+                         value="${transcript?.landlordContact || ''}"
+                         class="w-full mt-2 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                  <p class="text-xs text-gray-500 mt-1">Direct delivery with read receipts</p>
+                </div>
+              </label>
+            </div>
+
+            <!-- General Share Option -->
+            <div class="border border-gray-200 rounded-lg p-4">
+              <label class="flex items-start gap-3 cursor-pointer">
+                <input type="radio" name="shareMethod" value="general" class="mt-1" ${!transcript?.landlordContact ? 'checked' : ''}>
+                <div class="flex-1">
+                  <div class="flex items-center gap-2 mb-2">
+                    <div class="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                      <span class="text-white text-xs">📤</span>
+                    </div>
+                    <span class="font-medium text-gray-900">Share via Other Apps</span>
+                  </div>
+                  <p class="text-xs text-gray-500">Email, SMS, or other messaging apps</p>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div class="flex gap-3 mt-6">
+            <button id="cancel-transcript" class="flex-1 px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+              Cancel
+            </button>
+            <button id="send-transcript" class="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+              Send Transcript
+            </button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(options);
+
+      const cleanup = () => {
+        document.body.removeChild(options);
+      };
+
+      // Handle radio button changes
+      const radioButtons = options.querySelectorAll('input[name="shareMethod"]');
+      const phoneInput = options.querySelector('#phoneInput') as HTMLInputElement;
+
+      radioButtons.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+          const target = e.target as HTMLInputElement;
+          phoneInput.disabled = target.value !== 'whatsapp';
+          if (target.value !== 'whatsapp') {
+            phoneInput.classList.add('opacity-50');
+          } else {
+            phoneInput.classList.remove('opacity-50');
+            phoneInput.focus();
+          }
+        });
+      });
+
+      // Initialize state
+      if (!transcript?.landlordContact) {
+        phoneInput.disabled = true;
+        phoneInput.classList.add('opacity-50');
+      }
+
+      options.querySelector('#send-transcript')?.addEventListener('click', () => {
+        const selectedMethod = options.querySelector('input[name="shareMethod"]:checked') as HTMLInputElement;
+        if (selectedMethod) {
+          const method = selectedMethod.value as 'whatsapp' | 'general';
+          const phoneNumber = phoneInput.value.trim();
+          
+          if (method === 'whatsapp' && !phoneNumber) {
+            Toast.show({
+              text: 'Please enter landlord\'s phone number for WhatsApp sharing',
+              duration: 'short',
+              position: 'bottom'
+            });
+            return;
+          }
+
+          cleanup();
+          resolve({
+            method,
+            phoneNumber: method === 'whatsapp' ? phoneNumber : undefined
+          });
+        }
+      });
+
+      options.querySelector('#cancel-transcript')?.addEventListener('click', () => {
+        cleanup();
+        resolve(null);
+      });
+
+      // Close on backdrop click
+      options.addEventListener('click', (e) => {
+        if (e.target === options) {
+          cleanup();
+          resolve(null);
+        }
+      });
+    });
+  };
+
   const handleSend = async () => {
-    if (!transcript) return;
+    if (!transcript || isProcessing) return;
     
     try {
-      await reportsDatabase.updateTranscriptStatus(transcript.id, 'sent');
-      await loadTranscript(); // Reload to update status
+      setIsProcessing(true);
+
+      // Show options dialog
+      const shareOptions = await showTranscriptShareOptions();
+      if (!shareOptions) return;
+
+      await Toast.show({
+        text: 'Preparing transcript for sharing...',
+        duration: 'short',
+        position: 'bottom'
+      });
+
+      let result;
+      if (shareOptions.method === 'whatsapp') {
+        result = await reportsPDFService.generateAndShareTranscriptPDF(
+          transcript, 
+          'whatsapp',
+          shareOptions.phoneNumber || transcript.landlordContact, // Use landlord contact if available
+          {
+            customBranding: {
+              companyName: 'PLOT YANGU',
+              contactInfo: 'SMB KENYA LTD | +254791286165'
+            }
+          }
+        );
+      } else {
+        result = await reportsPDFService.generateAndShareTranscriptPDF(
+          transcript,
+          'general',
+          undefined,
+          {
+            customBranding: {
+              companyName: 'PLOT YANGU',
+              contactInfo: 'SMB KENYA LTD | +254791286165'
+            }
+          }
+        );
+      }
+
+      if (result.success) {
+        // Update transcript status to sent
+        await reportsDatabase.updateTranscriptStatus(transcript.id, 'sent');
+        await loadTranscript(); // Reload to update status
+        
+        await Toast.show({
+          text: 'Transcript sent successfully to landlord!',
+          duration: 'long',
+          position: 'bottom'
+        });
+      } else {
+        throw new Error(result.error || 'Failed to share transcript');
+      }
     } catch (error) {
       console.error('Error sending transcript:', error);
+      await Toast.show({
+        text: 'Failed to send transcript. Please try again.',
+        duration: 'long',
+        position: 'bottom'
+      });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -375,16 +634,39 @@ const Transcript: React.FC<TranscriptProps> = ({
           <div className="bg-gray-50 p-6 flex-shrink-0">
             <div className="flex flex-wrap gap-3 justify-end">
               <button
+                onClick={handlePreview}
+                disabled={isProcessing}
+                className={`flex items-center gap-2 px-4 py-2 text-purple-700 bg-purple-50 border border-purple-200 rounded-lg transition-colors ${
+                  isProcessing 
+                    ? 'opacity-50 cursor-not-allowed' 
+                    : 'hover:bg-purple-100'
+                }`}
+              >
+                <Eye className="w-4 h-4" />
+                Preview
+              </button>
+
+              <button
                 onClick={handleDownload}
-                className="flex items-center gap-2 px-4 py-2 text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                disabled={isProcessing}
+                className={`flex items-center gap-2 px-4 py-2 text-blue-700 bg-blue-50 border border-blue-200 rounded-lg transition-colors ${
+                  isProcessing 
+                    ? 'opacity-50 cursor-not-allowed' 
+                    : 'hover:bg-blue-100'
+                }`}
               >
                 <Download className="w-4 h-4" />
-                Download
+                {isProcessing ? 'Generating...' : 'Download'}
               </button>
               
               <button
                 onClick={handleSave}
-                className="flex items-center gap-2 px-4 py-2 text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+                disabled={isProcessing}
+                className={`flex items-center gap-2 px-4 py-2 text-green-700 bg-green-50 border border-green-200 rounded-lg transition-colors ${
+                  isProcessing 
+                    ? 'opacity-50 cursor-not-allowed' 
+                    : 'hover:bg-green-100'
+                }`}
               >
                 <Save className="w-4 h-4" />
                 Save
@@ -393,10 +675,15 @@ const Transcript: React.FC<TranscriptProps> = ({
               {transcript.status !== 'sent' && transcript.status !== 'acknowledged' && (
                 <button
                   onClick={handleSend}
-                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                  disabled={isProcessing}
+                  className={`flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg transition-colors ${
+                    isProcessing 
+                      ? 'opacity-50 cursor-not-allowed' 
+                      : 'hover:bg-purple-700'
+                  }`}
                 >
                   <Send className="w-4 h-4" />
-                  Send to Landlord
+                  {isProcessing ? 'Sending...' : 'Send to Landlord'}
                 </button>
               )}
             </div>

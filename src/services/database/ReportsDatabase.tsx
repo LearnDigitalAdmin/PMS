@@ -1,5 +1,4 @@
 // ReportsDatabase.tsx - Professional Transcripts and Rent Record Sheets Manager
-//import { SQLiteDBConnection } from '@capacitor-community/sqlite';
 import { database, type Property } from './Database';
 
 // ==================== TYPE INTERFACES ====================
@@ -138,129 +137,6 @@ export interface ReportGenerationOptions {
 // ==================== REPORTS DATABASE MANAGER ====================
 
 export class ReportsDatabase {
-  // private db: SQLiteDBConnection | null = null;
-
-  // constructor(dbConnection: SQLiteDBConnection) {
-  //   this.db = dbConnection;
-  // }
-
-  // ==================== INITIALIZATION ====================
-
-  // async initializeReportsTables(): Promise<void> {
-  //   const queries = [
-  //     // Monthly Transcripts table
-  //     `CREATE TABLE IF NOT EXISTS monthly_transcripts (
-  //       id INTEGER PRIMARY KEY AUTOINCREMENT,
-  //       property_id INTEGER NOT NULL,
-  //       billing_month TEXT NOT NULL,
-  //       landlord_name TEXT NOT NULL,
-  //       landlord_contact TEXT,
-  //       agent_commission_rate REAL NOT NULL,
-  //       gross_rent_collected REAL NOT NULL DEFAULT 0,
-  //       total_water_charges REAL NOT NULL DEFAULT 0,
-  //       total_power_charges REAL NOT NULL DEFAULT 0,
-  //       total_other_charges REAL NOT NULL DEFAULT 0,
-  //       total_deductibles REAL NOT NULL DEFAULT 0,
-  //       agent_commission REAL NOT NULL DEFAULT 0,
-  //       net_amount_to_landlord REAL NOT NULL DEFAULT 0,
-  //       status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'finalized', 'sent', 'acknowledged')),
-  //       notes TEXT,
-  //       generated_by INTEGER NOT NULL,
-  //       sent_date DATE,
-  //       acknowledged_date DATE,
-  //       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  //       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  //       FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
-  //       FOREIGN KEY (generated_by) REFERENCES users(id) ON DELETE CASCADE,
-  //       UNIQUE(property_id, billing_month)
-  //     )`,
-
-  //     // Transcript Items table (for custom deductibles and expenses)
-  //     `CREATE TABLE IF NOT EXISTS transcript_items (
-  //       id INTEGER PRIMARY KEY AUTOINCREMENT,
-  //       transcript_id INTEGER NOT NULL,
-  //       description TEXT NOT NULL,
-  //       amount REAL NOT NULL,
-  //       type TEXT NOT NULL CHECK (type IN ('rent', 'water', 'power', 'deductible', 'expense', 'custom')),
-  //       category TEXT,
-  //       is_deductible INTEGER DEFAULT 0,
-  //       sort_order INTEGER DEFAULT 0,
-  //       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  //       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  //       FOREIGN KEY (transcript_id) REFERENCES monthly_transcripts(id) ON DELETE CASCADE
-  //     )`,
-
-  //     // Rent Record Sheets table
-  //     `CREATE TABLE IF NOT EXISTS rent_record_sheets (
-  //       id INTEGER PRIMARY KEY AUTOINCREMENT,
-  //       property_id INTEGER NOT NULL,
-  //       billing_month TEXT NOT NULL,
-  //       total_units INTEGER NOT NULL DEFAULT 0,
-  //       occupied_units INTEGER NOT NULL DEFAULT 0,
-  //       total_rent_expected REAL NOT NULL DEFAULT 0,
-  //       total_rent_collected REAL NOT NULL DEFAULT 0,
-  //       total_arrears REAL NOT NULL DEFAULT 0,
-  //       collection_rate REAL NOT NULL DEFAULT 0,
-  //       status TEXT DEFAULT 'current' CHECK (status IN ('current', 'archived')),
-  //       generated_by INTEGER NOT NULL,
-  //       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  //       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  //       FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
-  //       FOREIGN KEY (generated_by) REFERENCES users(id) ON DELETE CASCADE,
-  //       UNIQUE(property_id, billing_month)
-  //     )`,
-
-  //     // Rent Record Entries table (individual tenant records)
-  //     `CREATE TABLE IF NOT EXISTS rent_record_entries (
-  //       id INTEGER PRIMARY KEY AUTOINCREMENT,
-  //       record_sheet_id INTEGER NOT NULL,
-  //       tenant_id INTEGER NOT NULL,
-  //       tenant_name TEXT NOT NULL,
-  //       unit_number TEXT NOT NULL,
-  //       rent_amount REAL NOT NULL,
-  //       water_charges REAL NOT NULL DEFAULT 0,
-  //       power_charges REAL NOT NULL DEFAULT 0,
-  //       other_charges REAL NOT NULL DEFAULT 0,
-  //       total_due REAL NOT NULL,
-  //       amount_paid REAL NOT NULL DEFAULT 0,
-  //       balance REAL NOT NULL DEFAULT 0,
-  //       payment_status TEXT DEFAULT 'unpaid' CHECK (payment_status IN ('paid', 'partial', 'unpaid', 'overpaid')),
-  //       payment_date DATE,
-  //       notes TEXT,
-  //       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  //       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  //       FOREIGN KEY (record_sheet_id) REFERENCES rent_record_sheets(id) ON DELETE CASCADE,
-  //       FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
-  //     )`
-  //   ];
-
-  //   for (const query of queries) {
-  //     await this.db!.run(query);
-  //   }
-
-  //   await this.createReportsIndexes();
-  // }
-
-  // private async createReportsIndexes(): Promise<void> {
-  //   const indexes = [
-  //     'CREATE INDEX IF NOT EXISTS idx_transcripts_property_month ON monthly_transcripts(property_id, billing_month)',
-  //     'CREATE INDEX IF NOT EXISTS idx_transcripts_status ON monthly_transcripts(status)',
-  //     'CREATE INDEX IF NOT EXISTS idx_transcripts_generated_by ON monthly_transcripts(generated_by)',
-  //     'CREATE INDEX IF NOT EXISTS idx_transcript_items_transcript_id ON transcript_items(transcript_id)',
-  //     'CREATE INDEX IF NOT EXISTS idx_transcript_items_type ON transcript_items(type)',
-  //     'CREATE INDEX IF NOT EXISTS idx_record_sheets_property_month ON rent_record_sheets(property_id, billing_month)',
-  //     'CREATE INDEX IF NOT EXISTS idx_record_sheets_status ON rent_record_sheets(status)',
-  //     'CREATE INDEX IF NOT EXISTS idx_record_entries_sheet_id ON rent_record_entries(record_sheet_id)',
-  //     'CREATE INDEX IF NOT EXISTS idx_record_entries_tenant_id ON rent_record_entries(tenant_id)',
-  //     'CREATE INDEX IF NOT EXISTS idx_record_entries_payment_status ON rent_record_entries(payment_status)'
-  //   ];
-
-  //   for (const index of indexes) {
-  //     await this.db!.run(index);
-  //   }
-  // }
-
-  // ==================== MONTHLY TRANSCRIPT OPERATIONS ====================
 
   async generateMonthlyTranscript(input: MonthlyTranscriptInput, userId: number): Promise<TranscriptWithDetails> {
     try {
@@ -523,33 +399,41 @@ export class ReportsDatabase {
   }
 
   // ==================== RENT RECORD SHEET OPERATIONS ====================
-
-  async generateRentRecordSheet(propertyId: number, billingMonth: string, userId: number): Promise<RentRecordWithDetails> {
+  async generateRentRecordSheet(propertyId: number, billingMonth: string): Promise<RentRecordWithDetails> {
     try {
+      console.log(`[RentRecord] Starting generation for property ${propertyId}, month ${billingMonth}`);
+      
       // Get property and validate access
       const property = await database.getPropertyById(propertyId);
       if (!property) {
+        console.error(`[RentRecord] Property ${propertyId} not found`);
         throw new Error('Property not found');
       }
 
       if (property.isRestricted) {
+        console.error(`[RentRecord] Property ${propertyId} is restricted`);
         throw new Error('Cannot generate record sheet for restricted property');
       }
 
+      console.log(`[RentRecord] Property found: ${property.name}, max units: ${property.maxUnits}`);
+
       // Get all tenants for this property
       const tenants = await database.getTenantsByProperty(propertyId);
+      console.log(`[RentRecord] Found ${tenants.length} tenants for property ${propertyId}`);
       
       // Get all invoices for the billing month
       const invoices = await database.getInvoices({
         propertyId,
         billingMonth
       });
+      console.log(`[RentRecord] Found ${invoices.length} invoices for ${billingMonth}`);
 
       // Calculate sheet totals
       let totalRentExpected = 0;
       let totalRentCollected = 0;
       let totalArrears = 0;
       const occupiedUnits = tenants.filter(t => t.isActive).length;
+      console.log(`[RentRecord] Active tenants: ${occupiedUnits} of ${tenants.length} total`);
 
       for (const tenant of tenants) {
         const invoice = invoices.find(inv => inv.tenantId === tenant.id);
@@ -557,20 +441,25 @@ export class ReportsDatabase {
           totalRentExpected += invoice.totalAmount;
           totalRentCollected += invoice.amountPaid;
           totalArrears += invoice.arrears;
+          console.log(`[RentRecord] Tenant ${tenant.id}: Expected ${invoice.totalAmount}, Collected ${invoice.amountPaid}, Arrears ${invoice.arrears}`);
+        } else {
+          console.warn(`[RentRecord] No invoice found for tenant ${tenant.id} (${tenant.name}) in month ${billingMonth}`);
         }
       }
 
       const collectionRate = totalRentExpected > 0 ? 
         (totalRentCollected / totalRentExpected) * 100 : 0;
 
+      console.log(`[RentRecord] Totals - Expected: ${totalRentExpected}, Collected: ${totalRentCollected}, Arrears: ${totalArrears}, Rate: ${collectionRate.toFixed(2)}%`);
+
       // Create record sheet
       const sheetQuery = `
         INSERT INTO rent_record_sheets (
           property_id, billing_month, total_units, occupied_units,
           total_rent_expected, total_rent_collected, total_arrears,
-          collection_rate, generated_by
+          collection_rate
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
       const result = await database.db!.run(sheetQuery, [
@@ -582,12 +471,18 @@ export class ReportsDatabase {
         totalRentCollected,
         totalArrears,
         collectionRate,
-        userId
       ]);
 
+      if (!result.changes || result.changes.changes === 0) {
+        console.error(`[RentRecord] Failed to insert record sheet - no changes made`);
+        throw new Error('Failed to create rent record sheet');
+      }
+
       const recordSheetId = result.changes!.lastId!;
+      console.log(`[RentRecord] Created record sheet with ID: ${recordSheetId}`);
 
       // Create entries for each tenant
+      let entriesCreated = 0;
       for (const tenant of tenants) {
         const invoice = invoices.find(inv => inv.tenantId === tenant.id);
         
@@ -616,26 +511,38 @@ export class ReportsDatabase {
 
         const balance = totalDue - amountPaid;
 
-        await this.addRentRecordEntry({
-          recordSheetId,
-          tenantId: tenant.id,
-          tenantName: tenant.name,
-          unitNumber: tenant.unitNumber || '',
-          rentAmount: tenant.rentAmount,
-          waterCharges,
-          powerCharges,
-          otherCharges: invoice?.otherCharges || 0,
-          totalDue,
-          amountPaid,
-          balance,
-          paymentStatus,
-          paymentDate
-        });
+        try {
+          await this.addRentRecordEntry({
+            recordSheetId,
+            tenantId: tenant.id,
+            tenantName: tenant.name,
+            unitNumber: tenant.unitNumber || '',
+            rentAmount: tenant.rentAmount,
+            waterCharges,
+            powerCharges,
+            otherCharges: invoice?.otherCharges || 0,
+            totalDue,
+            amountPaid,
+            balance,
+            paymentStatus,
+            paymentDate
+          });
+          entriesCreated++;
+        } catch (entryError) {
+          console.error(`[RentRecord] Failed to create entry for tenant ${tenant.id}:`, entryError);
+          throw entryError;
+        }
       }
 
-      return await this.getRentRecordWithDetails(recordSheetId);
+      console.log(`[RentRecord] Created ${entriesCreated} entries for record sheet ${recordSheetId}`);
+
+      const finalRecord = await this.getRentRecordWithDetails(recordSheetId);
+      console.log(`[RentRecord] Successfully generated record sheet ${recordSheetId} with ${finalRecord.entries.length} entries`);
+      
+      return finalRecord;
     } catch (error) {
-      console.error('Error generating rent record sheet:', error);
+      console.error('[RentRecord] Error generating rent record sheet:', error);
+      console.error('[RentRecord] Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
       throw error;
     }
   }
@@ -665,7 +572,7 @@ export class ReportsDatabase {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    await database.db!.run(query, [
+    const result = await database.db!.run(query, [
       entry.recordSheetId,
       entry.tenantId,
       entry.tenantName,
@@ -681,20 +588,28 @@ export class ReportsDatabase {
       entry.paymentDate || null,
       entry.notes || ''
     ]);
+
+    if (!result.changes || result.changes.changes === 0) {
+      console.error(`[RentRecord] Failed to insert entry for tenant ${entry.tenantId} - no changes made`);
+      throw new Error(`Failed to create rent record entry for tenant ${entry.tenantId}`);
+    }
   }
 
   async getRentRecordWithDetails(recordSheetId: number): Promise<RentRecordWithDetails> {
     const recordSheet = await this.getRentRecordById(recordSheetId);
     if (!recordSheet) {
+      console.error(`[RentRecord] Record sheet ${recordSheetId} not found when fetching details`);
       throw new Error('Rent record sheet not found');
     }
 
     const property = await database.getPropertyById(recordSheet.propertyId);
     if (!property) {
+      console.error(`[RentRecord] Property ${recordSheet.propertyId} not found when fetching details`);
       throw new Error('Property not found');
     }
 
     const entries = await this.getRentRecordEntries(recordSheetId);
+    console.log(`[RentRecord] Retrieved ${entries.length} entries for record sheet ${recordSheetId}`);
 
     // Calculate summary statistics
     const onTimePayments = entries.filter(e => e.paymentStatus === 'paid' && 

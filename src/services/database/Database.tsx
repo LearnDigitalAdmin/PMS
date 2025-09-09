@@ -1118,11 +1118,9 @@ async exportUserDataOffline(userId: number): Promise<{
         total_arrears REAL NOT NULL DEFAULT 0,
         collection_rate REAL NOT NULL DEFAULT 0,
         status TEXT DEFAULT 'current' CHECK (status IN ('current', 'archived')),
-        generated_by INTEGER NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
-        FOREIGN KEY (generated_by) REFERENCES users(id) ON DELETE CASCADE,
         UNIQUE(property_id, billing_month)
       )`,
 
@@ -2718,57 +2716,6 @@ async createPayment(payment: {
       return `INV-${Date.now()}`;
     }
   }
-
-  // ==================== PAYMENT OPERATIONS ====================
-
-  // async createPayment(payment: {
-  //   invoiceId: number;
-  //   amount: number;
-  //   paymentDate: string;
-  //   paymentMethod?: string;
-  //   notes?: string;
-  // }): Promise<Payment> {
-  //   return this.executeInTransaction(async () => {
-  //     // Create payment record
-  //     const paymentQuery = `
-  //       INSERT INTO payments (invoice_id, amount, payment_date, payment_method, notes)
-  //       VALUES (?, ?, ?, ?, ?)
-  //     `;
-      
-  //     const paymentResult = await this.db!.run(paymentQuery, [
-  //       payment.invoiceId,
-  //       payment.amount,
-  //       payment.paymentDate,
-  //       payment.paymentMethod || '',
-  //       payment.notes || ''
-  //     ]);
-
-  //     // Update invoice amount paid
-  //     const updateInvoiceQuery = `
-  //       UPDATE invoices 
-  //       SET amount_paid = amount_paid + ?,
-  //           is_paid = CASE WHEN amount_paid + ? >= total_amount THEN 1 ELSE 0 END,
-  //           updated_at = CURRENT_TIMESTAMP
-  //       WHERE id = ?
-  //     `;
-      
-  //     await this.db!.run(updateInvoiceQuery, [
-  //       payment.amount,
-  //       payment.amount,
-  //       payment.invoiceId
-  //     ]);
-
-  //     // Get the created payment
-  //     const getPaymentQuery = 'SELECT * FROM payments WHERE id = ?';
-  //     const createdPaymentResult = await this.db!.query(getPaymentQuery, [paymentResult.changes!.lastId!]);
-      
-  //     if (!createdPaymentResult.values || createdPaymentResult.values.length === 0) {
-  //       throw new Error('Failed to retrieve created payment');
-  //     }
-      
-  //     return this.mapToPayment(createdPaymentResult.values[0]);
-  //   });
-  // }
 
   async getPaymentsByInvoice(invoiceId: number): Promise<Payment[]> {
     try {
