@@ -147,6 +147,372 @@ private getCompanyInfoForPDF(user: User, userCompany: any): any {
 
 
 
+
+
+// ==================== OPTION 1: MERGE-FIRST SYNC (RECOMMENDED) ====================
+// Download first, then upload changes - preserves data from both sides
+
+async performFullSync(userId: number): Promise<SyncStatus> {
+  if (this.syncInProgress) {
+    throw new Error('Sync already in progress');
+  }
+
+  this.syncInProgress = true;
+  const errors: string[] = [];
+  
+  try {
+    const user = await database.getUserById(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+    
+    if (!this.canUserSync(user)) {
+      throw new Error('User does not have sync permissions. Upgrade to business, pro, or enterprise tier, or purchase cloud storage.');
+    }
+
+    console.log('Starting MERGE-FIRST sync for user:', user.email);
+    
+    // Step 1: Download and apply any tier/type updates from Firestore first
+    try {
+      const latestUser = await this.downloadUserFromFirestore(userId);
+      if (latestUser) {
+        await database.updateUserTierAndType(
+          userId, 
+          latestUser.tier, 
+          latestUser.type, 
+          latestUser.storage
+        );
+        console.log('User tier and permissions updated from Firestore');
+      }
+    } catch (error) {
+      errors.push(`Failed to download user updates: ${error}`);
+      console.error('Error downloading user updates:', error);
+    }
+
+    // Step 2: DOWNLOAD FIRST - Merge remote data into local
+    try {
+      await this.downloadAndMergeData(userId);
+      console.log('Download from Firestore completed');
+    } catch (error) {
+      errors.push(`Failed to download data: ${error}`);
+      console.error('Error downloading data:', error);
+    }
+
+    // Step 3: UPLOAD SECOND - Use MERGE strategy instead of CRITICAL DELETE
+    try {
+      await this.syncUserDataToFirestoreMerge(userId); // Use merge instead of delete
+      console.log('Merge upload to Firestore completed');
+    } catch (error) {
+      errors.push(`Failed to upload data: ${error}`);
+      console.error('Error uploading data:', error);
+    }
+
+    // Step 4: Final enforcement of limits
+    try {
+      await this.enforceTierLimits(userId);
+      console.log('Final limit enforcement completed');
+    } catch (error) {
+      errors.push(`Failed to enforce limits: ${error}`);
+      console.error('Error enforcing limits:', error);
+    }
+    
+    this.lastSyncTime = new Date().toISOString();
+    localStorage.setItem('lastSyncTime', this.lastSyncTime);
+    
+    return {
+      lastSyncTime: this.lastSyncTime,
+      syncInProgress: false,
+      pendingUploads: 0,
+      pendingDownloads: 0,
+      errors
+    };
+    
+  } catch (error) {
+    console.error('Critical sync error:', error);
+    errors.push(error instanceof Error ? error.message : 'Unknown sync error');
+    
+    return {
+      lastSyncTime: this.lastSyncTime || 'Never',
+      syncInProgress: false,
+      pendingUploads: 0,
+      pendingDownloads: 0,
+      errors
+    };
+  } finally {
+    this.syncInProgress = false;
+  }
+}
+
+// ==================== NEW: MERGE-BASED UPLOAD (DOESN'T DELETE EVERYTHING) ====================
+private async syncUserDataToFirestoreMerge(userId: number): Promise<void> {
+  const user = await database.getUserById(userId);
+  if (!user || !this.canUserSync(user)) {
+    console.log('User cannot sync - no storage permission');
+    return;
+  }
+
+  try {
+    console.log('Starting MERGE sync for user:', user.email);
+    
+    const batches = [];
+    let currentBatch = writeBatch(db);
+    let operationCount = 0;
+    const maxBatchSize = 450;
+
+    const addToBatch = (ref: any, data: any, description: string) => {
+      if (operationCount >= maxBatchSize) {
+        console.log(`Batch full (${operationCount} operations), creating new batch`);
+        batches.push(currentBatch);
+        currentBatch = writeBatch(db);
+        operationCount = 0;
+      }
+      // Use MERGE instead of overwrite
+      currentBatch.set(ref, data, { merge: true });
+      operationCount++;
+      console.log(`Added to batch (MERGE): ${description} (${operationCount}/${maxBatchSize})`);
+    };
+
+    // 1. Sync user data with company embedded
+    const company = await database.getCompanyByUserId(userId);
+    const userRef = doc(db, 'users', userId.toString());
+    addToBatch(userRef, {
+      ...user,
+      lastSyncTime: serverTimestamp(),
+      localId: user.id,
+      company: company ? {
+        ...company,
+        localId: company.id,
+        lastSyncTime: serverTimestamp()
+      } : null
+    }, `User ${user.id}`);
+
+    // 2. Sync properties (MERGE - don't delete existing)
+    const properties = await this.getFilteredPropertiesForSync(userId);
+    console.log(`Merging ${properties.length} properties`);
+    
+    for (const property of properties) {
+      const propertyRef = doc(db, 'users', userId.toString(), 'properties', property.id.toString());
+      addToBatch(propertyRef, {
+        ...property,
+        userId,
+        localId: property.id,
+        lastSyncTime: serverTimestamp()
+      }, `Property ${property.id}`);
+
+      // Sync units for this property
+      const units = await database.getUnitsByProperty(property.id);
+      for (const unit of units) {
+        const unitRef = doc(db, 'users', userId.toString(), 'properties', property.id.toString(), 'units', unit.id.toString());
+        addToBatch(unitRef, {
+          ...unit,
+          userId,
+          propertyId: property.id,
+          localId: unit.id,
+          lastSyncTime: serverTimestamp()
+        }, `Unit ${unit.id} in Property ${property.id}`);
+      }
+    }
+
+    // 3. Sync tenants (MERGE)
+    for (const property of properties) {
+      const tenants = await this.getFilteredTenantsForSync(property.id, user);
+      
+      for (const tenant of tenants) {
+        const tenantRef = doc(db, 'users', userId.toString(), 'tenants', tenant.id.toString());
+        addToBatch(tenantRef, {
+          ...tenant,
+          userId,
+          propertyId: property.id,
+          localId: tenant.id,
+          lastSyncTime: serverTimestamp()
+        }, `Tenant ${tenant.id}`);
+      }
+    }
+
+    // 4. Sync invoices (MERGE)
+    for (const property of properties) {
+      const tenants = await this.getFilteredTenantsForSync(property.id, user);
+      
+      for (const tenant of tenants) {
+        const invoices = await database.getInvoices({ tenantId: tenant.id });
+        
+        for (const invoice of invoices) {
+          const invoiceRef = doc(db, 'users', userId.toString(), 'invoices', invoice.id.toString());
+          
+          // Handle PDF generation (same as before)
+          let pdfUrl = null;
+          const statusSuffix = invoice.totalAmount <= invoice.amountPaid ? 'paid' : 'pending';
+          
+          try {
+            const existingInvoiceDoc = await getDoc(invoiceRef);
+            const existingInvoice = existingInvoiceDoc.exists() ? existingInvoiceDoc.data() : null;
+            
+            const shouldGeneratePDF = !existingInvoice || (existingInvoice.pdfStatus !== statusSuffix);
+            
+            if (shouldGeneratePDF) {
+              console.log(`Generating PDF for invoice ${invoice.id} - Status: ${statusSuffix}`);
+              
+              if (existingInvoice && existingInvoice.pdfUrl && existingInvoice.pdfStatus !== statusSuffix) {
+                await this.deleteOldPDFFromStorage(existingInvoice.pdfUrl);
+              }
+              
+              const pdfPromise = this.generateAndUploadInvoicePDF(userId, invoice, statusSuffix);
+              const timeoutPromise = new Promise<string | null>((_, reject) => 
+                setTimeout(() => reject(new Error('PDF generation timeout')), 30000)
+              );
+              
+              pdfUrl = await Promise.race([pdfPromise, timeoutPromise]);
+            } else {
+              pdfUrl = existingInvoice?.pdfUrl || null;
+            }
+          } catch (pdfError) {
+            console.error(`PDF generation failed for invoice ${invoice.id}:`, pdfError);
+            pdfUrl = null;
+          }
+          
+          addToBatch(invoiceRef, {
+            ...invoice,
+            userId,
+            tenantId: tenant.id,
+            propertyId: property.id,
+            localId: invoice.id,
+            pdfUrl: pdfUrl,
+            pdfStatus: statusSuffix,
+            lastSyncTime: serverTimestamp()
+          }, `Invoice ${invoice.id}`);
+
+          // 5. Sync payments
+          const payments = await database.getPaymentsByInvoice(invoice.id);
+          for (const payment of payments) {
+            const paymentRef = doc(db, 'users', userId.toString(), 'invoices', invoice.id.toString(), 'payments', payment.id.toString());
+            addToBatch(paymentRef, {
+              ...payment,
+              userId,
+              invoiceId: invoice.id,
+              tenantId: tenant.id,
+              propertyId: property.id,
+              localId: payment.id,
+              lastSyncTime: serverTimestamp()
+            }, `Payment ${payment.id}`);
+          }
+        }
+      }
+    }
+
+    // Execute all batches
+    batches.push(currentBatch);
+    console.log(`Executing ${batches.length} batch(es) with MERGE operations`);
+    
+    for (let i = 0; i < batches.length; i++) {
+      await batches[i].commit();
+      console.log(`MERGE Batch ${i + 1}/${batches.length} committed successfully`);
+    }
+
+    console.log('MERGE sync completed - Firestore updated with local changes');
+  } catch (error) {
+    console.error('Error in MERGE sync:', error);
+    throw error;
+  }
+}
+
+// ==================== OPTION 2: CRITICAL DELETE ONLY WHEN NEEDED ====================
+// Use critical delete only for specific scenarios (user reset, corruption, etc.)
+
+async performCriticalDeleteSync(userId: number): Promise<SyncStatus> {
+  // This should only be called when you specifically want to wipe Firestore
+  // and replace with local data (e.g., user requests data reset)
+  
+  console.warn('CRITICAL DELETE SYNC - This will delete all Firestore data!');
+  
+  if (this.syncInProgress) {
+    throw new Error('Sync already in progress');
+  }
+
+  this.syncInProgress = true;
+  const errors: string[] = [];
+  
+  try {
+    const user = await database.getUserById(userId);
+    if (!user || !this.canUserSync(user)) {
+      throw new Error('User cannot sync - no storage permission');
+    }
+
+    console.log('Starting CRITICAL DELETE sync for user:', user.email);
+    
+    // Only do critical delete - no download phase
+    await this.syncUserDataToFirestore(userId); // Your original critical delete method
+    
+    console.log('CRITICAL DELETE sync completed - Firestore replaced with local data');
+    
+    this.lastSyncTime = new Date().toISOString();
+    localStorage.setItem('lastSyncTime', this.lastSyncTime);
+    
+    return {
+      lastSyncTime: this.lastSyncTime,
+      syncInProgress: false,
+      pendingUploads: 0,
+      pendingDownloads: 0,
+      errors
+    };
+    
+  } catch (error) {
+    console.error('Critical delete sync error:', error);
+    errors.push(error instanceof Error ? error.message : 'Unknown sync error');
+    
+    return {
+      lastSyncTime: this.lastSyncTime || 'Never',
+      syncInProgress: false,
+      pendingUploads: 0,
+      pendingDownloads: 0,
+      errors
+    };
+  } finally {
+    this.syncInProgress = false;
+  }
+}
+
+// ==================== OPTION 3: SMART SYNC STRATEGY ====================
+// Automatically choose strategy based on data state
+
+async performSmartSync(userId: number): Promise<SyncStatus> {
+  try {
+    const user = await database.getUserById(userId);
+    if (!user || !this.canUserSync(user)) {
+      throw new Error('User cannot sync - no storage permission');
+    }
+
+    // Check if this is first sync or if Firestore is empty
+    const userRef = doc(db, 'users', userId.toString());
+    const userDoc = await getDoc(userRef);
+    
+    if (!userDoc.exists()) {
+      console.log('First sync detected - uploading local data to Firestore');
+      return await this.performCriticalDeleteSync(userId);
+    } else {
+      console.log('Regular sync detected - merging data');
+      return await this.performFullSync(userId); // Uses merge strategy
+    }
+    
+  } catch (error) {
+    console.error('Smart sync error:', error);
+    return {
+      lastSyncTime: this.lastSyncTime || 'Never',
+      syncInProgress: false,
+      pendingUploads: 0,
+      pendingDownloads: 0,
+      errors: [error instanceof Error ? error.message : 'Unknown sync error']
+    };
+  }
+}
+
+
+
+
+
+
+
+
+
 //////////NEWEST
 // REFACTORED SYNC FUNCTIONS - FLATTENED STRUCTURE
 
@@ -1499,34 +1865,34 @@ async downloadUserFromFirestore(localUserId: number): Promise<User | null> {
   }
 }
 
-private async logSyncOperation(
-  userId: number, 
-  action: 'upload' | 'download' | 'full_sync', 
-  status: 'success' | 'error',
-  details: string,
-  errorMessage?: string
-): Promise<void> {
-  try {
-    const userRef = doc(db, 'users', userId.toString());
-    const syncLog = {
-      id: `${Date.now()}_${action}`,
-      userId,
-      action,
-      status,
-      details,
-      errorMessage: errorMessage || null,
-      timestamp: serverTimestamp()
-    };
+// private async logSyncOperation(
+//   userId: number, 
+//   action: 'upload' | 'download' | 'full_sync', 
+//   status: 'success' | 'error',
+//   details: string,
+//   errorMessage?: string
+// ): Promise<void> {
+//   try {
+//     const userRef = doc(db, 'users', userId.toString());
+//     const syncLog = {
+//       id: `${Date.now()}_${action}`,
+//       userId,
+//       action,
+//       status,
+//       details,
+//       errorMessage: errorMessage || null,
+//       timestamp: serverTimestamp()
+//     };
 
-    // Add sync log to user document syncLogs array
-    await setDoc(userRef, {
-      syncLogs: [syncLog], // This will be merged, creating an array or adding to existing
-      lastSyncLog: syncLog
-    }, { merge: true });
-  } catch (error) {
-    console.error('Error logging sync operation:', error);
-  }
-}
+//     // Add sync log to user document syncLogs array
+//     await setDoc(userRef, {
+//       syncLogs: [syncLog], // This will be merged, creating an array or adding to existing
+//       lastSyncLog: syncLog
+//     }, { merge: true });
+//   } catch (error) {
+//     console.error('Error logging sync operation:', error);
+//   }
+// }
 
 static async handleRevenueCatWebhook(data: {
   localUserId: number;
@@ -1753,109 +2119,109 @@ private async enforceTierLimits(userId: number): Promise<void> {
 }
 
 // 7. FIX: Enhanced performFullSync with complete error handling
-async performFullSync(userId: number): Promise<SyncStatus> {
-  if (this.syncInProgress) {
-    throw new Error('Sync already in progress');
-  }
+// async performFullSync(userId: number): Promise<SyncStatus> {
+//   if (this.syncInProgress) {
+//     throw new Error('Sync already in progress');
+//   }
 
-  this.syncInProgress = true;
-  //const startTime = new Date().toISOString();
-  const errors: string[] = [];
+//   this.syncInProgress = true;
+//   //const startTime = new Date().toISOString();
+//   const errors: string[] = [];
   
-  try {
-    const user = await database.getUserById(userId);
-    if (!user) {
-      throw new Error('User not found');
-    }
+//   try {
+//     const user = await database.getUserById(userId);
+//     if (!user) {
+//       throw new Error('User not found');
+//     }
     
-    if (!this.canUserSync(user)) {
-      throw new Error('User does not have sync permissions. Upgrade to business, pro, or enterprise tier, or purchase cloud storage.');
-    }
+//     if (!this.canUserSync(user)) {
+//       throw new Error('User does not have sync permissions. Upgrade to business, pro, or enterprise tier, or purchase cloud storage.');
+//     }
 
-    console.log('Starting complete full sync for user:', user.email);
+//     console.log('Starting complete full sync for user:', user.email);
     
-    // Step 1: Download and apply any tier/type updates from Firestore first
-    try {
-      const latestUser = await this.downloadUserFromFirestore(userId);
-      if (latestUser) {
+//     // Step 1: Download and apply any tier/type updates from Firestore first
+//     try {
+//       const latestUser = await this.downloadUserFromFirestore(userId);
+//       if (latestUser) {
         
-        await database.updateUserTierAndType(
-          userId, 
-          latestUser.tier, 
-          latestUser.type, 
-          latestUser.storage
-        );
+//         await database.updateUserTierAndType(
+//           userId, 
+//           latestUser.tier, 
+//           latestUser.type, 
+//           latestUser.storage
+//         );
         
-        console.log('User tier and permissions updated from Firestore');
-      }
-    } catch (error) {
-      errors.push(`Failed to download user updates: ${error}`);
-      console.error('Error downloading user updates:', error);
-    }
+//         console.log('User tier and permissions updated from Firestore');
+//       }
+//     } catch (error) {
+//       errors.push(`Failed to download user updates: ${error}`);
+//       console.error('Error downloading user updates:', error);
+//     }
 
-    // Step 2: Upload all local data to Firestore
-    try {
-      await this.syncUserDataToFirestore(userId);
-      console.log('Upload to Firestore completed');
-    } catch (error) {
-      errors.push(`Failed to upload data: ${error}`);
-      console.error('Error uploading data:', error);
-    }
+//     // Step 2: Upload all local data to Firestore
+//     try {
+//       await this.syncUserDataToFirestore(userId);
+//       console.log('Upload to Firestore completed');
+//     } catch (error) {
+//       errors.push(`Failed to upload data: ${error}`);
+//       console.error('Error uploading data:', error);
+//     }
 
-    // Step 3: Download and merge remote data
-    try {
-      await this.downloadAndMergeData(userId);
-      console.log('Download from Firestore completed');
-    } catch (error) {
-      errors.push(`Failed to download data: ${error}`);
-      console.error('Error downloading data:', error);
-    }
+//     // Step 3: Download and merge remote data
+//     try {
+//       await this.downloadAndMergeData(userId);
+//       console.log('Download from Firestore completed');
+//     } catch (error) {
+//       errors.push(`Failed to download data: ${error}`);
+//       console.error('Error downloading data:', error);
+//     }
 
-    // Step 4: Final enforcement of limits (critical security step)
-    try {
-      await this.enforceTierLimits(userId);
-      console.log('Final limit enforcement completed');
-    } catch (error) {
-      errors.push(`Failed to enforce limits: ${error}`);
-      console.error('Error enforcing limits:', error);
-    }
+//     // Step 4: Final enforcement of limits (critical security step)
+//     try {
+//       await this.enforceTierLimits(userId);
+//       console.log('Final limit enforcement completed');
+//     } catch (error) {
+//       errors.push(`Failed to enforce limits: ${error}`);
+//       console.error('Error enforcing limits:', error);
+//     }
     
-    this.lastSyncTime = new Date().toISOString();
-    localStorage.setItem('lastSyncTime', this.lastSyncTime);
+//     this.lastSyncTime = new Date().toISOString();
+//     localStorage.setItem('lastSyncTime', this.lastSyncTime);
     
-    await this.logSyncOperation(
-      userId, 
-      'full_sync', 
-      errors.length > 0 ? 'error' : 'success', 
-      errors.length > 0 ? 'Full sync completed with errors' : 'Full sync completed successfully',
-      errors.length > 0 ? errors.join('; ') : undefined
-    );
+//     await this.logSyncOperation(
+//       userId, 
+//       'full_sync', 
+//       errors.length > 0 ? 'error' : 'success', 
+//       errors.length > 0 ? 'Full sync completed with errors' : 'Full sync completed successfully',
+//       errors.length > 0 ? errors.join('; ') : undefined
+//     );
     
-    return {
-      lastSyncTime: this.lastSyncTime,
-      syncInProgress: false,
-      pendingUploads: 0,
-      pendingDownloads: 0,
-      errors
-    };
+//     return {
+//       lastSyncTime: this.lastSyncTime,
+//       syncInProgress: false,
+//       pendingUploads: 0,
+//       pendingDownloads: 0,
+//       errors
+//     };
     
-  } catch (error) {
-    console.error('Critical sync error:', error);
-    errors.push(error instanceof Error ? error.message : 'Unknown sync error');
+//   } catch (error) {
+//     console.error('Critical sync error:', error);
+//     errors.push(error instanceof Error ? error.message : 'Unknown sync error');
     
-    await this.logSyncOperation(userId, 'full_sync', 'error', `Sync failed: ${error}`);
+//     await this.logSyncOperation(userId, 'full_sync', 'error', `Sync failed: ${error}`);
     
-    return {
-      lastSyncTime: this.lastSyncTime || 'Never',
-      syncInProgress: false,
-      pendingUploads: 0,
-      pendingDownloads: 0,
-      errors
-    };
-  } finally {
-    this.syncInProgress = false;
-  }
-}
+//     return {
+//       lastSyncTime: this.lastSyncTime || 'Never',
+//       syncInProgress: false,
+//       pendingUploads: 0,
+//       pendingDownloads: 0,
+//       errors
+//     };
+//   } finally {
+//     this.syncInProgress = false;
+//   }
+// }
 
 // 8. FIX: Enhanced user listener with immediate limit enforcement
 setupUserListener(userId: number, onUserUpdate: (user: User) => void): void {

@@ -1063,6 +1063,90 @@ async exportUserDataOffline(userId: number): Promise<{
         notes TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS monthly_transcripts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        property_id INTEGER NOT NULL,
+        billing_month TEXT NOT NULL,
+        landlord_name TEXT NOT NULL,
+        landlord_contact TEXT,
+        agent_commission_rate REAL NOT NULL,
+        gross_rent_collected REAL NOT NULL DEFAULT 0,
+        total_water_charges REAL NOT NULL DEFAULT 0,
+        total_power_charges REAL NOT NULL DEFAULT 0,
+        total_other_charges REAL NOT NULL DEFAULT 0,
+        total_deductibles REAL NOT NULL DEFAULT 0,
+        agent_commission REAL NOT NULL DEFAULT 0,
+        net_amount_to_landlord REAL NOT NULL DEFAULT 0,
+        status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'finalized', 'sent', 'acknowledged')),
+        notes TEXT,
+        generated_by INTEGER NOT NULL,
+        sent_date DATE,
+        acknowledged_date DATE,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
+        FOREIGN KEY (generated_by) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(property_id, billing_month)
+      )`,
+
+      // Transcript Items table (for custom deductibles and expenses)
+      `CREATE TABLE IF NOT EXISTS transcript_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        transcript_id INTEGER NOT NULL,
+        description TEXT NOT NULL,
+        amount REAL NOT NULL,
+        type TEXT NOT NULL CHECK (type IN ('rent', 'water', 'power', 'deductible', 'expense', 'custom')),
+        category TEXT,
+        is_deductible INTEGER DEFAULT 0,
+        sort_order INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (transcript_id) REFERENCES monthly_transcripts(id) ON DELETE CASCADE
+      )`,
+
+      // Rent Record Sheets table
+      `CREATE TABLE IF NOT EXISTS rent_record_sheets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        property_id INTEGER NOT NULL,
+        billing_month TEXT NOT NULL,
+        total_units INTEGER NOT NULL DEFAULT 0,
+        occupied_units INTEGER NOT NULL DEFAULT 0,
+        total_rent_expected REAL NOT NULL DEFAULT 0,
+        total_rent_collected REAL NOT NULL DEFAULT 0,
+        total_arrears REAL NOT NULL DEFAULT 0,
+        collection_rate REAL NOT NULL DEFAULT 0,
+        status TEXT DEFAULT 'current' CHECK (status IN ('current', 'archived')),
+        generated_by INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
+        FOREIGN KEY (generated_by) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(property_id, billing_month)
+      )`,
+
+      // Rent Record Entries table (individual tenant records)
+      `CREATE TABLE IF NOT EXISTS rent_record_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        record_sheet_id INTEGER NOT NULL,
+        tenant_id INTEGER NOT NULL,
+        tenant_name TEXT NOT NULL,
+        unit_number TEXT NOT NULL,
+        rent_amount REAL NOT NULL,
+        water_charges REAL NOT NULL DEFAULT 0,
+        power_charges REAL NOT NULL DEFAULT 0,
+        other_charges REAL NOT NULL DEFAULT 0,
+        total_due REAL NOT NULL,
+        amount_paid REAL NOT NULL DEFAULT 0,
+        balance REAL NOT NULL DEFAULT 0,
+        payment_status TEXT DEFAULT 'unpaid' CHECK (payment_status IN ('paid', 'partial', 'unpaid', 'overpaid')),
+        payment_date DATE,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (record_sheet_id) REFERENCES rent_record_sheets(id) ON DELETE CASCADE,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
       )`
     ];
 
@@ -1097,7 +1181,19 @@ async exportUserDataOffline(userId: number): Promise<{
       
       // Payment indexes
       'CREATE INDEX IF NOT EXISTS idx_payments_invoice_id ON payments(invoice_id)',
-      'CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(payment_date)'
+      'CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(payment_date)',
+
+
+      'CREATE INDEX IF NOT EXISTS idx_transcripts_property_month ON monthly_transcripts(property_id, billing_month)',
+      'CREATE INDEX IF NOT EXISTS idx_transcripts_status ON monthly_transcripts(status)',
+      'CREATE INDEX IF NOT EXISTS idx_transcripts_generated_by ON monthly_transcripts(generated_by)',
+      'CREATE INDEX IF NOT EXISTS idx_transcript_items_transcript_id ON transcript_items(transcript_id)',
+      'CREATE INDEX IF NOT EXISTS idx_transcript_items_type ON transcript_items(type)',
+      'CREATE INDEX IF NOT EXISTS idx_record_sheets_property_month ON rent_record_sheets(property_id, billing_month)',
+      'CREATE INDEX IF NOT EXISTS idx_record_sheets_status ON rent_record_sheets(status)',
+      'CREATE INDEX IF NOT EXISTS idx_record_entries_sheet_id ON rent_record_entries(record_sheet_id)',
+      'CREATE INDEX IF NOT EXISTS idx_record_entries_tenant_id ON rent_record_entries(tenant_id)',
+      'CREATE INDEX IF NOT EXISTS idx_record_entries_payment_status ON rent_record_entries(payment_status)'
     ];
 
     for (const index of indexes) {

@@ -1,5 +1,5 @@
 // ReportsDatabase.tsx - Professional Transcripts and Rent Record Sheets Manager
-import { SQLiteDBConnection } from '@capacitor-community/sqlite';
+//import { SQLiteDBConnection } from '@capacitor-community/sqlite';
 import { database, type Property } from './Database';
 
 // ==================== TYPE INTERFACES ====================
@@ -138,127 +138,127 @@ export interface ReportGenerationOptions {
 // ==================== REPORTS DATABASE MANAGER ====================
 
 export class ReportsDatabase {
-  private db: SQLiteDBConnection | null = null;
+  // private db: SQLiteDBConnection | null = null;
 
-  constructor(dbConnection: SQLiteDBConnection) {
-    this.db = dbConnection;
-  }
+  // constructor(dbConnection: SQLiteDBConnection) {
+  //   this.db = dbConnection;
+  // }
 
   // ==================== INITIALIZATION ====================
 
-  async initializeReportsTables(): Promise<void> {
-    const queries = [
-      // Monthly Transcripts table
-      `CREATE TABLE IF NOT EXISTS monthly_transcripts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        property_id INTEGER NOT NULL,
-        billing_month TEXT NOT NULL,
-        landlord_name TEXT NOT NULL,
-        landlord_contact TEXT,
-        agent_commission_rate REAL NOT NULL,
-        gross_rent_collected REAL NOT NULL DEFAULT 0,
-        total_water_charges REAL NOT NULL DEFAULT 0,
-        total_power_charges REAL NOT NULL DEFAULT 0,
-        total_other_charges REAL NOT NULL DEFAULT 0,
-        total_deductibles REAL NOT NULL DEFAULT 0,
-        agent_commission REAL NOT NULL DEFAULT 0,
-        net_amount_to_landlord REAL NOT NULL DEFAULT 0,
-        status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'finalized', 'sent', 'acknowledged')),
-        notes TEXT,
-        generated_by INTEGER NOT NULL,
-        sent_date DATE,
-        acknowledged_date DATE,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
-        FOREIGN KEY (generated_by) REFERENCES users(id) ON DELETE CASCADE,
-        UNIQUE(property_id, billing_month)
-      )`,
+  // async initializeReportsTables(): Promise<void> {
+  //   const queries = [
+  //     // Monthly Transcripts table
+  //     `CREATE TABLE IF NOT EXISTS monthly_transcripts (
+  //       id INTEGER PRIMARY KEY AUTOINCREMENT,
+  //       property_id INTEGER NOT NULL,
+  //       billing_month TEXT NOT NULL,
+  //       landlord_name TEXT NOT NULL,
+  //       landlord_contact TEXT,
+  //       agent_commission_rate REAL NOT NULL,
+  //       gross_rent_collected REAL NOT NULL DEFAULT 0,
+  //       total_water_charges REAL NOT NULL DEFAULT 0,
+  //       total_power_charges REAL NOT NULL DEFAULT 0,
+  //       total_other_charges REAL NOT NULL DEFAULT 0,
+  //       total_deductibles REAL NOT NULL DEFAULT 0,
+  //       agent_commission REAL NOT NULL DEFAULT 0,
+  //       net_amount_to_landlord REAL NOT NULL DEFAULT 0,
+  //       status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'finalized', 'sent', 'acknowledged')),
+  //       notes TEXT,
+  //       generated_by INTEGER NOT NULL,
+  //       sent_date DATE,
+  //       acknowledged_date DATE,
+  //       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  //       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  //       FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
+  //       FOREIGN KEY (generated_by) REFERENCES users(id) ON DELETE CASCADE,
+  //       UNIQUE(property_id, billing_month)
+  //     )`,
 
-      // Transcript Items table (for custom deductibles and expenses)
-      `CREATE TABLE IF NOT EXISTS transcript_items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        transcript_id INTEGER NOT NULL,
-        description TEXT NOT NULL,
-        amount REAL NOT NULL,
-        type TEXT NOT NULL CHECK (type IN ('rent', 'water', 'power', 'deductible', 'expense', 'custom')),
-        category TEXT,
-        is_deductible INTEGER DEFAULT 0,
-        sort_order INTEGER DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (transcript_id) REFERENCES monthly_transcripts(id) ON DELETE CASCADE
-      )`,
+  //     // Transcript Items table (for custom deductibles and expenses)
+  //     `CREATE TABLE IF NOT EXISTS transcript_items (
+  //       id INTEGER PRIMARY KEY AUTOINCREMENT,
+  //       transcript_id INTEGER NOT NULL,
+  //       description TEXT NOT NULL,
+  //       amount REAL NOT NULL,
+  //       type TEXT NOT NULL CHECK (type IN ('rent', 'water', 'power', 'deductible', 'expense', 'custom')),
+  //       category TEXT,
+  //       is_deductible INTEGER DEFAULT 0,
+  //       sort_order INTEGER DEFAULT 0,
+  //       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  //       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  //       FOREIGN KEY (transcript_id) REFERENCES monthly_transcripts(id) ON DELETE CASCADE
+  //     )`,
 
-      // Rent Record Sheets table
-      `CREATE TABLE IF NOT EXISTS rent_record_sheets (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        property_id INTEGER NOT NULL,
-        billing_month TEXT NOT NULL,
-        total_units INTEGER NOT NULL DEFAULT 0,
-        occupied_units INTEGER NOT NULL DEFAULT 0,
-        total_rent_expected REAL NOT NULL DEFAULT 0,
-        total_rent_collected REAL NOT NULL DEFAULT 0,
-        total_arrears REAL NOT NULL DEFAULT 0,
-        collection_rate REAL NOT NULL DEFAULT 0,
-        status TEXT DEFAULT 'current' CHECK (status IN ('current', 'archived')),
-        generated_by INTEGER NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
-        FOREIGN KEY (generated_by) REFERENCES users(id) ON DELETE CASCADE,
-        UNIQUE(property_id, billing_month)
-      )`,
+  //     // Rent Record Sheets table
+  //     `CREATE TABLE IF NOT EXISTS rent_record_sheets (
+  //       id INTEGER PRIMARY KEY AUTOINCREMENT,
+  //       property_id INTEGER NOT NULL,
+  //       billing_month TEXT NOT NULL,
+  //       total_units INTEGER NOT NULL DEFAULT 0,
+  //       occupied_units INTEGER NOT NULL DEFAULT 0,
+  //       total_rent_expected REAL NOT NULL DEFAULT 0,
+  //       total_rent_collected REAL NOT NULL DEFAULT 0,
+  //       total_arrears REAL NOT NULL DEFAULT 0,
+  //       collection_rate REAL NOT NULL DEFAULT 0,
+  //       status TEXT DEFAULT 'current' CHECK (status IN ('current', 'archived')),
+  //       generated_by INTEGER NOT NULL,
+  //       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  //       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  //       FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
+  //       FOREIGN KEY (generated_by) REFERENCES users(id) ON DELETE CASCADE,
+  //       UNIQUE(property_id, billing_month)
+  //     )`,
 
-      // Rent Record Entries table (individual tenant records)
-      `CREATE TABLE IF NOT EXISTS rent_record_entries (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        record_sheet_id INTEGER NOT NULL,
-        tenant_id INTEGER NOT NULL,
-        tenant_name TEXT NOT NULL,
-        unit_number TEXT NOT NULL,
-        rent_amount REAL NOT NULL,
-        water_charges REAL NOT NULL DEFAULT 0,
-        power_charges REAL NOT NULL DEFAULT 0,
-        other_charges REAL NOT NULL DEFAULT 0,
-        total_due REAL NOT NULL,
-        amount_paid REAL NOT NULL DEFAULT 0,
-        balance REAL NOT NULL DEFAULT 0,
-        payment_status TEXT DEFAULT 'unpaid' CHECK (payment_status IN ('paid', 'partial', 'unpaid', 'overpaid')),
-        payment_date DATE,
-        notes TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (record_sheet_id) REFERENCES rent_record_sheets(id) ON DELETE CASCADE,
-        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
-      )`
-    ];
+  //     // Rent Record Entries table (individual tenant records)
+  //     `CREATE TABLE IF NOT EXISTS rent_record_entries (
+  //       id INTEGER PRIMARY KEY AUTOINCREMENT,
+  //       record_sheet_id INTEGER NOT NULL,
+  //       tenant_id INTEGER NOT NULL,
+  //       tenant_name TEXT NOT NULL,
+  //       unit_number TEXT NOT NULL,
+  //       rent_amount REAL NOT NULL,
+  //       water_charges REAL NOT NULL DEFAULT 0,
+  //       power_charges REAL NOT NULL DEFAULT 0,
+  //       other_charges REAL NOT NULL DEFAULT 0,
+  //       total_due REAL NOT NULL,
+  //       amount_paid REAL NOT NULL DEFAULT 0,
+  //       balance REAL NOT NULL DEFAULT 0,
+  //       payment_status TEXT DEFAULT 'unpaid' CHECK (payment_status IN ('paid', 'partial', 'unpaid', 'overpaid')),
+  //       payment_date DATE,
+  //       notes TEXT,
+  //       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  //       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  //       FOREIGN KEY (record_sheet_id) REFERENCES rent_record_sheets(id) ON DELETE CASCADE,
+  //       FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+  //     )`
+  //   ];
 
-    for (const query of queries) {
-      await this.db!.run(query);
-    }
+  //   for (const query of queries) {
+  //     await this.db!.run(query);
+  //   }
 
-    await this.createReportsIndexes();
-  }
+  //   await this.createReportsIndexes();
+  // }
 
-  private async createReportsIndexes(): Promise<void> {
-    const indexes = [
-      'CREATE INDEX IF NOT EXISTS idx_transcripts_property_month ON monthly_transcripts(property_id, billing_month)',
-      'CREATE INDEX IF NOT EXISTS idx_transcripts_status ON monthly_transcripts(status)',
-      'CREATE INDEX IF NOT EXISTS idx_transcripts_generated_by ON monthly_transcripts(generated_by)',
-      'CREATE INDEX IF NOT EXISTS idx_transcript_items_transcript_id ON transcript_items(transcript_id)',
-      'CREATE INDEX IF NOT EXISTS idx_transcript_items_type ON transcript_items(type)',
-      'CREATE INDEX IF NOT EXISTS idx_record_sheets_property_month ON rent_record_sheets(property_id, billing_month)',
-      'CREATE INDEX IF NOT EXISTS idx_record_sheets_status ON rent_record_sheets(status)',
-      'CREATE INDEX IF NOT EXISTS idx_record_entries_sheet_id ON rent_record_entries(record_sheet_id)',
-      'CREATE INDEX IF NOT EXISTS idx_record_entries_tenant_id ON rent_record_entries(tenant_id)',
-      'CREATE INDEX IF NOT EXISTS idx_record_entries_payment_status ON rent_record_entries(payment_status)'
-    ];
+  // private async createReportsIndexes(): Promise<void> {
+  //   const indexes = [
+  //     'CREATE INDEX IF NOT EXISTS idx_transcripts_property_month ON monthly_transcripts(property_id, billing_month)',
+  //     'CREATE INDEX IF NOT EXISTS idx_transcripts_status ON monthly_transcripts(status)',
+  //     'CREATE INDEX IF NOT EXISTS idx_transcripts_generated_by ON monthly_transcripts(generated_by)',
+  //     'CREATE INDEX IF NOT EXISTS idx_transcript_items_transcript_id ON transcript_items(transcript_id)',
+  //     'CREATE INDEX IF NOT EXISTS idx_transcript_items_type ON transcript_items(type)',
+  //     'CREATE INDEX IF NOT EXISTS idx_record_sheets_property_month ON rent_record_sheets(property_id, billing_month)',
+  //     'CREATE INDEX IF NOT EXISTS idx_record_sheets_status ON rent_record_sheets(status)',
+  //     'CREATE INDEX IF NOT EXISTS idx_record_entries_sheet_id ON rent_record_entries(record_sheet_id)',
+  //     'CREATE INDEX IF NOT EXISTS idx_record_entries_tenant_id ON rent_record_entries(tenant_id)',
+  //     'CREATE INDEX IF NOT EXISTS idx_record_entries_payment_status ON rent_record_entries(payment_status)'
+  //   ];
 
-    for (const index of indexes) {
-      await this.db!.run(index);
-    }
-  }
+  //   for (const index of indexes) {
+  //     await this.db!.run(index);
+  //   }
+  // }
 
   // ==================== MONTHLY TRANSCRIPT OPERATIONS ====================
 
@@ -321,7 +321,7 @@ export class ReportsDatabase {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
-      const result = await this.db!.run(transcriptQuery, [
+      const result = await database.db!.run(transcriptQuery, [
         input.propertyId,
         input.billingMonth,
         input.landlordName,
@@ -425,7 +425,7 @@ export class ReportsDatabase {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
-    const result = await this.db!.run(query, [
+    const result = await database.db!.run(query, [
       item.transcriptId,
       item.description,
       item.amount,
@@ -444,7 +444,7 @@ export class ReportsDatabase {
   private async recalculateTranscriptTotals(transcriptId: number): Promise<void> {
     // Get all items for this transcript
     const itemsQuery = `SELECT * FROM transcript_items WHERE transcript_id = ?`;
-    const result = await this.db!.query(itemsQuery, [transcriptId]);
+    const result = await database.db!.query(itemsQuery, [transcriptId]);
     const items = result.values || [];
 
     let totalDeductibles = 0;
@@ -467,7 +467,7 @@ export class ReportsDatabase {
       WHERE id = ?
     `;
 
-    await this.db!.run(updateQuery, [totalDeductibles, netAmountToLandlord, transcriptId]);
+    await database.db!.run(updateQuery, [totalDeductibles, netAmountToLandlord, transcriptId]);
   }
 
   async getTranscriptWithDetails(transcriptId: number): Promise<TranscriptWithDetails> {
@@ -510,7 +510,7 @@ export class ReportsDatabase {
       SET status = 'finalized', updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND status = 'draft'
     `;
-    await this.db!.run(query, [transcriptId]);
+    await database.db!.run(query, [transcriptId]);
   }
 
   async markTranscriptSent(transcriptId: number): Promise<void> {
@@ -519,7 +519,7 @@ export class ReportsDatabase {
       SET status = 'sent', sent_date = CURRENT_DATE, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND status = 'finalized'
     `;
-    await this.db!.run(query, [transcriptId]);
+    await database.db!.run(query, [transcriptId]);
   }
 
   // ==================== RENT RECORD SHEET OPERATIONS ====================
@@ -573,7 +573,7 @@ export class ReportsDatabase {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
-      const result = await this.db!.run(sheetQuery, [
+      const result = await database.db!.run(sheetQuery, [
         propertyId,
         billingMonth,
         property.maxUnits,
@@ -665,7 +665,7 @@ export class ReportsDatabase {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    await this.db!.run(query, [
+    await database.db!.run(query, [
       entry.recordSheetId,
       entry.tenantId,
       entry.tenantName,
@@ -740,7 +740,7 @@ export class ReportsDatabase {
       ORDER BY billing_month DESC 
       LIMIT ?
     `;
-    const result = await this.db!.query(query, [propertyId, limit]);
+    const result = await database.db!.query(query, [propertyId, limit]);
     return this.mapToTranscripts(result.values || []);
   }
 
@@ -752,7 +752,7 @@ export class ReportsDatabase {
       ORDER BY mt.billing_month DESC 
       LIMIT ?
     `;
-    const result = await this.db!.query(query, [userId, limit]);
+    const result = await database.db!.query(query, [userId, limit]);
     return this.mapToTranscripts(result.values || []);
   }
 
@@ -763,7 +763,7 @@ export class ReportsDatabase {
       ORDER BY billing_month DESC 
       LIMIT ?
     `;
-    const result = await this.db!.query(query, [propertyId, limit]);
+    const result = await database.db!.query(query, [propertyId, limit]);
     return this.mapToRentRecords(result.values || []);
   }
 
@@ -771,7 +771,7 @@ export class ReportsDatabase {
 
   private async getTranscriptById(id: number): Promise<MonthlyTranscript | null> {
     const query = 'SELECT * FROM monthly_transcripts WHERE id = ?';
-    const result = await this.db!.query(query, [id]);
+    const result = await database.db!.query(query, [id]);
     
     if (result.values && result.values.length > 0) {
       return this.mapToTranscript(result.values[0]);
@@ -785,13 +785,13 @@ export class ReportsDatabase {
       WHERE transcript_id = ? 
       ORDER BY sort_order ASC
     `;
-    const result = await this.db!.query(query, [transcriptId]);
+    const result = await database.db!.query(query, [transcriptId]);
     return this.mapToTranscriptItems(result.values || []);
   }
 
   private async getTranscriptItemById(id: number): Promise<TranscriptItem> {
     const query = 'SELECT * FROM transcript_items WHERE id = ?';
-    const result = await this.db!.query(query, [id]);
+    const result = await database.db!.query(query, [id]);
     
     if (result.values && result.values.length > 0) {
       return this.mapToTranscriptItem(result.values[0]);
@@ -801,7 +801,7 @@ export class ReportsDatabase {
 
   private async getRentRecordById(id: number): Promise<RentRecordSheet | null> {
     const query = 'SELECT * FROM rent_record_sheets WHERE id = ?';
-    const result = await this.db!.query(query, [id]);
+    const result = await database.db!.query(query, [id]);
     
     if (result.values && result.values.length > 0) {
       return this.mapToRentRecord(result.values[0]);
@@ -815,7 +815,7 @@ export class ReportsDatabase {
       WHERE record_sheet_id = ? 
       ORDER BY unit_number ASC
     `;
-    const result = await this.db!.query(query, [recordSheetId]);
+    const result = await database.db!.query(query, [recordSheetId]);
     return this.mapToRentRecordEntries(result.values || []);
   }
 
@@ -856,11 +856,11 @@ export class ReportsDatabase {
     values.push(id);
 
     const query = `UPDATE transcript_items SET ${fields.join(', ')} WHERE id = ?`;
-    await this.db!.run(query, values);
+    await database.db!.run(query, values);
 
     // Get transcript ID and recalculate totals
     const itemQuery = 'SELECT transcript_id FROM transcript_items WHERE id = ?';
-    const itemResult = await this.db!.query(itemQuery, [id]);
+    const itemResult = await database.db!.query(itemQuery, [id]);
     if (itemResult.values && itemResult.values.length > 0) {
       await this.recalculateTranscriptTotals(itemResult.values[0].transcript_id);
     }
@@ -869,12 +869,12 @@ export class ReportsDatabase {
   async deleteTranscriptItem(id: number): Promise<void> {
     // Get transcript ID before deleting
     const itemQuery = 'SELECT transcript_id FROM transcript_items WHERE id = ?';
-    const itemResult = await this.db!.query(itemQuery, [id]);
+    const itemResult = await database.db!.query(itemQuery, [id]);
     
     if (itemResult.values && itemResult.values.length > 0) {
       const transcriptId = itemResult.values[0].transcript_id;
       
-      await this.db!.run('DELETE FROM transcript_items WHERE id = ?', [id]);
+      await database.db!.run('DELETE FROM transcript_items WHERE id = ?', [id]);
       await this.recalculateTranscriptTotals(transcriptId);
     }
   }
@@ -902,7 +902,7 @@ export class ReportsDatabase {
         query += " WHERE id = ?";
         values.push(transcriptId.toString());
 
-        await this.db!.run(query, values);
+        await database.db!.run(query, values);
     }
 
   async updateRentRecordEntry(entryId: number, updates: Partial<{
@@ -920,7 +920,7 @@ export class ReportsDatabase {
       
       // Recalculate balance
       const entryQuery = 'SELECT total_due FROM rent_record_entries WHERE id = ?';
-      const entryResult = await this.db!.query(entryQuery, [entryId]);
+      const entryResult = await database.db!.query(entryQuery, [entryId]);
       if (entryResult.values && entryResult.values.length > 0) {
         const totalDue = entryResult.values[0].total_due;
         const balance = totalDue - updates.amountPaid;
@@ -948,7 +948,7 @@ export class ReportsDatabase {
     values.push(entryId);
 
     const query = `UPDATE rent_record_entries SET ${fields.join(', ')} WHERE id = ?`;
-    await this.db!.run(query, values);
+    await database.db!.run(query, values);
 
     // Recalculate record sheet totals
     await this.recalculateRecordSheetTotals(entryId);
@@ -957,7 +957,7 @@ export class ReportsDatabase {
   private async recalculateRecordSheetTotals(entryId: number): Promise<void> {
     // Get record sheet ID
     const entryQuery = 'SELECT record_sheet_id FROM rent_record_entries WHERE id = ?';
-    const entryResult = await this.db!.query(entryQuery, [entryId]);
+    const entryResult = await database.db!.query(entryQuery, [entryId]);
     
     if (!entryResult.values || entryResult.values.length === 0) return;
     
@@ -972,7 +972,7 @@ export class ReportsDatabase {
       FROM rent_record_entries 
       WHERE record_sheet_id = ?
     `;
-    const totalsResult = await this.db!.query(totalsQuery, [recordSheetId]);
+    const totalsResult = await database.db!.query(totalsQuery, [recordSheetId]);
     
     if (totalsResult.values && totalsResult.values.length > 0) {
       const totals = totalsResult.values[0];
@@ -986,7 +986,7 @@ export class ReportsDatabase {
         WHERE id = ?
       `;
 
-      await this.db!.run(updateQuery, [
+      await database.db!.run(updateQuery, [
         totals.total_expected || 0,
         totals.total_collected || 0,
         totals.total_arrears || 0,
@@ -1009,7 +1009,7 @@ export class ReportsDatabase {
       throw new Error('Only draft transcripts can be deleted');
     }
 
-    await this.db!.run('DELETE FROM monthly_transcripts WHERE id = ?', [transcriptId]);
+    await database.db!.run('DELETE FROM monthly_transcripts WHERE id = ?', [transcriptId]);
   }
 
   async archiveRentRecord(recordSheetId: number): Promise<void> {
@@ -1018,7 +1018,7 @@ export class ReportsDatabase {
       SET status = 'archived', updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `;
-    await this.db!.run(query, [recordSheetId]);
+    await database.db!.run(query, [recordSheetId]);
   }
 
   // ==================== REPORTING & ANALYTICS ====================
@@ -1063,7 +1063,7 @@ export class ReportsDatabase {
       ORDER BY rrs.billing_month ASC
     `;
 
-    const result = await this.db!.query(query, [propertyId, startMonth, endMonth]);
+    const result = await database.db!.query(query, [propertyId, startMonth, endMonth]);
     const monthlyData = (result.values || []).map(row => ({
       month: row.billing_month,
       rentCollected: row.total_rent_collected || 0,
@@ -1125,7 +1125,7 @@ export class ReportsDatabase {
     `;
 
     const yearPattern = `${year}-%`;
-    const monthlyResult = await this.db!.query(monthlyQuery, [userId, yearPattern]);
+    const monthlyResult = await database.db!.query(monthlyQuery, [userId, yearPattern]);
     
     const monthlyBreakdown = (monthlyResult.values || []).map(row => ({
       month: row.billing_month,
@@ -1154,7 +1154,7 @@ export class ReportsDatabase {
       LIMIT 10
     `;
 
-    const topPropertiesResult = await this.db!.query(topPropertiesQuery, [userId, yearPattern]);
+    const topPropertiesResult = await database.db!.query(topPropertiesQuery, [userId, yearPattern]);
     
     const topPerformingProperties = (topPropertiesResult.values || []).map(row => ({
       propertyName: row.property_name,
@@ -1195,7 +1195,7 @@ export class ReportsDatabase {
       LIMIT ?
     `;
 
-    const result = await this.db!.query(query, [propertyId, limit]);
+    const result = await database.db!.query(query, [propertyId, limit]);
     
     return (result.values || []).map(row => ({
       month: row.billing_month,
@@ -1390,7 +1390,7 @@ export class ReportsDatabase {
       ${whereClause}
     `;
 
-    const result = await this.db!.query(query, params);
+    const result = await database.db!.query(query, params);
     const stats = result.values?.[0] || {};
 
     return {
@@ -1429,7 +1429,7 @@ export class ReportsDatabase {
       LIMIT ?
     `;
 
-    const result = await this.db!.query(query, [propertyId, months]);
+    const result = await database.db!.query(query, [propertyId, months]);
     
     return (result.values || []).map(row => ({
       month: row.billing_month,
@@ -1443,4 +1443,4 @@ export class ReportsDatabase {
 }
 
 // ==================== SINGLETON INSTANCE ====================
-export const reportsDatabase = new ReportsDatabase(database.db!);
+export const reportsDatabase = new ReportsDatabase();
