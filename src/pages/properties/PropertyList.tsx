@@ -18,6 +18,7 @@ import Property from './Properties';
 import PropertyModal from './PropertyModal';
 import { USER_LIMITS } from '../../services/database/FirebaseSync';
 import PricingModal from '../../components/ui/PricingPage';
+import SummariesModal from './Summaries';
 
 interface PropertyListProps {
   onNavigateToProperty: (property: PropertyWithUnits) => void;
@@ -60,6 +61,7 @@ const Properties: React.FC<PropertyListProps> = ({
   const [showPropModal, setShowPropModal] = useState(false);
   const [propertyId, setPropertyId] = useState<number>(0);
   const [showPricingModal, setShowPricingModal] = useState(false);
+  const [showSummariesModal, setShowSummariesModal] = useState(false);
   const [formData, setFormData] = useState<PropertyFormData>({
     name: '',
     address: '',
@@ -74,6 +76,8 @@ const Properties: React.FC<PropertyListProps> = ({
   // Image handling refs
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
+
+  const canSeeSummary = user?.tier === 'enterprise' || user?.tier === 'pro';
 
 
   const MAX_FREE_UNITS = USER_LIMITS[user!.tier].totalTenants;;
@@ -639,8 +643,9 @@ const Properties: React.FC<PropertyListProps> = ({
                 >
                   <Grid className="w-4 h-4" />
                 </button>
-                <button
-                  onClick={() => setViewMode('list')}
+                {canSeeSummary && (
+                  <button
+                  onClick={() => setShowSummariesModal(true)}
                   className={`p-2 rounded-md transition-all ${
                     viewMode === 'list' 
                       ? 'bg-white text-blue-600 shadow-sm' 
@@ -649,6 +654,7 @@ const Properties: React.FC<PropertyListProps> = ({
                 >
                   <List className="w-4 h-4" />
                 </button>
+                )}
               </div>
 
               {/* Refresh Button */}
@@ -807,6 +813,13 @@ const Properties: React.FC<PropertyListProps> = ({
               currentPlan={user?.tier || 'free'}
               userId={user?.id}
               userPhone={user?.phone}
+            />
+
+            <SummariesModal
+              isOpen={showSummariesModal}
+              onClose={() => setShowSummariesModal(false)}
+              userId={currentUserId}
+              properties={properties}
             />
 
       {/* Delete Confirmation Modal */}
