@@ -322,7 +322,7 @@ const PropertiesWrapper = () => {
     <Properties 
       onNavigateToProperty={handleNavigateToProperty}
       currentUserId={user?.id || 1}
-      userPlan={user?.tier || 'free'}
+      user={user}
     />
   );
 };

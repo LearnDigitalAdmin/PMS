@@ -1145,6 +1145,24 @@ async exportUserDataOffline(userId: number): Promise<{
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (record_sheet_id) REFERENCES rent_record_sheets(id) ON DELETE CASCADE,
         FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS business_expenses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        company_id INTEGER,
+        property_id INTEGER,
+        month TEXT NOT NULL,
+        description TEXT NOT NULL,
+        amount REAL NOT NULL,
+        category TEXT NOT NULL CHECK (category IN ('office', 'marketing', 'maintenance', 'utilities', 'transport', 'professional', 'insurance', 'other')),
+        is_recurring INTEGER DEFAULT 0,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
+        FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
       )`
     ];
 
@@ -1191,7 +1209,13 @@ async exportUserDataOffline(userId: number): Promise<{
       'CREATE INDEX IF NOT EXISTS idx_record_sheets_status ON rent_record_sheets(status)',
       'CREATE INDEX IF NOT EXISTS idx_record_entries_sheet_id ON rent_record_entries(record_sheet_id)',
       'CREATE INDEX IF NOT EXISTS idx_record_entries_tenant_id ON rent_record_entries(tenant_id)',
-      'CREATE INDEX IF NOT EXISTS idx_record_entries_payment_status ON rent_record_entries(payment_status)'
+      'CREATE INDEX IF NOT EXISTS idx_record_entries_payment_status ON rent_record_entries(payment_status)',
+
+
+      'CREATE INDEX IF NOT EXISTS idx_business_expenses_user_month ON business_expenses(user_id, month)',
+      'CREATE INDEX IF NOT EXISTS idx_business_expenses_property_month ON business_expenses(property_id, month)',
+      'CREATE INDEX IF NOT EXISTS idx_business_expenses_category ON business_expenses(category)',
+      'CREATE INDEX IF NOT EXISTS idx_business_expenses_recurring ON business_expenses(is_recurring)'
     ];
 
     for (const index of indexes) {

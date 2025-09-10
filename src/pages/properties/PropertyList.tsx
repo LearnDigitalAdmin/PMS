@@ -13,15 +13,16 @@ import {
   RefreshCw,
   Home,
   MapPin} from 'lucide-react';
-import { database, type PropertyWithUnits, type PropertyInput } from '../../services/database/Database';
+import { database, type PropertyWithUnits, type PropertyInput, type User } from '../../services/database/Database';
 import Property from './Properties';
 import PropertyModal from './PropertyModal';
-import { USER_LIMITS, type UserTier } from '../../services/database/FirebaseSync';
+import { USER_LIMITS } from '../../services/database/FirebaseSync';
+import PricingModal from '../../components/ui/PricingPage';
 
 interface PropertyListProps {
   onNavigateToProperty: (property: PropertyWithUnits) => void;
   currentUserId: number;
-  userPlan: UserTier;
+  user: User | null;
 }
 
 interface PropertyFormData {
@@ -44,7 +45,7 @@ interface EnhancedProperty extends PropertyWithUnits {
 
 const Properties: React.FC<PropertyListProps> = ({ 
   currentUserId,
-  userPlan 
+  user 
 }) => {
   const [properties, setProperties] = useState<EnhancedProperty[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
@@ -58,6 +59,7 @@ const Properties: React.FC<PropertyListProps> = ({
   const [selectedProperty, setSelectedProperty] = useState<EnhancedProperty | null>(null);
   const [showPropModal, setShowPropModal] = useState(false);
   const [propertyId, setPropertyId] = useState<number>(0);
+  const [showPricingModal, setShowPricingModal] = useState(false);
   const [formData, setFormData] = useState<PropertyFormData>({
     name: '',
     address: '',
@@ -74,9 +76,15 @@ const Properties: React.FC<PropertyListProps> = ({
   const [imagePreview, setImagePreview] = useState<string>('');
 
 
-  const MAX_FREE_UNITS = USER_LIMITS[userPlan].totalTenants;;
-  const canAddProperty = userPlan === 'enterprise' || 
-  properties.length < USER_LIMITS[userPlan].properties;
+  const MAX_FREE_UNITS = USER_LIMITS[user!.tier].totalTenants;;
+  const canAddProperty = user!.tier === 'enterprise' || 
+  properties.length < USER_LIMITS[user!.tier].properties;
+
+  const handlePricingModalClose = (planSelected?: string) => {
+    setShowPricingModal(false);
+    // Plan selection logic can be added here later
+    console.log('Plan selected from profile:', planSelected);
+  };
 
   useEffect(() => {
     loadProperties();
@@ -368,7 +376,7 @@ const Properties: React.FC<PropertyListProps> = ({
               }}
               className="p-2 bg-white bg-opacity-20 backdrop-blur-sm rounded-lg hover:bg-opacity-30 transition-all"
             >
-              <Edit3 className="w-4 h-4 text-white" />
+              <Edit3 className="w-4 h-4 text-blue" />
             </button>
             <button
               onClick={(e) => {
@@ -377,7 +385,7 @@ const Properties: React.FC<PropertyListProps> = ({
               }}
               className="p-2 bg-white bg-opacity-20 backdrop-blur-sm rounded-lg hover:bg-opacity-30 transition-all"
             >
-              <Trash2 className="w-4 h-4 text-white" />
+              <Trash2 className="w-4 h-4 text-red" />
             </button>
           </div>
           <div className="absolute bottom-4 left-4 text-white">
@@ -740,7 +748,7 @@ const Properties: React.FC<PropertyListProps> = ({
 
       {/* Upgrade Notice for Free Users */}
       {!canAddProperty && (
-        <div className="fixed bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm bg-white rounded-xl shadow-xl border border-gray-200 p-4 z-40">
+        <div className="fixed bottom-17 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm bg-white rounded-xl shadow-xl border border-gray-200 p-4 z-40">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-orange-400 to-pink-500 rounded-lg flex items-center justify-center flex-shrink-0">
               <Building2 className="w-5 h-5 text-white" />
@@ -748,9 +756,9 @@ const Properties: React.FC<PropertyListProps> = ({
             <div className="flex-1 min-w-0">
               <h4 className="font-semibold text-gray-900 text-sm">Property Limit Reached</h4>
               <p className="text-gray-600 text-xs mt-1">
-                Upgrade to Premium to add unlimited properties
+                Upgrade plan to add more properties
               </p>
-              <button className="mt-2 text-blue-600 text-xs font-medium hover:text-blue-700">
+              <button onClick={() => setShowPricingModal(true)} className="mt-2 text-blue-600 text-xs font-medium hover:text-blue-700">
                 Upgrade Now →
               </button>
             </div>
@@ -790,6 +798,16 @@ const Properties: React.FC<PropertyListProps> = ({
         removeImage={removeImage}
         MAX_FREE_UNITS={MAX_FREE_UNITS}
       />
+
+      {/* Pricing Modal */}
+            <PricingModal
+              isOpen={showPricingModal}
+              onClose={handlePricingModalClose}
+              canDismiss={true} // Can dismiss from profile page
+              currentPlan={user?.tier || 'free'}
+              userId={user?.id}
+              userPhone={user?.phone}
+            />
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && selectedProperty && (

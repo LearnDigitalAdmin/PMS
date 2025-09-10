@@ -35,7 +35,7 @@ const Profile: React.FC = () => {
   };
 
   const handleEmailContact = () => {
-    window.open('mailto:info@smbkenya.com', '_blank');
+    window.open('mailto:sammyem999@gmail.com', '_blank');
   };
 
   const handlePhoneCall = () => {

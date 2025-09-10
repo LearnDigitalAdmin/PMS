@@ -313,130 +313,258 @@ const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSave = async () => {
-    if (!validateForm()) return;
+  // const handleSave = async () => {
+  //   if (!validateForm()) return;
 
-    try {
-      setSaving(true);
+  //   try {
+  //     setSaving(true);
 
-      // Prepare utility items
-      const utilityItemsInput: TranscriptItemInput[] = utilityItems.map(item => ({
-        transcriptId: 0, // Will be set during creation
-        description: item.description,
-        amount: item.amount,
-        type: item.type,
-        category: item.type === 'water' ? 'Utilities' : 'Utilities',
-        isDeductible: !item.isRemittedToLandlord // If not remitted to landlord, it's a deduction
-      }));
+  //     // Prepare utility items
+  //     const utilityItemsInput: TranscriptItemInput[] = utilityItems.map(item => ({
+  //       transcriptId: 0, // Will be set during creation
+  //       description: item.description,
+  //       amount: item.amount,
+  //       type: item.type,
+  //       category: item.type === 'water' ? 'Utilities' : 'Utilities',
+  //       isDeductible: !item.isRemittedToLandlord // If not remitted to landlord, it's a deduction
+  //     }));
 
-      // Prepare custom items
-      const customItemsInput: TranscriptItemInput[] = customItems.map(item => ({
-        transcriptId: 0, // Will be set during creation
-        description: item.description,
-        amount: item.amount,
-        type: item.type === 'deductible' ? 'deductible' : 'custom',
-        category: item.category,
-        isDeductible: item.isDeductible
-      }));
+  //     // Prepare custom items
+  //     const customItemsInput: TranscriptItemInput[] = customItems.map(item => ({
+  //       transcriptId: 0, // Will be set during creation
+  //       description: item.description,
+  //       amount: item.amount,
+  //       type: item.type === 'deductible' ? 'deductible' : 'custom',
+  //       category: item.category,
+  //       isDeductible: item.isDeductible
+  //     }));
 
-      // Combine all custom items (utilities + custom)
-      const allCustomItems = [...utilityItemsInput, ...customItemsInput];
+  //     // Combine all custom items (utilities + custom)
+  //     const allCustomItems = [...utilityItemsInput, ...customItemsInput];
 
-      const transcriptInput: MonthlyTranscriptInput = {
-        propertyId,
-        billingMonth: currentMonth,
-        landlordName: formData.landlordName,
-        landlordContact: formData.landlordContact || undefined,
-        notes: formData.notes || undefined,
-        customItems: allCustomItems
-      };
+  //     const transcriptInput: MonthlyTranscriptInput = {
+  //       propertyId,
+  //       billingMonth: currentMonth,
+  //       landlordName: formData.landlordName,
+  //       landlordContact: formData.landlordContact || undefined,
+  //       notes: formData.notes || undefined,
+  //       customItems: allCustomItems
+  //     };
 
-      if (transcript) {
-        // Update existing transcript
-        await reportsDatabase.updateTranscriptStatus(
-          transcript.id, 
-          transcript.status, 
-          formData.notes
-        );
+  //     if (transcript) {
+  //       // Update existing transcript
+  //       await reportsDatabase.updateTranscriptStatus(
+  //         transcript.id, 
+  //         transcript.status, 
+  //         formData.notes
+  //       );
 
-        // Handle utility items updates
-        for (const item of utilityItems) {
-          if (item.isNew) {
-            // Add new utility item
-            await reportsDatabase.addTranscriptItem({
-              transcriptId: transcript.id,
-              description: item.description,
-              amount: item.amount,
-              type: item.type,
-              category: 'Utilities',
-              isDeductible: !item.isRemittedToLandlord
-            });
-          } else {
-            // Update existing utility item
-            await reportsDatabase.updateTranscriptItem(parseInt(item.id), {
-              description: item.description,
-              amount: item.amount,
-              type: item.type,
-              category: 'Utilities',
-              isDeductible: !item.isRemittedToLandlord
-            });
-          }
-        }
+  //       // Handle utility items updates
+  //       for (const item of utilityItems) {
+  //         if (item.isNew) {
+  //           // Add new utility item
+  //           await reportsDatabase.addTranscriptItem({
+  //             transcriptId: transcript.id,
+  //             description: item.description,
+  //             amount: item.amount,
+  //             type: item.type,
+  //             category: 'Utilities',
+  //             isDeductible: !item.isRemittedToLandlord
+  //           });
+  //         } else {
+  //           // Update existing utility item
+  //           await reportsDatabase.updateTranscriptItem(parseInt(item.id), {
+  //             description: item.description,
+  //             amount: item.amount,
+  //             type: item.type,
+  //             category: 'Utilities',
+  //             isDeductible: !item.isRemittedToLandlord
+  //           });
+  //         }
+  //       }
 
-        // Handle custom items updates
-        for (const item of customItems) {
-          if (item.isNew) {
-            // Add new item
-            await reportsDatabase.addTranscriptItem({
-              transcriptId: transcript.id,
-              description: item.description,
-              amount: item.amount,
-              type: item.type === 'deductible' ? 'deductible' : 'custom',
-              category: item.category,
-              isDeductible: item.isDeductible
-            });
-          } else {
-            // Update existing item
-            await reportsDatabase.updateTranscriptItem(parseInt(item.id), {
-              description: item.description,
-              amount: item.amount,
-              type: item.type === 'deductible' ? 'deductible' : 'custom',
-              category: item.category,
-              isDeductible: item.isDeductible
-            });
-          }
-        }
+  //       // Handle custom items updates
+  //       for (const item of customItems) {
+  //         if (item.isNew) {
+  //           // Add new item
+  //           await reportsDatabase.addTranscriptItem({
+  //             transcriptId: transcript.id,
+  //             description: item.description,
+  //             amount: item.amount,
+  //             type: item.type === 'deductible' ? 'deductible' : 'custom',
+  //             category: item.category,
+  //             isDeductible: item.isDeductible
+  //           });
+  //         } else {
+  //           // Update existing item
+  //           await reportsDatabase.updateTranscriptItem(parseInt(item.id), {
+  //             description: item.description,
+  //             amount: item.amount,
+  //             type: item.type === 'deductible' ? 'deductible' : 'custom',
+  //             category: item.category,
+  //             isDeductible: item.isDeductible
+  //           });
+  //         }
+  //       }
 
-        // Remove deleted items
-        const originalItems = transcript.items.filter(item => 
-          !['rent'].includes(item.type) && 
-          !item.description.toLowerCase().includes('commission')
-        );
+  //       // Remove deleted items
+  //       const originalItems = transcript.items.filter(item => 
+  //         !['rent'].includes(item.type) && 
+  //         !item.description.toLowerCase().includes('commission')
+  //       );
         
-        for (const originalItem of originalItems) {
-          const stillExists = 
-            (originalItem.type === 'water' && utilityItems.some(item => !item.isNew && item.id === originalItem.id.toString())) ||
-            (originalItem.type === 'power' && utilityItems.some(item => !item.isNew && item.id === originalItem.id.toString())) ||
-            (originalItem.type !== 'water' && originalItem.type !== 'power' && 
-             customItems.some(item => !item.isNew && item.id === originalItem.id.toString()));
+  //       for (const originalItem of originalItems) {
+  //         const stillExists = 
+  //           (originalItem.type === 'water' && utilityItems.some(item => !item.isNew && item.id === originalItem.id.toString())) ||
+  //           (originalItem.type === 'power' && utilityItems.some(item => !item.isNew && item.id === originalItem.id.toString())) ||
+  //           (originalItem.type !== 'water' && originalItem.type !== 'power' && 
+  //            customItems.some(item => !item.isNew && item.id === originalItem.id.toString()));
           
-          if (!stillExists) {
-            await reportsDatabase.deleteTranscriptItem(originalItem.id);
-          }
+  //         if (!stillExists) {
+  //           await reportsDatabase.deleteTranscriptItem(originalItem.id);
+  //         }
+  //       }
+  //     } else {
+  //       // Create new transcript
+  //       await reportsDatabase.generateMonthlyTranscript(transcriptInput, userId);
+  //     }
+
+  //     onSaved();
+  //   } catch (error) {
+  //     console.error('Error saving transcript:', error);
+  //     setErrors({ general: 'Failed to save transcript. Please try again.' });
+  //   } finally {
+  //     setSaving(false);
+  //   }
+  // };
+  const handleSave = async () => {
+  if (!validateForm()) return;
+
+  try {
+    setSaving(true);
+
+    // Prepare utility items - FIX THE LOGIC HERE
+    const utilityItemsInput: TranscriptItemInput[] = utilityItems.map(item => ({
+      transcriptId: 0, // Will be set during creation
+      description: item.description,
+      amount: item.amount,
+      type: item.type,
+      category: item.type === 'water' ? 'Utilities' : 'Utilities',
+      // FIXED: When isRemittedToLandlord is FALSE (Agent Pays), it should be a deduction (TRUE)
+      // When isRemittedToLandlord is TRUE (Remit to Landlord), it should NOT be a deduction (FALSE)
+      isDeductible: !item.isRemittedToLandlord
+    }));
+
+    // Prepare custom items
+    const customItemsInput: TranscriptItemInput[] = customItems.map(item => ({
+      transcriptId: 0, // Will be set during creation
+      description: item.description,
+      amount: item.amount,
+      type: item.type === 'deductible' ? 'deductible' : 'custom',
+      category: item.category,
+      isDeductible: item.isDeductible
+    }));
+
+    // Combine all custom items (utilities + custom)
+    const allCustomItems = [...utilityItemsInput, ...customItemsInput];
+
+    const transcriptInput: MonthlyTranscriptInput = {
+      propertyId,
+      billingMonth: currentMonth,
+      landlordName: formData.landlordName,
+      landlordContact: formData.landlordContact || undefined,
+      notes: formData.notes || undefined,
+      customItems: allCustomItems
+    };
+
+    if (transcript) {
+      // Update existing transcript
+      await reportsDatabase.updateTranscriptStatus(
+        transcript.id, 
+        transcript.status, 
+        formData.notes
+      );
+
+      // Handle utility items updates
+      for (const item of utilityItems) {
+        if (item.isNew) {
+          // Add new utility item
+          await reportsDatabase.addTranscriptItem({
+            transcriptId: transcript.id,
+            description: item.description,
+            amount: item.amount,
+            type: item.type,
+            category: 'Utilities',
+            // FIXED: Same logic fix here
+            isDeductible: !item.isRemittedToLandlord
+          });
+        } else {
+          // Update existing utility item
+          await reportsDatabase.updateTranscriptItem(parseInt(item.id), {
+            description: item.description,
+            amount: item.amount,
+            type: item.type,
+            category: 'Utilities',
+            // FIXED: Same logic fix here
+            isDeductible: !item.isRemittedToLandlord
+          });
         }
-      } else {
-        // Create new transcript
-        await reportsDatabase.generateMonthlyTranscript(transcriptInput, userId);
       }
 
-      onSaved();
-    } catch (error) {
-      console.error('Error saving transcript:', error);
-      setErrors({ general: 'Failed to save transcript. Please try again.' });
-    } finally {
-      setSaving(false);
+      // Handle custom items updates
+      for (const item of customItems) {
+        if (item.isNew) {
+          // Add new item
+          await reportsDatabase.addTranscriptItem({
+            transcriptId: transcript.id,
+            description: item.description,
+            amount: item.amount,
+            type: item.type === 'deductible' ? 'deductible' : 'custom',
+            category: item.category,
+            isDeductible: item.isDeductible
+          });
+        } else {
+          // Update existing item
+          await reportsDatabase.updateTranscriptItem(parseInt(item.id), {
+            description: item.description,
+            amount: item.amount,
+            type: item.type === 'deductible' ? 'deductible' : 'custom',
+            category: item.category,
+            isDeductible: item.isDeductible
+          });
+        }
+      }
+
+      // Remove deleted items
+      const originalItems = transcript.items.filter(item => 
+        !['rent'].includes(item.type) && 
+        !item.description.toLowerCase().includes('commission')
+      );
+      
+      for (const originalItem of originalItems) {
+        const stillExists = 
+          (originalItem.type === 'water' && utilityItems.some(item => !item.isNew && item.id === originalItem.id.toString())) ||
+          (originalItem.type === 'power' && utilityItems.some(item => !item.isNew && item.id === originalItem.id.toString())) ||
+          (originalItem.type !== 'water' && originalItem.type !== 'power' && 
+           customItems.some(item => !item.isNew && item.id === originalItem.id.toString()));
+        
+        if (!stillExists) {
+          await reportsDatabase.deleteTranscriptItem(originalItem.id);
+        }
+      }
+    } else {
+      // Create new transcript
+      await reportsDatabase.generateMonthlyTranscript(transcriptInput, userId);
     }
-  };
+
+    onSaved();
+  } catch (error) {
+    console.error('Error saving transcript:', error);
+    setErrors({ general: 'Failed to save transcript. Please try again.' });
+  } finally {
+    setSaving(false);
+  }
+};
 
   if (loading) {
     return (
