@@ -156,12 +156,12 @@ export class ReportsDatabase {
         billingMonth: input.billingMonth
       });
 
-      // Calculate totals from invoices
+      // Calculate base amounts from invoices
       const grossRentCollected = invoices
         .filter(inv => inv.isPaid)
         .reduce((sum, inv) => sum + inv.rentAmount, 0);
 
-      const totalWaterCharges = invoices
+      const invoiceWaterCharges = invoices
         .filter(inv => inv.isPaid)
         .reduce((sum, inv) => {
           const waterAmount = (inv.waterCurrentReading - inv.waterPreviousReading) * 
@@ -169,7 +169,7 @@ export class ReportsDatabase {
           return sum + waterAmount;
         }, 0);
 
-      const totalPowerCharges = invoices
+      const invoicePowerCharges = invoices
         .filter(inv => inv.isPaid)
         .reduce((sum, inv) => {
           const powerAmount = (inv.powerCurrentReading - inv.powerPreviousReading) * 
@@ -181,12 +181,16 @@ export class ReportsDatabase {
         .filter(inv => inv.isPaid)
         .reduce((sum, inv) => sum + inv.otherCharges, 0);
 
+      // Calculate commission on rent only (standard practice)
       const agentCommission = grossRentCollected * (property.agentCommissionRate / 100);
-      let totalDeductibles = 0;
-      let netAmountToLandlord = grossRentCollected + totalWaterCharges + totalPowerCharges + 
-        totalOtherCharges - agentCommission;
 
-      // Create transcript record
+      // Initialize with defaults - will be recalculated after adding items
+      let totalWaterCharges = 0;
+      let totalPowerCharges = 0;
+      let totalDeductibles = agentCommission; // Commission is always a deduction
+      let netAmountToLandlord = grossRentCollected + totalOtherCharges;
+
+      // Create transcript record with initial values
       const transcriptQuery = `
         INSERT INTO monthly_transcripts (
           property_id, billing_month, landlord_name, landlord_contact,
@@ -216,72 +220,112 @@ export class ReportsDatabase {
 
       const transcriptId = result.changes!.lastId!;
 
-      // Add auto-generated items (rent, water, power, other, commission)
-      const autoItems = [
-        {
-          description: 'Rent Collected',
-          amount: grossRentCollected,
-          type: 'rent' as const,
-          isDeductible: false,
-          sortOrder: 1
-        },
-        {
-          description: 'Water Charges',
-          amount: totalWaterCharges,
-          type: 'water' as const,
-          isDeductible: false,
-          sortOrder: 2
-        },
-        {
-          description: 'Power Charges',
-          amount: totalPowerCharges,
-          type: 'power' as const,
-          isDeductible: false,
-          sortOrder: 3
-        },
-        {
+      // Add rent collected item (always income)
+      await this.addTranscriptItem({
+        transcriptId,
+        description: 'Rent Collected',
+        amount: grossRentCollected,
+        type: 'rent',
+        isDeductible: false,
+        sortOrder: 1
+      });
+
+      // Add other charges if any
+      if (totalOtherCharges > 0) {
+        await this.addTranscriptItem({
+          transcriptId,
           description: 'Other Charges',
           amount: totalOtherCharges,
-          type: 'custom' as const,
+          type: 'custom',
           isDeductible: false,
-          sortOrder: 4
-        },
-        {
-          description: `Agent Commission (${property.agentCommissionRate}%)`,
-          amount: agentCommission,
-          type: 'deductible' as const,
-          isDeductible: true,
-          sortOrder: 5
-        }
-      ];
+          sortOrder: 2
+        });
+      }
 
-      // Add custom items if provided
-      let sortOrder = 6;
+      // Add commission deduction (always deductible)
+      await this.addTranscriptItem({
+        transcriptId,
+        description: `Agent Commission (${property.agentCommissionRate}%)`,
+        amount: agentCommission,
+        type: 'deductible',
+        isDeductible: true,
+        sortOrder: 3
+      });
+
+      let sortOrder = 4;
+
+      // Process custom items (including utilities)
       if (input.customItems) {
+        // Look for water and power items in custom items
+        const waterItem = input.customItems.find(item => item.type === 'water');
+        const powerItem = input.customItems.find(item => item.type === 'power');
+
+        // If no custom water item provided, use invoice default (remitted to landlord)
+        if (!waterItem && invoiceWaterCharges > 0) {
+          await this.addTranscriptItem({
+            transcriptId,
+            description: 'Water Charges',
+            amount: invoiceWaterCharges,
+            type: 'water',
+            category: 'Utilities',
+            isDeductible: false, // Default: remit to landlord
+            sortOrder: sortOrder++
+          });
+        }
+
+        // If no custom power item provided, use invoice default (remitted to landlord)
+        if (!powerItem && invoicePowerCharges > 0) {
+          await this.addTranscriptItem({
+            transcriptId,
+            description: 'Power Charges',
+            amount: invoicePowerCharges,
+            type: 'power',
+            category: 'Utilities',
+            isDeductible: false, // Default: remit to landlord
+            sortOrder: sortOrder++
+          });
+        }
+
+        // Add all custom items
         for (const item of input.customItems) {
-          autoItems.push({
+          await this.addTranscriptItem({
+            transcriptId,
             description: item.description,
             amount: item.amount,
             type: item.type,
+            category: item.category,
             isDeductible: item.isDeductible,
             sortOrder: item.sortOrder || sortOrder++
           });
         }
+      } else {
+        // No custom items provided, use invoice defaults
+        if (invoiceWaterCharges > 0) {
+          await this.addTranscriptItem({
+            transcriptId,
+            description: 'Water Charges',
+            amount: invoiceWaterCharges,
+            type: 'water',
+            category: 'Utilities',
+            isDeductible: false,
+            sortOrder: sortOrder++
+          });
+        }
+
+        if (invoicePowerCharges > 0) {
+          await this.addTranscriptItem({
+            transcriptId,
+            description: 'Power Charges',
+            amount: invoicePowerCharges,
+            type: 'power',
+            category: 'Utilities',
+            isDeductible: false,
+            sortOrder: sortOrder++
+          });
+        }
       }
 
-      // Insert all items
-      for (const item of autoItems) {
-        await this.addTranscriptItem({
-          transcriptId,
-          description: item.description,
-          amount: item.amount,
-          type: item.type,
-          isDeductible: item.isDeductible,
-          sortOrder: item.sortOrder
-        });
-      }
-
-      // Recalculate totals including custom deductibles
+      // Recalculate totals based on all items
       await this.recalculateTranscriptTotals(transcriptId);
 
       // Return full transcript with details
@@ -324,26 +368,49 @@ export class ReportsDatabase {
     const items = result.values || [];
 
     let totalDeductibles = 0;
-    let grossIncome = 0;
+    let totalIncome = 0;
+    let totalWaterCharges = 0;
+    let totalPowerCharges = 0;
+    let agentCommission = 0;
 
     for (const item of items) {
       if (item.is_deductible) {
         totalDeductibles += item.amount;
+        // Track commission separately
+        if (item.description.toLowerCase().includes('commission')) {
+          agentCommission = item.amount;
+        }
       } else {
-        grossIncome += item.amount;
+        totalIncome += item.amount;
+        // Track utilities separately for reporting
+        if (item.type === 'water') {
+          totalWaterCharges += item.amount;
+        } else if (item.type === 'power') {
+          totalPowerCharges += item.amount;
+        }
       }
     }
 
-    const netAmountToLandlord = grossIncome - totalDeductibles;
+    // Calculate net amount: Total Income - Total Deductions
+    const netAmountToLandlord = totalIncome - totalDeductibles;
 
     // Update transcript totals
     const updateQuery = `
       UPDATE monthly_transcripts 
-      SET total_deductibles = ?, net_amount_to_landlord = ?, updated_at = CURRENT_TIMESTAMP
+      SET total_deductibles = ?, net_amount_to_landlord = ?, 
+          total_water_charges = ?, total_power_charges = ?,
+          agent_commission = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `;
 
-    await database.db!.run(updateQuery, [totalDeductibles, netAmountToLandlord, transcriptId]);
+    await database.db!.run(updateQuery, [
+      totalDeductibles, 
+      netAmountToLandlord, 
+      totalWaterCharges, 
+      totalPowerCharges,
+      agentCommission,
+      transcriptId
+    ]);
   }
 
   async getTranscriptWithDetails(transcriptId: number): Promise<TranscriptWithDetails> {

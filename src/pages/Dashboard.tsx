@@ -21,7 +21,9 @@ import {
   TrendingDown,
   Activity,
   BarChart3,
-  PieChart as PieChartIcon
+  PieChart as PieChartIcon,
+  DownloadCloud,
+  UploadCloud
 } from 'lucide-react';
 import { 
   Area, 
@@ -615,7 +617,7 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
       // Load properties (assuming userId = 1 for demo)
       const propertiesData = await database.getProperties(userData.id);
       setProperties(propertiesData);
-      console.log('Loaded properties:', propertiesData);
+      console.log('Loaded DDDD properties:', propertiesData);
 
       // Load dashboard data
       const dashData = await database.getDashboardData(
@@ -699,7 +701,15 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
   const handleSave = async () => {
     if (userData.storage) {
       setLoading(true);
-      await firebaseSyncService.forceSyncUserData(userData.id);
+      await firebaseSyncService.forceUpload(userData.id);
+      setLoading(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    if (userData.storage) {
+      setLoading(true);
+      await firebaseSyncService.forceDownload(userData.id);
       setLoading(false);
     }
   };
@@ -963,21 +973,21 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
           Quick Actions
         </h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <button className="p-4 text-center bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
+          {/* <button className="p-4 text-center bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
             <FileText className="w-6 h-6 mx-auto mb-2" />
             <span className="text-sm font-medium">Create Invoice on tab 3</span>
           </button>
           <button className="p-4 text-center bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
             <Users className="w-6 h-6 mx-auto mb-2" />
-            <span className="text-sm font-medium">Add Tenant on tab 2</span>
-          </button>
-          <button className="p-4 text-center bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
-            <Building className="w-6 h-6 mx-auto mb-2" />
             <span className="text-sm font-medium">Add Property tab 2</span>
+          </button> */}
+          <button onClick={handleDownload} className="p-4 text-center bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
+            <DownloadCloud className="w-6 h-6 mx-auto mb-2" />
+            <span className="text-sm font-medium"> DOWNLOAD DATA</span>
           </button>
-          <button onClick={handleSave} className="p-4 text-center bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
-            <BarChart3 className="w-6 h-6 mx-auto mb-2" />
-            <span className="text-sm font-medium">Save Data</span>
+          <button onClick={handleSave} className="p-4 text-center bg-gradient-to-r from-red-500 to-orange-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
+            <UploadCloud className="w-6 h-6 mx-auto mb-2" />
+            <span className="text-sm font-medium">SAVE DATA</span>
           </button>
         </div>
       </div>

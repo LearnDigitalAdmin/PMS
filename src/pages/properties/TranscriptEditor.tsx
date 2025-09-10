@@ -14,7 +14,9 @@ import {
   AlertCircle,
   CheckCircle,
   Edit3,
-  GripVertical
+  GripVertical,
+  Droplets,
+  Zap
 } from 'lucide-react';
 import { database } from '../../services/database/Database';
 import { 
@@ -38,11 +40,20 @@ interface FormData {
   notes: string;
 }
 
+interface UtilityItem {
+  id: string;
+  description: string;
+  amount: number;
+  type: 'water' | 'power';
+  isRemittedToLandlord: boolean;
+  isNew: boolean;
+}
+
 interface CustomItem {
   id: string;
   description: string;
   amount: number;
-  type: 'deductible' | 'custom';
+  type: 'deductible' | 'income';
   category: string;
   isDeductible: boolean;
   isNew: boolean;
@@ -65,6 +76,7 @@ const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
     landlordContact: '',
     notes: ''
   });
+  const [utilityItems, setUtilityItems] = useState<UtilityItem[]>([]);
   const [customItems, setCustomItems] = useState<CustomItem[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -95,14 +107,45 @@ const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
           notes: transcriptWithDetails.notes || ''
         });
 
-        // Load custom items (excluding auto-generated ones)
+        // Load utility items (water and power)
+        const waterItem = transcriptWithDetails.items.find(item => item.type === 'water');
+        const powerItem = transcriptWithDetails.items.find(item => item.type === 'power');
+        
+        const utilityItemsFromTranscript: UtilityItem[] = [];
+        
+        if (waterItem) {
+          utilityItemsFromTranscript.push({
+            id: waterItem.id.toString(),
+            description: waterItem.description,
+            amount: waterItem.amount,
+            type: 'water',
+            isRemittedToLandlord: !waterItem.isDeductible,
+            isNew: false
+          });
+        }
+        
+        if (powerItem) {
+          utilityItemsFromTranscript.push({
+            id: powerItem.id.toString(),
+            description: powerItem.description,
+            amount: powerItem.amount,
+            type: 'power',
+            isRemittedToLandlord: !powerItem.isDeductible,
+            isNew: false
+          });
+        }
+        
+        setUtilityItems(utilityItemsFromTranscript);
+
+        // Load custom items (excluding rent, water, power, and commission)
         const customTranscriptItems = transcriptWithDetails.items
-          .filter(item => !['rent', 'water', 'power'].includes(item.type) || item.type === 'custom')
+          .filter(item => !['rent', 'water', 'power'].includes(item.type) && 
+                         !item.description.toLowerCase().includes('commission'))
           .map(item => ({
             id: item.id.toString(),
             description: item.description,
             amount: item.amount,
-            type: item.isDeductible ? 'deductible' as const : 'custom' as const,
+            type: item.isDeductible ? 'deductible' as const : 'income' as const,
             category: item.category || '',
             isDeductible: item.isDeductible,
             isNew: false
@@ -110,7 +153,8 @@ const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
         
         setCustomItems(customTranscriptItems);
       } else {
-        // New transcript - set default landlord name from property if available
+        // New transcript - prefill utility items from invoices
+        await loadUtilityDefaults();
         setFormData({
           landlordName: '',
           landlordContact: '',
@@ -122,6 +166,62 @@ const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
       console.error('Error loading transcript editor data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadUtilityDefaults = async () => {
+    try {
+      // Get invoices for the current month to calculate default utility amounts
+      const invoices = await database.getInvoices({
+        propertyId,
+        billingMonth: currentMonth
+      });
+
+      const totalWaterCharges = invoices
+        .filter(inv => inv.isPaid)
+        .reduce((sum, inv) => {
+          const waterAmount = (inv.waterCurrentReading - inv.waterPreviousReading) * 
+            inv.waterUnitPrice + inv.waterStandingFee;
+          return sum + waterAmount;
+        }, 0);
+
+      const totalPowerCharges = invoices
+        .filter(inv => inv.isPaid)
+        .reduce((sum, inv) => {
+          const powerAmount = (inv.powerCurrentReading - inv.powerPreviousReading) * 
+            inv.powerUnitPrice;
+          return sum + powerAmount;
+        }, 0);
+
+      const defaultUtilities: UtilityItem[] = [];
+      
+      if (totalWaterCharges > 0) {
+        defaultUtilities.push({
+          id: 'water-default',
+          description: 'Water Charges',
+          amount: totalWaterCharges,
+          type: 'water',
+          isRemittedToLandlord: true, // Default to remitting to landlord
+          isNew: true
+        });
+      }
+
+      if (totalPowerCharges > 0) {
+        defaultUtilities.push({
+          id: 'power-default',
+          description: 'Power Charges',
+          amount: totalPowerCharges,
+          type: 'power',
+          isRemittedToLandlord: true, // Default to remitting to landlord
+          isNew: true
+        });
+      }
+
+      setUtilityItems(defaultUtilities);
+    } catch (error) {
+      console.error('Error loading utility defaults:', error);
+      // Set empty defaults if there's an error
+      setUtilityItems([]);
     }
   };
 
@@ -143,6 +243,16 @@ const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
     
     const newMonth = `${currentDate.getFullYear()}-${(currentDate.getMonth() + 1).toString().padStart(2, '0')}`;
     setCurrentMonth(newMonth);
+  };
+
+  const updateUtilityItem = (id: string, updates: Partial<UtilityItem>) => {
+    setUtilityItems(items => 
+      items.map(item => 
+        item.id === id 
+          ? { ...item, ...updates }
+          : item
+      )
+    );
   };
 
   const addCustomItem = () => {
@@ -179,8 +289,18 @@ const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
       newErrors.landlordName = 'Landlord name is required';
     }
 
+    // Validate utility items
+    utilityItems.forEach((item) => {
+      if (!item.description.trim()) {
+        newErrors[`utility-${item.id}-description`] = 'Description is required';
+      }
+      if (item.amount < 0) {
+        newErrors[`utility-${item.id}-amount`] = 'Amount cannot be negative';
+      }
+    });
+
     // Validate custom items
-    customItems.forEach((item, _index) => {
+    customItems.forEach((item) => {
       if (!item.description.trim()) {
         newErrors[`item-${item.id}-description`] = 'Description is required';
       }
@@ -199,14 +319,28 @@ const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
     try {
       setSaving(true);
 
-      const customItemsInput: TranscriptItemInput[] = customItems.map(item => ({
+      // Prepare utility items
+      const utilityItemsInput: TranscriptItemInput[] = utilityItems.map(item => ({
         transcriptId: 0, // Will be set during creation
         description: item.description,
         amount: item.amount,
         type: item.type,
+        category: item.type === 'water' ? 'Utilities' : 'Utilities',
+        isDeductible: !item.isRemittedToLandlord // If not remitted to landlord, it's a deduction
+      }));
+
+      // Prepare custom items
+      const customItemsInput: TranscriptItemInput[] = customItems.map(item => ({
+        transcriptId: 0, // Will be set during creation
+        description: item.description,
+        amount: item.amount,
+        type: item.type === 'deductible' ? 'deductible' : 'custom',
         category: item.category,
         isDeductible: item.isDeductible
       }));
+
+      // Combine all custom items (utilities + custom)
+      const allCustomItems = [...utilityItemsInput, ...customItemsInput];
 
       const transcriptInput: MonthlyTranscriptInput = {
         propertyId,
@@ -214,17 +348,40 @@ const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
         landlordName: formData.landlordName,
         landlordContact: formData.landlordContact || undefined,
         notes: formData.notes || undefined,
-        customItems: customItemsInput
+        customItems: allCustomItems
       };
 
       if (transcript) {
         // Update existing transcript
-        // First update the basic transcript info
         await reportsDatabase.updateTranscriptStatus(
           transcript.id, 
           transcript.status, 
           formData.notes
         );
+
+        // Handle utility items updates
+        for (const item of utilityItems) {
+          if (item.isNew) {
+            // Add new utility item
+            await reportsDatabase.addTranscriptItem({
+              transcriptId: transcript.id,
+              description: item.description,
+              amount: item.amount,
+              type: item.type,
+              category: 'Utilities',
+              isDeductible: !item.isRemittedToLandlord
+            });
+          } else {
+            // Update existing utility item
+            await reportsDatabase.updateTranscriptItem(parseInt(item.id), {
+              description: item.description,
+              amount: item.amount,
+              type: item.type,
+              category: 'Utilities',
+              isDeductible: !item.isRemittedToLandlord
+            });
+          }
+        }
 
         // Handle custom items updates
         for (const item of customItems) {
@@ -234,7 +391,7 @@ const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
               transcriptId: transcript.id,
               description: item.description,
               amount: item.amount,
-              type: item.type,
+              type: item.type === 'deductible' ? 'deductible' : 'custom',
               category: item.category,
               isDeductible: item.isDeductible
             });
@@ -243,22 +400,26 @@ const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
             await reportsDatabase.updateTranscriptItem(parseInt(item.id), {
               description: item.description,
               amount: item.amount,
-              type: item.type,
+              type: item.type === 'deductible' ? 'deductible' : 'custom',
               category: item.category,
               isDeductible: item.isDeductible
             });
           }
         }
 
-        // Remove deleted items (items that were in original transcript but not in current customItems)
-        const originalCustomItems = transcript.items.filter(item => 
-          !['rent', 'water', 'power'].includes(item.type) || item.type === 'custom'
+        // Remove deleted items
+        const originalItems = transcript.items.filter(item => 
+          !['rent'].includes(item.type) && 
+          !item.description.toLowerCase().includes('commission')
         );
         
-        for (const originalItem of originalCustomItems) {
-          const stillExists = customItems.some(item => 
-            !item.isNew && item.id === originalItem.id.toString()
-          );
+        for (const originalItem of originalItems) {
+          const stillExists = 
+            (originalItem.type === 'water' && utilityItems.some(item => !item.isNew && item.id === originalItem.id.toString())) ||
+            (originalItem.type === 'power' && utilityItems.some(item => !item.isNew && item.id === originalItem.id.toString())) ||
+            (originalItem.type !== 'water' && originalItem.type !== 'power' && 
+             customItems.some(item => !item.isNew && item.id === originalItem.id.toString()));
+          
           if (!stillExists) {
             await reportsDatabase.deleteTranscriptItem(originalItem.id);
           }
@@ -439,6 +600,114 @@ const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
             </div>
           </div>
 
+          {/* Utility Items */}
+          <div className="bg-white border border-gray-200 rounded-xl p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+              <Droplets className="w-5 h-5" />
+              Utility Charges
+            </h3>
+            
+            {utilityItems.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <div className="flex justify-center gap-2 mb-4">
+                  <Droplets className="w-12 h-12 text-gray-300" />
+                  <Zap className="w-12 h-12 text-gray-300" />
+                </div>
+                <p className="text-lg font-medium mb-2">No Utility Charges</p>
+                <p className="text-sm">No water or power charges found for this billing period.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {utilityItems.map((item) => (
+                  <div key={item.id} className="bg-gray-50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-4">
+                      {item.type === 'water' ? (
+                        <Droplets className="w-5 h-5 text-blue-600" />
+                      ) : (
+                        <Zap className="w-5 h-5 text-yellow-600" />
+                      )}
+                      <span className="font-medium text-gray-900 capitalize">{item.type} Charges</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                      <div className="md:col-span-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Description *
+                        </label>
+                        <input
+                          type="text"
+                          value={item.description}
+                          onChange={(e) => updateUtilityItem(item.id, { description: e.target.value })}
+                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all ${
+                            errors[`utility-${item.id}-description`] ? 'border-red-500' : 'border-gray-200'
+                          }`}
+                          placeholder={`${item.type.charAt(0).toUpperCase() + item.type.slice(1)} Charges`}
+                        />
+                        {errors[`utility-${item.id}-description`] && (
+                          <p className="text-red-500 text-xs mt-1">{errors[`utility-${item.id}-description`]}</p>
+                        )}
+                      </div>
+
+                      <div className="md:col-span-3">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Amount *
+                        </label>
+                        <input
+                          type="number"
+                          value={item.amount}
+                          onChange={(e) => updateUtilityItem(item.id, { amount: Number(e.target.value) })}
+                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all ${
+                            errors[`utility-${item.id}-amount`] ? 'border-red-500' : 'border-gray-200'
+                          }`}
+                          placeholder="0.00"
+                          min="0"
+                          step="0.01"
+                        />
+                        {errors[`utility-${item.id}-amount`] && (
+                          <p className="text-red-500 text-xs mt-1">{errors[`utility-${item.id}-amount`]}</p>
+                        )}
+                      </div>
+
+                      <div className="md:col-span-5">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Payment Responsibility
+                        </label>
+                        <div className="flex items-center gap-4">
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name={`utility-${item.id}-responsibility`}
+                              checked={item.isRemittedToLandlord}
+                              onChange={() => updateUtilityItem(item.id, { isRemittedToLandlord: true })}
+                              className="text-purple-600 focus:ring-purple-500"
+                            />
+                            <span className="text-sm">Remit to Landlord</span>
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name={`utility-${item.id}-responsibility`}
+                              checked={!item.isRemittedToLandlord}
+                              onChange={() => updateUtilityItem(item.id, { isRemittedToLandlord: false })}
+                              className="text-purple-600 focus:ring-purple-500"
+                            />
+                            <span className="text-sm">Agent Pays</span>
+                          </label>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {item.isRemittedToLandlord 
+                            ? 'This amount will be added to landlord payment' 
+                            : 'This amount will be deducted as agent expense'
+                          }
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Custom Items */}
           <div className="bg-white border border-gray-200 rounded-xl p-6">
             <div className="flex items-center justify-between mb-6">
@@ -522,13 +791,13 @@ const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
                         <select
                           value={item.type}
                           onChange={(e) => updateCustomItem(item.id, { 
-                            type: e.target.value as 'deductible' | 'custom',
+                            type: e.target.value as 'deductible' | 'income',
                             isDeductible: e.target.value === 'deductible'
                           })}
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
                         >
                           <option value="deductible">Deduction</option>
-                          <option value="custom">Income</option>
+                          <option value="income">Income</option>
                         </select>
                       </div>
 
@@ -544,6 +813,19 @@ const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
                           placeholder="Optional"
                         />
                       </div>
+                    </div>
+                    
+                    {/* Type explanation */}
+                    <div className="mt-2 text-xs text-gray-500">
+                      {item.type === 'deductible' ? (
+                        <span className="text-red-600">
+                          ⚠️ This amount will be deducted from the landlord payment
+                        </span>
+                      ) : (
+                        <span className="text-green-600">
+                          ✓ This amount will be added to the landlord payment
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))}

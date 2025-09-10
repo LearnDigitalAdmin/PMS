@@ -307,7 +307,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // during the sync process. The new flattened sync structure handles this better.
 
       // Perform full data sync - this will replace all data
-      await firebaseSyncService.performFullSync(userId);
+      //await firebaseSyncService.performFullSync(userId);
+      await firebaseSyncService.forceDownload(userId);
       console.log('Complete user data downloaded and ALL LOCAL DATA REPLACED');
       
     } catch (error) {
@@ -406,7 +407,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (user && canUserSync(user)) {
         setTimeout(async () => {
           try {
-            await firebaseSyncService.performFullSync(user.id);
+            await firebaseSyncService.startUploadScheduling(user.id);
             await updateSyncStatus(user.id);
           } catch (error) {
             console.error('Online sync failed:', error);
@@ -475,7 +476,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       });
 
       // Start automatic sync with new flattened structure
-      firebaseSyncService.startAutomaticSync(user.id);
+      //firebaseSyncService.startAutomaticSync(user.id);
+      firebaseSyncService.initializeForUser(user.id);
       
     } catch (error) {
       console.error('Failed to initialize user sync:', error);
@@ -486,7 +488,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const updateSyncStatus = async (userId: number) => {
     try {
       const status = await firebaseSyncService.getSyncStatus(userId);
-      setLastSync(status.lastSyncTime);
+      setLastSync(status.lastUploadTime);
     } catch (error) {
       console.error('Failed to update sync status:', error);
     }
@@ -527,7 +529,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           // Perform GENTLE sync - only updates tier/type/storage, uploads local data
           try {
             console.log('Performing LOCAL USER sync (preserves local data, only syncs tier updates)...');
-            await firebaseSyncService.performFullSync(localResult.user.id);
+            await firebaseSyncService.forceDownload(localResult.user.id);
             await updateSyncStatus(localResult.user.id);
           } catch (syncError) {
             console.error('Local user sync failed:', syncError);

@@ -398,7 +398,7 @@ export class ReportsPDFService {
 
     const summaryItems: Array<[string, string, [number, number, number]]> = [
       ['Gross Income:', `KSh ${grossIncome.toLocaleString()}`, this.colors.lightGray],
-      ['Total Deductions:', `KSh ${transcript.totalDeductibles.toLocaleString()}`, this.colors.danger],
+      ['Total Deductions:', `- KSh ${transcript.totalDeductibles.toLocaleString()}`, this.colors.warning],
       ['NET AMOUNT TO LANDLORD:', `KSh ${transcript.netAmountToLandlord.toLocaleString()}`, [1, 1, 1]],
     ];
 
@@ -1040,43 +1040,103 @@ export class ReportsPDFService {
 
   // ==================== FILE MANAGEMENT METHODS ====================
 
-  async saveToDevice(filename: string, pdfBytes: Uint8Array): Promise<{ path: string; uri: string }> {
-    try {
-      if (Capacitor.isNativePlatform()) {
-        // Convert to base64 for mobile platforms
-        const base64Data = this.uint8ArrayToBase64(pdfBytes);
+//   async saveToDevice(filename: string, pdfBytes: Uint8Array): Promise<{ path: string; uri: string }> {
+//     try {
+//       if (Capacitor.isNativePlatform()) {
+//         // Convert to base64 for mobile platforms
+//         const base64Data = this.uint8ArrayToBase64(pdfBytes);
         
+//         const result = await Filesystem.writeFile({
+//           path: filename,
+//           data: base64Data,
+//           directory: Directory.External,
+//         });
+
+//         return { path: result.uri, uri: result.uri };
+//       } else {
+//         // For web, trigger download
+//         const arrayBuffer = new ArrayBuffer(pdfBytes.buffer.byteLength);
+//         const uint8Array = new Uint8Array(arrayBuffer);
+//         uint8Array.set(new Uint8Array(pdfBytes.buffer));
+//         const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+//         const url = URL.createObjectURL(blob);
+        
+//         const link = document.createElement('a');
+//         link.href = url;
+//         link.download = filename;
+//         document.body.appendChild(link);
+//         link.click();
+//         document.body.removeChild(link);
+        
+//         URL.revokeObjectURL(url);
+        
+//         return { path: filename, uri: url };
+//       }
+//     } catch (error) {
+//       console.error('Error saving PDF:', error);
+//       throw new Error('Failed to save PDF to device');
+//     }
+//   }
+
+async saveToDevice(filename: string, pdfBytes: Uint8Array): Promise<{ path: string; uri: string }> {
+  try {
+    if (Capacitor.isNativePlatform()) {
+      const base64Data = btoa(String.fromCharCode(...pdfBytes));
+
+      let fileUri: string | null = null;
+
+      try {
+        // Try saving locally
         const result = await Filesystem.writeFile({
           path: filename,
           data: base64Data,
           directory: Directory.External,
         });
-
-        return { path: result.uri, uri: result.uri };
-      } else {
-        // For web, trigger download
-        const arrayBuffer = new ArrayBuffer(pdfBytes.buffer.byteLength);
-        const uint8Array = new Uint8Array(arrayBuffer);
-        uint8Array.set(new Uint8Array(pdfBytes.buffer));
-        const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        URL.revokeObjectURL(url);
-        
-        return { path: filename, uri: url };
+        fileUri = result.uri;
+      } catch (fsError) {
+        console.warn('Filesystem write failed, falling back to base64 URL:', fsError);
       }
-    } catch (error) {
-      console.error('Error saving PDF:', error);
-      throw new Error('Failed to save PDF to device');
+
+      // Use the saved file URI if available, otherwise fallback to base64 data URL
+      const shareUrl = fileUri ?? `data:application/pdf;base64,${base64Data}`;
+
+      await Share.share({
+        title: 'Save PDF',
+        text: 'Choose where to save or send your PDF',
+        url: shareUrl,
+        dialogTitle: 'Share PDF',
+      });
+
+      return {
+        path: fileUri ?? filename,
+        uri: shareUrl,
+      };
+    } else {
+      // Web: trigger download
+      const arrayBuffer = new ArrayBuffer(pdfBytes.buffer.byteLength);
+      const uint8Array = new Uint8Array(arrayBuffer);
+      uint8Array.set(new Uint8Array(pdfBytes.buffer));
+      const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      URL.revokeObjectURL(url);
+
+      return { path: filename, uri: url };
     }
+  } catch (error) {
+    console.error('Error saving PDF:', error);
+    throw new Error('Failed to save PDF to device');
   }
+}
+
+
 
   async shareViaWhatsApp(filename: string, pdfBytes: Uint8Array, phoneNumber?: string): Promise<void> {
     try {

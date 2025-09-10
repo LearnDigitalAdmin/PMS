@@ -51,7 +51,7 @@ const StatusBar = () => {
           const status = await firebaseSyncService.getSyncStatus(user.id);
           setSyncStatus(prev => ({
             ...prev,
-            lastSync: status.lastSyncTime,
+            lastSync: status.lastUploadTime,
             syncInProgress: status.syncInProgress
           }));
         } catch (error) {
@@ -430,33 +430,33 @@ const App: React.FC = () => {
         if (dbUser) {
           // CRITICAL FIX: Always check Firestore for user updates first
           console.log('Checking Firestore for user updates...');
-          try {
-            const firestoreUser = await firebaseSyncService.downloadUserFromFirestore(dbUser.id);
-            if (firestoreUser) {
-              // Update local user with Firestore data
-              // await database.updateUser(dbUser.id, {
-              //   name: firestoreUser.name,
-              //   email: firestoreUser.email,
-              //   phone: firestoreUser.phone?.toString() || '',
-              //   isPremium: firestoreUser.isPremium
-              // });
+          // try {
+          //   const firestoreUser = await firebaseSyncService.downloadUserUpdates(dbUser.id);
+          //   if (firestoreUser) {
+          //     // Update local user with Firestore data
+          //     // await database.updateUser(dbUser.id, {
+          //     //   name: firestoreUser.name,
+          //     //   email: firestoreUser.email,
+          //     //   phone: firestoreUser.phone?.toString() || '',
+          //     //   isPremium: firestoreUser.isPremium
+          //     // });
               
-              // Update tier and type from Firestore
-              await database.updateUserTierAndType(
-                dbUser.id,
-                firestoreUser.tier,
-                firestoreUser.type,
-                firestoreUser.storage
-              );
+          //     // Update tier and type from Firestore
+          //     await database.updateUserTierAndType(
+          //       dbUser.id,
+          //       firestoreUser.tier,
+          //       firestoreUser.type,
+          //       firestoreUser.storage
+          //     );
               
-              // Get the updated user from database
-              dbUser = await database.getUserById(dbUser.id);
-              console.log('User updated from Firestore:', dbUser?.tier, dbUser?.type, dbUser?.storage);
-            }
-          } catch (firestoreError) {
-            console.log('Could not check Firestore (offline mode):', firestoreError);
-            // Continue with local user data - app should work offline
-          }
+          //     // Get the updated user from database
+          //     dbUser = await database.getUserById(dbUser.id);
+          //     console.log('User updated from Firestore:', dbUser?.tier, dbUser?.type, dbUser?.storage);
+          //   }
+          // } catch (firestoreError) {
+          //   console.log('Could not check Firestore (offline mode):', firestoreError);
+          //   // Continue with local user data - app should work offline
+          // }
           
           if (dbUser) {
             setUser(dbUser);
@@ -474,15 +474,15 @@ const App: React.FC = () => {
               });
 
               // Start automatic sync
-              firebaseSyncService.startAutomaticSync(dbUser.id);
+              firebaseSyncService.initializeForUser(dbUser.id);
 
               // Perform initial full sync if needed
               try {
                 const status = await firebaseSyncService.getSyncStatus(dbUser.id);
-                if (status.lastSyncTime === 'Never' || 
-                    (Date.now() - new Date(status.lastSyncTime).getTime()) > 24 * 60 * 60 * 1000) {
+                if (status.lastUploadTime === 'Never' || 
+                    (Date.now() - new Date(status.lastUploadTime).getTime()) > 24 * 60 * 60 * 1000) {
                   console.log('Performing initial sync...');
-                  await firebaseSyncService.performFullSync(dbUser.id);
+                  await firebaseSyncService.initializeForUser(dbUser.id);
                 }
               } catch (syncError) {
                 console.error('Initial sync failed:', syncError);
@@ -533,25 +533,25 @@ const App: React.FC = () => {
     // ALWAYS check for user updates when app becomes visible
     try {
       console.log('App became visible, checking for user updates...');
-      const firestoreUser = await firebaseSyncService.downloadUserFromFirestore(user.id);
+      await firebaseSyncService.downloadUserUpdates(user.id);
       
-      if (firestoreUser && (
-        firestoreUser.tier !== user.tier || 
-        firestoreUser.type !== user.type || 
-        firestoreUser.storage !== user.storage
-      )) {
-        console.log('User tier/permissions changed:', {
-          old: { tier: user.tier, type: user.type, storage: user.storage },
-          new: { tier: firestoreUser.tier, type: firestoreUser.type, storage: firestoreUser.storage }
-        });
+      // if (firestoreUser && (
+      //   firestoreUser.tier !== user.tier || 
+      //   firestoreUser.type !== user.type || 
+      //   firestoreUser.storage !== user.storage
+      // )) {
+      //   console.log('User tier/permissions changed:', {
+      //     old: { tier: user.tier, type: user.type, storage: user.storage },
+      //     new: { tier: firestoreUser.tier, type: firestoreUser.type, storage: firestoreUser.storage }
+      //   });
         
-        // Update local database
-        await database.updateUserTierAndType(
-          user.id,
-          firestoreUser.tier,
-          firestoreUser.type,
-          firestoreUser.storage
-        );
+      //   // Update local database
+      //   await database.updateUserTierAndType(
+      //     user.id,
+      //     firestoreUser.tier,
+      //     firestoreUser.type,
+      //     firestoreUser.storage
+      //   );
         
         // Update React state
         const updatedUser = await database.getUserById(user.id);
@@ -569,20 +569,20 @@ const App: React.FC = () => {
               localStorage.setItem('currentUser', JSON.stringify(newUserData));
             });
             
-            firebaseSyncService.startAutomaticSync(updatedUser.id);
+            firebaseSyncService.initializeForUser(updatedUser.id);
           }
         }
-      }
+      //} 
       
       // Also perform catch-up sync if user has permissions
       if (user.tier === 'business' || user.tier === 'pro' || user.tier === 'enterprise' || user.storage) {
         const status = await firebaseSyncService.getSyncStatus(user.id);
-        const timeSinceLastSync = status.lastSyncTime === 'Never' ? 
-          Infinity : Date.now() - new Date(status.lastSyncTime).getTime();
+        const timeSinceLastSync = status.lastUploadTime === 'Never' ? 
+          Infinity : Date.now() - new Date(status.lastUploadTime).getTime();
         
-        if (timeSinceLastSync > 60 * 60 * 1000) {
+        if (timeSinceLastSync > 12 * 60 * 60 * 1000) {
           console.log('Performing catch-up sync...');
-          await firebaseSyncService.performFullSync(user.id);
+          await firebaseSyncService.forceUpload(user.id);
         }
       }
     } catch (error) {

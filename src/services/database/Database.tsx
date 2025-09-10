@@ -1,7 +1,7 @@
 // Database.tsx - Complete SQLite Database Implementation with Transaction Fixes
 import { SQLiteDBConnection, type capSQLiteChanges } from '@capacitor-community/sqlite';
 import SQLiteConnectionManager from './Initializer';
-import { firebaseSyncService, USER_LIMITS, type UserTier, type UserType } from './FirebaseSync';
+import { USER_LIMITS, type UserTier, type UserType } from './FirebaseSync';
 
 // ==================== TYPE INTERFACES ====================
 export interface User {
@@ -2031,14 +2031,14 @@ async checkUserLimits(userId: number): Promise<{
     }
 
     // Sync to Firebase if user has permission
-    const user = await this.getUserById(property.userId);
-    if (user && this.canUserSync(user)) {
-      try {
-        await firebaseSyncService.syncUserToFirestore(user);
-      } catch (error) {
-        console.error('Failed to sync after property creation:', error);
-      }
-    }
+    // const user = await this.getUserById(property.userId);
+    // if (user && this.canUserSync(user)) {
+    //   try {
+    //     await firebaseSyncService.syncUserToFirestore(user);
+    //   } catch (error) {
+    //     console.error('Failed to sync after property creation:', error);
+    //   }
+    // }
 
     return createdProperty;
   }
@@ -2079,17 +2079,17 @@ async checkUserLimits(userId: number): Promise<{
     }
 
     // Sync to Firebase if user has permission
-    const property = await this.getPropertyById(tenant.propertyId);
-    if (property) {
-      const user = await this.getUserById(property.userId);
-      if (user && this.canUserSync(user)) {
-        try {
-          await firebaseSyncService.syncUserToFirestore(user);
-        } catch (error) {
-          console.error('Failed to sync after tenant creation:', error);
-        }
-      }
-    }
+    // const property = await this.getPropertyById(tenant.propertyId);
+    // if (property) {
+    //   const user = await this.getUserById(property.userId);
+    //   if (user && this.canUserSync(user)) {
+    //     try {
+    //       await firebaseSyncService.syncUserToFirestore(user);
+    //     } catch (error) {
+    //       console.error('Failed to sync after tenant creation:', error);
+    //     }
+    //   }
+    // }
 
     return createdTenant;
   }
@@ -2177,39 +2177,39 @@ async checkUserLimits(userId: number): Promise<{
       }
 
       // Check for sync updates if user has cloud storage
-      if (this.canUserSync(user)) {
-        try {
-          const cloudUser = await firebaseSyncService.downloadUserFromFirestore(user.id);
-          if (cloudUser) {
-            // Update local user with cloud data
-            await this.updateUser(user.id, {
-              name: cloudUser.name,
-              email: cloudUser.email,
-              phone: cloudUser.phone?.toString() || '',
-              isPremium: cloudUser.isPremium
-            });
+      // if (this.canUserSync(user)) {
+      //   try {
+      //     const cloudUser = await firebaseSyncService.downloadUserFromFirestore(user.id);
+      //     if (cloudUser) {
+      //       // Update local user with cloud data
+      //       await this.updateUser(user.id, {
+      //         name: cloudUser.name,
+      //         email: cloudUser.email,
+      //         phone: cloudUser.phone?.toString() || '',
+      //         isPremium: cloudUser.isPremium
+      //       });
             
-            await this.updateUserTierAndType(
-              user.id, 
-              cloudUser.tier, 
-              cloudUser.type, 
-              cloudUser.storage
-            );
+      //       await this.updateUserTierAndType(
+      //         user.id, 
+      //         cloudUser.tier, 
+      //         cloudUser.type, 
+      //         cloudUser.storage
+      //       );
             
-            // Get updated user
-            const updatedUser = await this.getUserById(user.id);
-            if (updatedUser) {
-              user.type = updatedUser.type;
-              user.tier = updatedUser.tier;
-              user.storage = updatedUser.storage;
-              user.isPremium = updatedUser.isPremium;
-            }
-          }
-        } catch (syncError) {
-          console.error('Failed to sync during login:', syncError);
-          // Continue with local login even if sync fails
-        }
-      }
+      //       // Get updated user
+      //       const updatedUser = await this.getUserById(user.id);
+      //       if (updatedUser) {
+      //         user.type = updatedUser.type;
+      //         user.tier = updatedUser.tier;
+      //         user.storage = updatedUser.storage;
+      //         user.isPremium = updatedUser.isPremium;
+      //       }
+      //     }
+      //   } catch (syncError) {
+      //     console.error('Failed to sync during login:', syncError);
+      //     // Continue with local login even if sync fails
+      //   }
+      // }
 
       // Get company only for premium users
       const company = user.type === 'paid' ? 
@@ -2259,17 +2259,17 @@ async checkUserLimits(userId: number): Promise<{
           return;
       }
 
-      const user = await this.getUserById(userId);
-      if (user && this.canUserSync(user)) {
-        // Schedule sync (don't await to avoid blocking UI)
-        setTimeout(async () => {
-          try {
-            await firebaseSyncService.forceSyncUserData(userId);
-          } catch (error) {
-            console.error('Auto-sync failed:', error);
-          }
-        }, 1000);
-      }
+      await this.getUserById(userId);
+      // if (user && this.canUserSync(user)) {
+      //   // Schedule sync (don't await to avoid blocking UI)
+      //   setTimeout(async () => {
+      //     try {
+      //       await firebaseSyncService.forceSyncUserData(userId);
+      //     } catch (error) {
+      //       console.error('Auto-sync failed:', error);
+      //     }
+      //   }, 1000);
+      // }
     } catch (error) {
       console.error('Auto-sync error:', error);
     }
