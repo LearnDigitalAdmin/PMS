@@ -327,8 +327,8 @@ async function sendPaymentSuccessNotification(invoice: any, fallbackInvoiceId: s
             return false;
         }
 
-        const isInvoicePaid = invoice.pdfStatus === 'paid' || invoice.status === 'paid';
-        const notificationAlreadySent = invoice.isPaid === true;
+        const isInvoicePaid = invoice.pdfStatus === 'paid' || invoice.isPaid;
+        const notificationAlreadySent = invoice.hasPaid === true;
         
         if (!isInvoicePaid) {
             console.log(`Invoice ${invoiceLocalId} is not paid yet, skipping payment notification`);
@@ -362,7 +362,7 @@ async function sendPaymentSuccessNotification(invoice: any, fallbackInvoiceId: s
         const success = await sendWhatsAppMessage(tenant.phone, TEMPLATES.PAYMENT_SUCCESS, templateParams, processedUrl);
         
         if (success) {
-            await updateInvoiceFlags(invoice.userId, invoiceLocalId, { isPaid: true });
+            await updateInvoiceFlags(invoice.userId, invoiceLocalId, { hasPaid: true });
             console.log(`Successfully sent payment success notification for invoice ${invoiceLocalId}`);
         }
         
@@ -800,9 +800,9 @@ export const processInvoiceNotifications = onDocumentWritten({
         console.log(`Raw invoice data:`, JSON.stringify(invoice, null, 2));
         
         // Determine notification needs based on YOUR logic
-        const isInvoicePaid = invoice.pdfStatus === 'paid' || invoice.status === 'paid';
+        const isInvoicePaid = invoice.pdfStatus === 'paid' || invoice.isPaid;
         const wasPreviouslyPaid = previousInvoice ? 
-            (previousInvoice.pdfStatus === 'paid' || previousInvoice.status === 'paid') : false;
+            (previousInvoice.pdfStatus === 'paid' || previousInvoice.isPaid) : false;
         
         const paymentStatusChanged = wasPreviouslyPaid !== isInvoicePaid;
 
@@ -837,7 +837,7 @@ export const processInvoiceNotifications = onDocumentWritten({
 
         // 2. Payment Success Notification
         // Send if: invoice is paid AND (isPaid flag missing OR isPaid=false)
-        const shouldSendPaymentNotification = isInvoicePaid && (!invoice.hasOwnProperty('isPaid') || invoice.isPaid === false);
+        const shouldSendPaymentNotification = isInvoicePaid && (!invoice.hasOwnProperty('hasPaid') || invoice.hasPaid === false);
         
         if (shouldSendPaymentNotification) {
             console.log(`Attempting payment success notification for invoice ${invoiceId}`);
@@ -880,7 +880,7 @@ export const processInvoiceNotifications = onDocumentWritten({
             processedAt: new Date().toISOString(),
             flags: {
                 isNew: invoice.isNew,
-                isPaid: invoice.isPaid,
+                hasPaid: invoice.hasPaid,
                 isDue: invoice.isDue
             }
         });

@@ -88,19 +88,19 @@ export const USER_LIMITS = {
   },
   low: { 
     properties: 4, 
-    tenantsPerProperty: 15, 
+    tenantsPerProperty: 18, 
     totalTenants: 75,
     storage: false 
   },
   business: { 
     properties: 10, 
-    tenantsPerProperty: 20, 
+    tenantsPerProperty: 23, 
     totalTenants: 230,
     storage: true 
   },
   pro: { 
     properties: 20, 
-    tenantsPerProperty: 25, 
+    tenantsPerProperty: 26, 
     totalTenants: 500,
     storage: true 
   },
@@ -1384,7 +1384,8 @@ private async mergeInvoice(invoiceData: any): Promise<void> {
         powerUnitPrice: invoiceData.powerUnitPrice || 0,
         otherCharges: invoiceData.otherCharges || 0,
         otherChargesDescription: invoiceData.otherChargesDescription || '',
-        dueDate: invoiceData.dueDate || undefined
+        dueDate: invoiceData.dueDate || undefined,
+        isPaid: invoiceData.isPaid,
       });
       console.log(`✅ Created invoice ${invoiceData.localId} from Firestore`);
     } else {
@@ -1403,6 +1404,7 @@ private async mergeInvoice(invoiceData: any): Promise<void> {
       if (invoiceData.otherCharges !== undefined) updateData.otherCharges = invoiceData.otherCharges;
       if (invoiceData.otherChargesDescription) updateData.otherChargesDescription = invoiceData.otherChargesDescription;
       if (invoiceData.dueDate) updateData.dueDate = invoiceData.dueDate;
+      if (invoiceData.isPaid) updateData.isPaid = invoiceData.isPaid;
       
       if (Object.keys(updateData).length > 0) {
         await database.updateInvoice(invoiceData.localId, updateData);
@@ -1698,7 +1700,7 @@ private async mergeInvoice(invoiceData: any): Promise<void> {
     return USER_LIMITS[user?.tier as UserTier] || USER_LIMITS.free;
   }
 
-  private canUserSync(user: any): boolean {
+  canUserSync(user: any): boolean {
     // Business and enterprise users always have sync
     if (user.tier === 'business' || user.tier === 'pro' || user.tier === 'enterprise') {
       return true;

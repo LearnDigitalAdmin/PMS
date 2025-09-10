@@ -1,4 +1,4 @@
-// SummariesService.tsx - Monthly Business Summaries for Property Management
+// SummariesService.tsx - Agent-Focused Business Summaries
 import { database, type Property } from './Database';
 import { reportsDatabase, type MonthlyTranscript } from './ReportsDatabase';
 
@@ -8,11 +8,11 @@ export interface BusinessExpense {
   id: number;
   userId: number;
   companyId?: number;
-  propertyId?: number; // null for general business expenses
-  month: string; // YYYY-MM format
+  propertyId?: number;
+  month: string;
   description: string;
   amount: number;
-  category: 'office' | 'marketing' | 'maintenance' | 'utilities' | 'transport' | 'professional' | 'insurance' | 'other';
+  category: 'office' | 'marketing' | 'maintenance' | 'utilities' | 'transport' | 'professional' | 'insurance' | 'software' | 'legal' | 'other';
   isRecurring: boolean;
   notes?: string;
   createdAt: string;
@@ -24,76 +24,88 @@ export interface BusinessExpenseInput {
   month: string;
   description: string;
   amount: number;
-  category: 'office' | 'marketing' | 'maintenance' | 'utilities' | 'transport' | 'professional' | 'insurance' | 'other';
+  category: 'office' | 'marketing' | 'maintenance' | 'utilities' | 'transport' | 'professional' | 'insurance' | 'software' | 'legal' | 'other';
   isRecurring?: boolean;
   notes?: string;
 }
 
-export interface MonthlySummary {
+// Commission Revenue Breakdown
+export interface CommissionRevenue {
+  propertyId: number;
+  propertyName: string;
+  grossRentCollected: number; // Base rent without deductions
+  commissionRate: number;
+  commissionAmount: number;
+  occupancyRate: number;
+  vacancyCount: number;
+  totalUnits: number;
+  occupiedUnits: number;
+  averageRentPerUnit: number;
+}
+
+// Other Income from Deductions/Fees
+export interface OtherIncomeRevenue {
+  propertyId: number;
+  propertyName: string;
+  amount: number;
+  source: string; // e.g., "Water charges", "Power charges", "Management fees"
+  description?: string;
+}
+
+// Agent Business Summary
+export interface AgentBusinessSummary {
   userId: number;
   companyId?: number;
   month: string;
-  reportType: 'rent-based' | 'commission-based';
-  propertyFilter?: number; // null = all properties
+  propertyFilter?: number;
   
-  // Income Data
-  grossRentIncome: number;
-  totalCommissionIncome: number;
-  otherIncome: number; // From transcript additional items
-  grossIncome: number;
+  // Revenue Streams
+  totalCommissionRevenue: number;
+  totalOtherIncomeRevenue: number;
+  totalGrossRevenue: number;
   
-  // Commission Analysis (for agencies)
+  // Commission Analysis
   averageCommissionRate: number;
+  totalGrossRentManaged: number;
+  
+  // Portfolio Stats
   totalPropertiesManaged: number;
   totalUnitsManaged: number;
+  totalOccupiedUnits: number;
+  totalVacantUnits: number;
+  portfolioOccupancyRate: number;
   
-  // Deductions from Transcripts (agency operational costs)
-  totalDeductibles: number;
-  
-  // User-added Business Expenses
+  // Expenses
   totalBusinessExpenses: number;
   
-  // Net Calculations
-  netRentalIncome: number; // Gross Rent - Property-specific expenses
-  netCommissionIncome: number; // Total Commission - Business expenses - Deductibles
-  netIncome: number; // Final bottom line
-  
-  // Property Performance
-  occupancyRate: number;
-  collectionRate: number;
-  
-  // Breakdown Data
-  propertyBreakdown: PropertySummary[];
-  expenseBreakdown: ExpenseSummary[];
-}
-
-export interface PropertySummary {
-  propertyId: number;
-  propertyName: string;
-  rentIncome: number;
-  commissionIncome: number;
-  deductibles: number;
-  expenses: number; // Property-specific expenses only
+  // Net Income
   netIncome: number;
-  occupancyRate: number;
-  collectionRate: number;
-  unitsManaged: number;
+  profitMargin: number;
+  
+  // KPIs
+  revenuePerProperty: number;
+  revenuePerUnit: number;
+  expenseRatio: number;
+  
+  // Detailed Breakdowns
+  commissionBreakdown: CommissionRevenue[];
+  otherIncomeBreakdown: OtherIncomeRevenue[];
+  expenseBreakdown: ExpenseBreakdown[];
 }
 
-export interface ExpenseSummary {
+export interface ExpenseBreakdown {
   category: string;
   amount: number;
   itemCount: number;
-  percentage: number; // Of total expenses
+  percentage: number;
 }
 
-export interface PLReport {
+// Profit & Loss Statement
+export interface ProfitLossStatement {
   month: string;
-  reportType: 'rent-based' | 'commission-based';
   
   // Revenue
   revenue: {
-    rentIncome: number;
     commissionIncome: number;
     otherIncome: number;
     totalRevenue: number;
@@ -101,34 +113,87 @@ export interface PLReport {
   
   // Operating Expenses
   operatingExpenses: {
-    propertyExpenses: number;
-    businessExpenses: number;
-    deductibles: number;
+    officeAdmin: number;
+    marketing: number;
+    professional: number;
+    software: number;
+    transport: number;
+    utilities: number;
+    legal: number;
+    other: number;
     totalOperatingExpenses: number;
   };
   
-  // Profitability
+  // Net Income
   grossProfit: number;
-  netProfit: number;
-  profitMargin: number; // Percentage
+  netIncome: number;
   
-  // Key Metrics
-  metrics: {
-    revenuePerProperty: number;
-    expenseRatio: number; // Total expenses / Total revenue
-    averageCommissionRate: number;
-    propertiesCount: number;
+  // Margins
+  grossMargin: number;
+  netMargin: number;
+  
+  // Key Ratios
+  operatingExpenseRatio: number;
+  revenueGrowthRate?: number; // If comparing to previous month
+}
+
+// Balance Sheet (Simplified for Agents)
+export interface BalanceSheet {
+  month: string;
+  
+  // Assets
+  assets: {
+    cashEquivalents: number; // Net income accumulated
+    accountsReceivable: number; // Outstanding commissions
+    totalCurrentAssets: number;
   };
+  
+  // Liabilities
+  liabilities: {
+    accountsPayable: number; // Unpaid expenses
+    accruedExpenses: number;
+    totalCurrentLiabilities: number;
+  };
+  
+  // Equity
+  equity: {
+    retainedEarnings: number;
+    currentPeriodEarnings: number;
+    totalEquity: number;
+  };
+}
+
+// Key Performance Indicators
+export interface AgentKPIs {
+  // Portfolio Management
+  portfolioOccupancyRate: number;
+  averageCommissionRate: number;
+  propertiesUnderManagement: number;
+  unitsUnderManagement: number;
+  
+  // Financial Performance
+  monthlyRecurringRevenue: number; // MRR from commissions
+  revenuePerProperty: number;
+  revenuePerUnit: number;
+  profitMargin: number;
+  
+  // Operational Efficiency
+  expenseRatio: number;
+  collectionRate: number;
+  turnoverRate: number;
+  
+  // Growth Metrics
+  revenueGrowthRate?: number;
+  propertyGrowthRate?: number;
+  unitGrowthRate?: number;
 }
 
 export interface SummaryFilters {
   month: string;
-  propertyId?: number; // null = all properties
-  reportType: 'rent-based' | 'commission-based';
-  includeRecurringExpenses?: boolean;
+  propertyId?: number;
 }
 
-// ==================== SUMMARIES SERVICE ====================
+// ==================== AGENT SUMMARIES SERVICE ====================
 
 export class SummariesService {
 
@@ -136,10 +201,8 @@ export class SummariesService {
 
   async addBusinessExpense(userId: number, expense: BusinessExpenseInput): Promise<BusinessExpense> {
     try {
-      // Get company ID if user has one
       const company = await database.getCompanyByUserId(userId);
       
-      // Validate property access if specified
       if (expense.propertyId) {
         const property = await database.getPropertyById(expense.propertyId);
         if (!property || property.userId !== userId || property.isRestricted) {
@@ -180,11 +243,7 @@ export class SummariesService {
     category?: string;
   } = {}): Promise<BusinessExpense[]> {
     try {
-      let query = `
-        SELECT * FROM business_expenses 
-        WHERE user_id = ?
-      `;
-      //const params = [userId];
+      let query = `SELECT * FROM business_expenses WHERE user_id = ?`;
       const params: (string | number)[] = [userId];
 
       if (filters.month) {
@@ -254,14 +313,12 @@ export class SummariesService {
     await database.db!.run('DELETE FROM business_expenses WHERE id = ?', [id]);
   }
 
-  // ==================== MONTHLY SUMMARY GENERATION ====================
+  // ==================== AGENT BUSINESS SUMMARY ====================
 
-  async generateMonthlySummary(userId: number, filters: SummaryFilters): Promise<MonthlySummary> {
+  async generateAgentSummary(userId: number, filters: SummaryFilters): Promise<AgentBusinessSummary> {
     try {
-      // Get user company to determine if this is an agency
       const company = await database.getCompanyByUserId(userId);
-      const isAgency = !!company;
-
+      
       // Get properties based on filter
       let properties: Property[];
       if (filters.propertyId) {
@@ -272,143 +329,257 @@ export class SummariesService {
       }
 
       if (properties.length === 0) {
-        return this.getEmptySummary(userId, company?.id, filters);
+        return this.getEmptyAgentSummary(userId, company?.id, filters);
       }
 
-      // Get transcripts for the month
+      // Get transcripts and expenses
       const transcripts = await this.getTranscriptsForSummary(properties, filters.month);
-      
-      // Get business expenses
       const businessExpenses = await this.getBusinessExpenses(userId, { 
         month: filters.month,
         propertyId: filters.propertyId
       });
 
-      // Calculate income based on report type and agency status
-      const incomeData = await this.calculateIncomeData(
-        transcripts, 
-        properties, 
-        filters.month, 
-        isAgency, 
-        filters.reportType
-      );
-
-      // Calculate expenses
-      const expenseData = this.calculateExpenseData(transcripts, businessExpenses);
-
-      // Calculate property performance
-      const performanceData = await this.calculatePerformanceData(properties, filters.month);
-
-      // Generate property breakdowns
-      const propertyBreakdown = await this.generatePropertyBreakdown(
-        properties, 
-        transcripts, 
-        businessExpenses, 
-        filters.reportType
-      );
-
+      // Generate commission breakdown
+      const commissionBreakdown = await this.generateCommissionBreakdown(properties, transcripts);
+      
+      // Generate other income breakdown
+      const otherIncomeBreakdown = await this.generateOtherIncomeBreakdown(properties, transcripts);
+      
       // Generate expense breakdown
-      const expenseBreakdown = this.generateExpenseBreakdown(businessExpenses, expenseData.totalDeductibles);
+      const expenseBreakdown = this.generateExpenseBreakdown(businessExpenses);
 
-      // Calculate net income based on report type
-      let netIncome: number;
-      let netRentalIncome: number;
-      let netCommissionIncome: number;
-
-      if (filters.reportType === 'commission-based' && isAgency) {
-        netCommissionIncome = incomeData.totalCommissionIncome - expenseData.totalBusinessExpenses - expenseData.totalDeductibles;
-        netRentalIncome = 0; // Not relevant for commission-based
-        netIncome = netCommissionIncome + incomeData.otherIncome;
-      } else {
-        // Rent-based or non-agency
-        netRentalIncome = incomeData.grossRentIncome - expenseData.totalBusinessExpenses;
-        netCommissionIncome = incomeData.totalCommissionIncome - expenseData.totalDeductibles;
-        netIncome = netRentalIncome + netCommissionIncome + incomeData.otherIncome;
-      }
+      // Calculate totals
+      const totalCommissionRevenue = commissionBreakdown.reduce((sum, item) => sum + item.commissionAmount, 0);
+      const totalOtherIncomeRevenue = otherIncomeBreakdown.reduce((sum, item) => sum + item.amount, 0);
+      const totalGrossRevenue = totalCommissionRevenue + totalOtherIncomeRevenue;
+      const totalBusinessExpenses = businessExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+      const netIncome = totalGrossRevenue - totalBusinessExpenses;
+      
+      // Calculate portfolio stats
+      const totalUnitsManaged = commissionBreakdown.reduce((sum, item) => sum + item.totalUnits, 0);
+      const totalOccupiedUnits = commissionBreakdown.reduce((sum, item) => sum + item.occupiedUnits, 0);
+      const totalVacantUnits = totalUnitsManaged - totalOccupiedUnits;
+      const portfolioOccupancyRate = totalUnitsManaged > 0 ? (totalOccupiedUnits / totalUnitsManaged) * 100 : 0;
+      
+      // Calculate KPIs
+      const averageCommissionRate = commissionBreakdown.length > 0 
+        ? commissionBreakdown.reduce((sum, item) => sum + item.commissionRate, 0) / commissionBreakdown.length 
+        : 0;
+      
+      const totalGrossRentManaged = commissionBreakdown.reduce((sum, item) => sum + item.grossRentCollected, 0);
+      const profitMargin = totalGrossRevenue > 0 ? (netIncome / totalGrossRevenue) * 100 : 0;
+      const revenuePerProperty = properties.length > 0 ? totalGrossRevenue / properties.length : 0;
+      const revenuePerUnit = totalUnitsManaged > 0 ? totalGrossRevenue / totalUnitsManaged : 0;
+      const expenseRatio = totalGrossRevenue > 0 ? (totalBusinessExpenses / totalGrossRevenue) * 100 : 0;
 
       return {
         userId,
         companyId: company?.id,
         month: filters.month,
-        reportType: filters.reportType,
         propertyFilter: filters.propertyId,
         
-        // Income
-        grossRentIncome: incomeData.grossRentIncome,
-        totalCommissionIncome: incomeData.totalCommissionIncome,
-        otherIncome: incomeData.otherIncome,
-        grossIncome: incomeData.grossRentIncome + incomeData.totalCommissionIncome + incomeData.otherIncome,
+        // Revenue
+        totalCommissionRevenue,
+        totalOtherIncomeRevenue,
+        totalGrossRevenue,
         
-        // Commission analysis
-        averageCommissionRate: incomeData.averageCommissionRate,
+        // Commission Analysis
+        averageCommissionRate,
+        totalGrossRentManaged,
+        
+        // Portfolio Stats
         totalPropertiesManaged: properties.length,
-        totalUnitsManaged: performanceData.totalUnits,
+        totalUnitsManaged,
+        totalOccupiedUnits,
+        totalVacantUnits,
+        portfolioOccupancyRate,
         
         // Expenses
-        totalDeductibles: expenseData.totalDeductibles,
-        totalBusinessExpenses: expenseData.totalBusinessExpenses,
+        totalBusinessExpenses,
         
-        // Net calculations
-        netRentalIncome,
-        netCommissionIncome,
+        // Net Income
         netIncome,
+        profitMargin,
         
-        // Performance
-        occupancyRate: performanceData.occupancyRate,
-        collectionRate: performanceData.collectionRate,
+        // KPIs
+        revenuePerProperty,
+        revenuePerUnit,
+        expenseRatio,
         
         // Breakdowns
-        propertyBreakdown,
+        commissionBreakdown,
+        otherIncomeBreakdown,
         expenseBreakdown
       };
     } catch (error) {
-      console.error('Error generating monthly summary:', error);
+      console.error('Error generating agent summary:', error);
       throw error;
     }
   }
 
-  // ==================== P&L REPORT GENERATION ====================
+  // ==================== FINANCIAL STATEMENTS ====================
 
-  async generatePLReport(userId: number, filters: SummaryFilters): Promise<PLReport> {
+  async generateProfitLossStatement(userId: number, filters: SummaryFilters): Promise<ProfitLossStatement> {
     try {
-      const summary = await this.generateMonthlySummary(userId, filters);
+      const summary = await this.generateAgentSummary(userId, filters);
+      const expenses = await this.getBusinessExpenses(userId, { month: filters.month });
       
+      // Categorize expenses
+      const expensesByCategory = expenses.reduce((acc, exp) => {
+        acc[exp.category] = (acc[exp.category] || 0) + exp.amount;
+        return acc;
+      }, {} as Record<string, number>);
+
       const revenue = {
-        rentIncome: summary.grossRentIncome,
-        commissionIncome: summary.totalCommissionIncome,
-        otherIncome: summary.otherIncome,
-        totalRevenue: summary.grossIncome
+        commissionIncome: summary.totalCommissionRevenue,
+        otherIncome: summary.totalOtherIncomeRevenue,
+        totalRevenue: summary.totalGrossRevenue
       };
 
       const operatingExpenses = {
-        propertyExpenses: summary.propertyBreakdown.reduce((sum, p) => sum + p.expenses, 0),
-        businessExpenses: summary.totalBusinessExpenses,
-        deductibles: summary.totalDeductibles,
-        totalOperatingExpenses: summary.totalBusinessExpenses + summary.totalDeductibles
+        officeAdmin: expensesByCategory.office || 0,
+        marketing: expensesByCategory.marketing || 0,
+        professional: expensesByCategory.professional || 0,
+        software: expensesByCategory.software || 0,
+        transport: expensesByCategory.transport || 0,
+        utilities: expensesByCategory.utilities || 0,
+        legal: expensesByCategory.legal || 0,
+        other: (expensesByCategory.maintenance || 0) + (expensesByCategory.insurance || 0) + (expensesByCategory.other || 0),
+        totalOperatingExpenses: summary.totalBusinessExpenses
       };
 
       const grossProfit = revenue.totalRevenue - operatingExpenses.totalOperatingExpenses;
-      const profitMargin = revenue.totalRevenue > 0 ? (grossProfit / revenue.totalRevenue) * 100 : 0;
+      const grossMargin = revenue.totalRevenue > 0 ? (grossProfit / revenue.totalRevenue) * 100 : 0;
+      const netMargin = revenue.totalRevenue > 0 ? (summary.netIncome / revenue.totalRevenue) * 100 : 0;
+      const operatingExpenseRatio = revenue.totalRevenue > 0 ? (operatingExpenses.totalOperatingExpenses / revenue.totalRevenue) * 100 : 0;
 
       return {
         month: filters.month,
-        reportType: filters.reportType,
         revenue,
         operatingExpenses,
         grossProfit,
-        netProfit: grossProfit, // Same as gross profit in this simplified model
-        profitMargin,
-        metrics: {
-          revenuePerProperty: summary.totalPropertiesManaged > 0 ? 
-            revenue.totalRevenue / summary.totalPropertiesManaged : 0,
-          expenseRatio: revenue.totalRevenue > 0 ? 
-            (operatingExpenses.totalOperatingExpenses / revenue.totalRevenue) * 100 : 0,
-          averageCommissionRate: summary.averageCommissionRate,
-          propertiesCount: summary.totalPropertiesManaged
-        }
+        netIncome: summary.netIncome,
+        grossMargin,
+        netMargin,
+        operatingExpenseRatio
       };
     } catch (error) {
-      console.error('Error generating P&L report:', error);
+      console.error('Error generating P&L statement:', error);
+      throw error;
+    }
+  }
+
+  async generateBalanceSheet(userId: number, filters: SummaryFilters): Promise<BalanceSheet> {
+    try {
+      const summary = await this.generateAgentSummary(userId, filters);
+      
+      // Get unpaid invoices (accounts receivable - outstanding commissions)
+      let accountsReceivable = 0;
+      const properties = filters.propertyId 
+        ? [await database.getPropertyById(filters.propertyId)].filter(Boolean)
+        : await database.getProperties(userId);
+        
+      for (const property of properties) {
+        try {
+          const unpaidInvoices = await database.getInvoices({
+            propertyId: property!.id,
+            isPaid: false
+          });
+          const unpaidCommissions = unpaidInvoices.reduce((sum, inv) => {
+            return sum + (inv.rentAmount * (property!.agentCommissionRate / 100));
+          }, 0);
+          accountsReceivable += unpaidCommissions;
+        } catch (error) {
+          console.error(`Error calculating receivables for property ${property!.id}:`, error);
+        }
+      }
+
+      // Get unpaid expenses (accounts payable)
+      const unpaidExpenses = await this.getBusinessExpenses(userId, { 
+        month: filters.month 
+      });
+      const accountsPayable = unpaidExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+
+      // Calculate accumulated earnings (simplified)
+      const currentPeriodEarnings = summary.netIncome;
+      const retainedEarnings = currentPeriodEarnings; // Simplified - would normally include previous periods
+
+      const assets = {
+        cashEquivalents: Math.max(0, summary.netIncome), // Positive net income as cash
+        accountsReceivable,
+        totalCurrentAssets: Math.max(0, summary.netIncome) + accountsReceivable
+      };
+
+      const liabilities = {
+        accountsPayable,
+        accruedExpenses: 0, // Could be calculated based on recurring expenses
+        totalCurrentLiabilities: accountsPayable
+      };
+
+      const equity = {
+        retainedEarnings,
+        currentPeriodEarnings,
+        totalEquity: retainedEarnings + currentPeriodEarnings
+      };
+
+      return {
+        month: filters.month,
+        assets,
+        liabilities,
+        equity
+      };
+    } catch (error) {
+      console.error('Error generating balance sheet:', error);
+      throw error;
+    }
+  }
+
+  async generateKPIs(userId: number, filters: SummaryFilters): Promise<AgentKPIs> {
+    try {
+      const summary = await this.generateAgentSummary(userId, filters);
+      
+      // Calculate collection rate
+      let collectionRate = 0;
+      const properties = filters.propertyId 
+        ? [await database.getPropertyById(filters.propertyId)].filter(Boolean)
+        : await database.getProperties(userId);
+        
+      for (const property of properties) {
+        try {
+          const rentRecords = await reportsDatabase.getRentRecordsByProperty(property!.id, 1);
+          const monthRecord = rentRecords.find(r => r.billingMonth === filters.month);
+          if (monthRecord) {
+            collectionRate += monthRecord.collectionRate;
+          }
+        } catch (error) {
+          console.error(`Error getting collection rate for property ${property!.id}:`, error);
+        }
+      }
+      collectionRate = properties.length > 0 ? collectionRate / properties.length : 0;
+
+      // Calculate turnover rate (simplified)
+      const turnoverRate = 0; // Would need tenant move-in/move-out data
+
+      return {
+        // Portfolio Management
+        portfolioOccupancyRate: summary.portfolioOccupancyRate,
+        averageCommissionRate: summary.averageCommissionRate,
+        propertiesUnderManagement: summary.totalPropertiesManaged,
+        unitsUnderManagement: summary.totalUnitsManaged,
+        
+        // Financial Performance
+        monthlyRecurringRevenue: summary.totalCommissionRevenue,
+        revenuePerProperty: summary.revenuePerProperty,
+        revenuePerUnit: summary.revenuePerUnit,
+        profitMargin: summary.profitMargin,
+        
+        // Operational Efficiency
+        expenseRatio: summary.expenseRatio,
+        collectionRate,
+        turnoverRate
+      };
+    } catch (error) {
+      console.error('Error generating KPIs:', error);
       throw error;
     }
   }
@@ -433,184 +604,106 @@ export class SummariesService {
     return transcripts;
   }
 
-  private async calculateIncomeData(
-    transcripts: MonthlyTranscript[], 
-    properties: Property[], 
-    month: string, 
-    _isAgency: boolean, 
-    _reportType: string
-  ) {
-    let grossRentIncome = 0;
-    let totalCommissionIncome = 0;
-    let otherIncome = 0;
-    let totalCommissionRate = 0;
-    let propertiesWithCommission = 0;
-
-    // Get income from transcripts
-    for (const transcript of transcripts) {
-      grossRentIncome += transcript.grossRentCollected;
-      totalCommissionIncome += transcript.agentCommission;
-      otherIncome += transcript.totalWaterCharges + transcript.totalPowerCharges + transcript.totalOtherCharges;
-      
-      if (transcript.agentCommissionRate > 0) {
-        totalCommissionRate += transcript.agentCommissionRate;
-        propertiesWithCommission++;
-      }
-    }
-
-    // If no transcripts, fall back to direct invoice data
-    if (transcripts.length === 0) {
-      for (const property of properties) {
-        try {
-          const invoices = await database.getInvoices({
-            propertyId: property.id,
-            billingMonth: month,
-            isPaid: true
-          });
-
-          const propertyRentIncome = invoices.reduce((sum, inv) => sum + inv.rentAmount, 0);
-          const propertyCommission = propertyRentIncome * (property.agentCommissionRate / 100);
-          const propertyOtherIncome = invoices.reduce((sum, inv) => {
-            const waterAmount = (inv.waterCurrentReading - inv.waterPreviousReading) * inv.waterUnitPrice + inv.waterStandingFee;
-            const powerAmount = (inv.powerCurrentReading - inv.powerPreviousReading) * inv.powerUnitPrice;
-            return sum + waterAmount + powerAmount + inv.otherCharges;
-          }, 0);
-
-          grossRentIncome += propertyRentIncome;
-          totalCommissionIncome += propertyCommission;
-          otherIncome += propertyOtherIncome;
-          
-          if (property.agentCommissionRate > 0) {
-            totalCommissionRate += property.agentCommissionRate;
-            propertiesWithCommission++;
-          }
-        } catch (error) {
-          console.error(`Error calculating income for property ${property.id}:`, error);
-        }
-      }
-    }
-
-    const averageCommissionRate = propertiesWithCommission > 0 ? 
-      totalCommissionRate / propertiesWithCommission : 0;
-
-    return {
-      grossRentIncome,
-      totalCommissionIncome,
-      otherIncome,
-      averageCommissionRate
-    };
-  }
-
-  private calculateExpenseData(transcripts: MonthlyTranscript[], businessExpenses: BusinessExpense[]) {
-    const totalDeductibles = transcripts.reduce((sum, t) => sum + t.totalDeductibles, 0);
-    const totalBusinessExpenses = businessExpenses.reduce((sum, e) => sum + e.amount, 0);
-
-    return {
-      totalDeductibles,
-      totalBusinessExpenses
-    };
-  }
-
-  private async calculatePerformanceData(properties: Property[], month: string) {
-    let totalUnits = 0;
-    let occupiedUnits = 0;
-    let totalExpected = 0;
-    let totalCollected = 0;
-
-    for (const property of properties) {
-      try {
-        const rentRecords = await reportsDatabase.getRentRecordsByProperty(property.id, 1);
-        const monthRecord = rentRecords.find(r => r.billingMonth === month);
-        
-        if (monthRecord) {
-          totalUnits += monthRecord.totalUnits;
-          occupiedUnits += monthRecord.occupiedUnits;
-          totalExpected += monthRecord.totalRentExpected;
-          totalCollected += monthRecord.totalRentCollected;
-        } else {
-          // Fallback to property max units
-          totalUnits += property.maxUnits;
-          const tenants = await database.getTenantsByProperty(property.id);
-          occupiedUnits += tenants.filter(t => t.isActive).length;
-        }
-      } catch (error) {
-        console.error(`Error calculating performance for property ${property.id}:`, error);
-      }
-    }
-
-    const occupancyRate = totalUnits > 0 ? (occupiedUnits / totalUnits) * 100 : 0;
-    const collectionRate = totalExpected > 0 ? (totalCollected / totalExpected) * 100 : 0;
-
-    return {
-      totalUnits,
-      occupancyRate,
-      collectionRate
-    };
-  }
-
-  private async generatePropertyBreakdown(
-    properties: Property[], 
-    transcripts: MonthlyTranscript[], 
-    businessExpenses: BusinessExpense[], 
-    reportType: string
-  ): Promise<PropertySummary[]> {
-    const breakdown: PropertySummary[] = [];
+  private async generateCommissionBreakdown(properties: Property[], transcripts: MonthlyTranscript[]): Promise<CommissionRevenue[]> {
+    const breakdown: CommissionRevenue[] = [];
 
     for (const property of properties) {
       const transcript = transcripts.find(t => t.propertyId === property.id);
-      const propertyExpenses = businessExpenses
-        .filter(e => e.propertyId === property.id)
-        .reduce((sum, e) => sum + e.amount, 0);
-
-      const rentIncome = transcript?.grossRentCollected || 0;
-      const commissionIncome = transcript?.agentCommission || 0;
-      const deductibles = transcript?.totalDeductibles || 0;
-
-      let netIncome: number;
-      if (reportType === 'commission-based') {
-        netIncome = commissionIncome - propertyExpenses - deductibles;
-      } else {
-        netIncome = rentIncome + commissionIncome - propertyExpenses - deductibles;
-      }
-
-      // Get occupancy and collection rates
+      
+      let grossRentCollected = 0;
+      let commissionAmount = 0;
       let occupancyRate = 0;
-      let collectionRate = 0;
-      try {
-        const rentRecords = await reportsDatabase.getRentRecordsByProperty(property.id, 1);
-        const monthRecord = rentRecords.find(r => r.billingMonth === transcript?.billingMonth);
-        if (monthRecord) {
-          occupancyRate = monthRecord.totalUnits > 0 ? 
-            (monthRecord.occupiedUnits / monthRecord.totalUnits) * 100 : 0;
-          collectionRate = monthRecord.collectionRate;
+      let occupiedUnits = 0;
+      let totalUnits = property.maxUnits;
+
+      if (transcript) {
+        grossRentCollected = transcript.grossRentCollected;
+        commissionAmount = transcript.agentCommission;
+        
+        // Get occupancy from rent records
+        try {
+          const rentRecords = await reportsDatabase.getRentRecordsByProperty(property.id, 1);
+          const monthRecord = rentRecords.find(r => r.billingMonth === transcript.billingMonth);
+          if (monthRecord) {
+            occupancyRate = monthRecord.totalUnits > 0 ? (monthRecord.occupiedUnits / monthRecord.totalUnits) * 100 : 0;
+            occupiedUnits = monthRecord.occupiedUnits;
+            totalUnits = monthRecord.totalUnits;
+          }
+        } catch (error) {
+          console.error(`Error getting occupancy for property ${property.id}:`, error);
         }
-      } catch (error) {
-        console.error(`Error getting rates for property ${property.id}:`, error);
       }
+
+      const vacancyCount = totalUnits - occupiedUnits;
+      const averageRentPerUnit = occupiedUnits > 0 ? grossRentCollected / occupiedUnits : 0;
 
       breakdown.push({
         propertyId: property.id,
         propertyName: property.name,
-        rentIncome,
-        commissionIncome,
-        deductibles,
-        expenses: propertyExpenses,
-        netIncome,
+        grossRentCollected,
+        commissionRate: property.agentCommissionRate,
+        commissionAmount,
         occupancyRate,
-        collectionRate,
-        unitsManaged: property.maxUnits
+        vacancyCount,
+        totalUnits,
+        occupiedUnits,
+        averageRentPerUnit
       });
     }
 
     return breakdown;
   }
 
-  private generateExpenseBreakdown(businessExpenses: BusinessExpense[], totalDeductibles: number): ExpenseSummary[] {
-    const totalExpenses = businessExpenses.reduce((sum, e) => sum + e.amount, 0) + totalDeductibles;
+  private async generateOtherIncomeBreakdown(properties: Property[], transcripts: MonthlyTranscript[]): Promise<OtherIncomeRevenue[]> {
+    const breakdown: OtherIncomeRevenue[] = [];
+
+    for (const property of properties) {
+      const transcript = transcripts.find(t => t.propertyId === property.id);
+      
+      if (transcript) {
+        // Water charges
+        if (transcript.totalWaterCharges > 0) {
+          breakdown.push({
+            propertyId: property.id,
+            propertyName: property.name,
+            amount: transcript.totalWaterCharges,
+            source: "Water charges",
+            description: "Water utility management fees"
+          });
+        }
+
+        // Power charges
+        if (transcript.totalPowerCharges > 0) {
+          breakdown.push({
+            propertyId: property.id,
+            propertyName: property.name,
+            amount: transcript.totalPowerCharges,
+            source: "Power charges",
+            description: "Power utility management fees"
+          });
+        }
+
+        // Other charges
+        if (transcript.totalOtherCharges > 0) {
+          breakdown.push({
+            propertyId: property.id,
+            propertyName: property.name,
+            amount: transcript.totalOtherCharges,
+            source: "Other charges",
+            description: "Additional management fees"
+          });
+        }
+      }
+    }
+
+    return breakdown;
+  }
+
+  private generateExpenseBreakdown(businessExpenses: BusinessExpense[]): ExpenseBreakdown[] {
+    const totalExpenses = businessExpenses.reduce((sum, e) => sum + e.amount, 0);
     
     if (totalExpenses === 0) return [];
 
-    // Group by category
     const categoryMap = new Map<string, { amount: number; count: number }>();
     
     businessExpenses.forEach(expense => {
@@ -621,11 +714,6 @@ export class SummariesService {
       });
     });
 
-    // Add deductibles if any
-    if (totalDeductibles > 0) {
-      categoryMap.set('deductibles', { amount: totalDeductibles, count: 1 });
-    }
-
     return Array.from(categoryMap.entries()).map(([category, data]) => ({
       category,
       amount: data.amount,
@@ -634,28 +722,30 @@ export class SummariesService {
     }));
   }
 
-  private getEmptySummary(userId: number, companyId?: number, filters?: SummaryFilters): MonthlySummary {
+  private getEmptyAgentSummary(userId: number, companyId?: number, filters?: SummaryFilters): AgentBusinessSummary {
     return {
       userId,
       companyId,
       month: filters?.month || '',
-      reportType: filters?.reportType || 'rent-based',
       propertyFilter: filters?.propertyId,
-      grossRentIncome: 0,
-      totalCommissionIncome: 0,
-      otherIncome: 0,
-      grossIncome: 0,
+      totalCommissionRevenue: 0,
+      totalOtherIncomeRevenue: 0,
+      totalGrossRevenue: 0,
       averageCommissionRate: 0,
+      totalGrossRentManaged: 0,
       totalPropertiesManaged: 0,
       totalUnitsManaged: 0,
-      totalDeductibles: 0,
+      totalOccupiedUnits: 0,
+      totalVacantUnits: 0,
+      portfolioOccupancyRate: 0,
       totalBusinessExpenses: 0,
-      netRentalIncome: 0,
-      netCommissionIncome: 0,
       netIncome: 0,
-      occupancyRate: 0,
-      collectionRate: 0,
-      propertyBreakdown: [],
+      profitMargin: 0,
+      revenuePerProperty: 0,
+      revenuePerUnit: 0,
+      expenseRatio: 0,
+      commissionBreakdown: [],
+      otherIncomeBreakdown: [],
       expenseBreakdown: []
     };
   }
@@ -663,26 +753,20 @@ export class SummariesService {
   // ==================== UTILITY METHODS ====================
 
   async getExpenseCategories(): Promise<string[]> {
-    return ['office', 'marketing', 'maintenance', 'utilities', 'transport', 'professional', 'insurance', 'other'];
+    return ['office', 'marketing', 'maintenance', 'utilities', 'transport', 'professional', 'insurance', 'software', 'legal', 'other'];
   }
 
   async getMonthlyTrends(userId: number, months: number = 12): Promise<Array<{
     month: string;
-    rentIncome: number;
-    commissionIncome: number;
+    commissionRevenue: number;
+    otherIncome: number;
+    totalRevenue: number;
     expenses: number;
     netIncome: number;
     profitMargin: number;
+    occupancyRate: number;
   }>> {
-    const trends: Array<{
-      month: string;
-      rentIncome: number;
-      commissionIncome: number;
-      expenses: number;
-      netIncome: number;
-      profitMargin: number;
-    }> = [];
-
+    const trends = [];
     const currentDate = new Date();
     
     for (let i = 0; i < months; i++) {
@@ -690,37 +774,34 @@ export class SummariesService {
       const month = `${targetDate.getFullYear()}-${(targetDate.getMonth() + 1).toString().padStart(2, '0')}`;
       
       try {
-        const summary = await this.generateMonthlySummary(userId, {
-          month,
-          reportType: 'rent-based'
-        });
-        
-        const grossIncome = summary.grossIncome;
-        const totalExpenses = summary.totalBusinessExpenses + summary.totalDeductibles;
-        const profitMargin = grossIncome > 0 ? (summary.netIncome / grossIncome) * 100 : 0;
+        const summary = await this.generateAgentSummary(userId, { month });
         
         trends.push({
           month,
-          rentIncome: summary.grossRentIncome,
-          commissionIncome: summary.totalCommissionIncome,
-          expenses: totalExpenses,
+          commissionRevenue: summary.totalCommissionRevenue,
+          otherIncome: summary.totalOtherIncomeRevenue,
+          totalRevenue: summary.totalGrossRevenue,
+          expenses: summary.totalBusinessExpenses,
           netIncome: summary.netIncome,
-          profitMargin
+          profitMargin: summary.profitMargin,
+          occupancyRate: summary.portfolioOccupancyRate
         });
       } catch (error) {
         console.error(`Error getting trend data for ${month}:`, error);
         trends.push({
           month,
-          rentIncome: 0,
-          commissionIncome: 0,
+          commissionRevenue: 0,
+          otherIncome: 0,
+          totalRevenue: 0,
           expenses: 0,
           netIncome: 0,
-          profitMargin: 0
+          profitMargin: 0,
+          occupancyRate: 0
         });
       }
     }
     
-    return trends.reverse(); // Oldest first
+    return trends.reverse();
   }
 
   // ==================== PRIVATE MAPPING METHODS ====================
@@ -757,10 +838,9 @@ export class SummariesService {
   }
 }
 
-// ==================== DATABASE SCHEMA ADDITIONS ====================
-// Add these to your Database.tsx createTables() method:
-
+// ==================== DATABASE SCHEMA ====================
 /*
+-- Business Expenses Table
 CREATE TABLE IF NOT EXISTS business_expenses (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
@@ -769,7 +849,7 @@ CREATE TABLE IF NOT EXISTS business_expenses (
   month TEXT NOT NULL,
   description TEXT NOT NULL,
   amount REAL NOT NULL,
-  category TEXT NOT NULL CHECK (category IN ('office', 'marketing', 'maintenance', 'utilities', 'transport', 'professional', 'insurance', 'other')),
+  category TEXT NOT NULL CHECK (category IN ('office', 'marketing', 'maintenance', 'utilities', 'transport', 'professional', 'insurance', 'software', 'legal', 'other')),
   is_recurring INTEGER DEFAULT 0,
   notes TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -778,15 +858,12 @@ CREATE TABLE IF NOT EXISTS business_expenses (
   FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
   FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
 );
-*/
 
-// Add these to your Database.tsx createIndexes() method:
-
-/*
-'CREATE INDEX IF NOT EXISTS idx_business_expenses_user_month ON business_expenses(user_id, month)',
-'CREATE INDEX IF NOT EXISTS idx_business_expenses_property_month ON business_expenses(property_id, month)',
-'CREATE INDEX IF NOT EXISTS idx_business_expenses_category ON business_expenses(category)',
-'CREATE INDEX IF NOT EXISTS idx_business_expenses_recurring ON business_expenses(is_recurring)'
+-- Indexes for Business Expenses
+CREATE INDEX IF NOT EXISTS idx_business_expenses_user_month ON business_expenses(user_id, month);
+CREATE INDEX IF NOT EXISTS idx_business_expenses_property_month ON business_expenses(property_id, month);
+CREATE INDEX IF NOT EXISTS idx_business_expenses_category ON business_expenses(category);
+CREATE INDEX IF NOT EXISTS idx_business_expenses_recurring ON business_expenses(is_recurring);
 */
 
 // ==================== SINGLETON INSTANCE ====================

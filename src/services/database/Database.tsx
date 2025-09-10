@@ -243,6 +243,7 @@ export interface InvoiceInput {
   otherCharges?: number;
   otherChargesDescription?: string;
   dueDate?: string;
+  isPaid?: string;
 }
 
 // Dashboard and analytics interfaces
@@ -328,6 +329,52 @@ export interface AuthResult {
   user: User;
   company?: Company;
 }
+
+const AGENT_SUMMARY_TRIGGERS = [
+  // Update timestamp trigger for business expenses
+  `CREATE TRIGGER IF NOT EXISTS trigger_business_expenses_updated_at
+    AFTER UPDATE ON business_expenses
+    FOR EACH ROW
+  BEGIN
+    UPDATE business_expenses 
+    SET updated_at = CURRENT_TIMESTAMP 
+    WHERE id = NEW.id;
+  END`,
+
+  // Cache invalidation triggers
+  `CREATE TRIGGER IF NOT EXISTS trigger_invalidate_cache_on_expense_insert
+    AFTER INSERT ON business_expenses
+    FOR EACH ROW
+  BEGIN
+    UPDATE monthly_business_summaries 
+    SET is_stale = 1 
+    WHERE user_id = NEW.user_id 
+    AND month = NEW.month
+    AND (property_filter IS NULL OR property_filter = NEW.property_id);
+  END`,
+
+  `CREATE TRIGGER IF NOT EXISTS trigger_invalidate_cache_on_expense_update
+    AFTER UPDATE ON business_expenses
+    FOR EACH ROW
+  BEGIN
+    UPDATE monthly_business_summaries 
+    SET is_stale = 1 
+    WHERE user_id = NEW.user_id 
+    AND month = NEW.month
+    AND (property_filter IS NULL OR property_filter = NEW.property_id);
+  END`,
+
+  `CREATE TRIGGER IF NOT EXISTS trigger_invalidate_cache_on_expense_delete
+    AFTER DELETE ON business_expenses
+    FOR EACH ROW
+  BEGIN
+    UPDATE monthly_business_summaries 
+    SET is_stale = 1 
+    WHERE user_id = OLD.user_id 
+    AND month = OLD.month
+    AND (property_filter IS NULL OR property_filter = OLD.property_id);
+  END`
+];
 
 // ==================== DATABASE MANAGER ====================
 
@@ -930,6 +977,10 @@ async exportUserDataOffline(userId: number): Promise<{
       await this.createTables();
       await this.createIndexes();
       await this.migrateExistingData();
+      await this.createAgentSummaryTriggers();
+
+      await this.cleanupStaleCache();
+      await this.optimizeAgentSummaryTables();
       
       console.log('Database initialized successfully');
     } catch (error) {
@@ -1148,22 +1199,123 @@ async exportUserDataOffline(userId: number): Promise<{
       )`,
 
       `CREATE TABLE IF NOT EXISTS business_expenses (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        company_id INTEGER,
-        property_id INTEGER,
-        month TEXT NOT NULL,
-        description TEXT NOT NULL,
-        amount REAL NOT NULL,
-        category TEXT NOT NULL CHECK (category IN ('office', 'marketing', 'maintenance', 'utilities', 'transport', 'professional', 'insurance', 'other')),
-        is_recurring INTEGER DEFAULT 0,
-        notes TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
-        FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
-      )`
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    company_id INTEGER,
+    property_id INTEGER,
+    month TEXT NOT NULL,
+    description TEXT NOT NULL,
+    amount REAL NOT NULL CHECK (amount > 0),
+    category TEXT NOT NULL CHECK (category IN (
+      'office', 'marketing', 'maintenance', 'utilities', 
+      'transport', 'professional', 'insurance', 'software', 
+      'legal', 'other'
+    )),
+    is_recurring INTEGER DEFAULT 0 CHECK (is_recurring IN (0, 1)),
+    notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
+    FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+  )`,
+
+  // Agent Commission Summary Cache
+  `CREATE TABLE IF NOT EXISTS agent_commission_summaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    company_id INTEGER,
+    property_id INTEGER NOT NULL,
+    month TEXT NOT NULL,
+    property_name TEXT NOT NULL,
+    total_units INTEGER NOT NULL DEFAULT 0,
+    occupied_units INTEGER NOT NULL DEFAULT 0,
+    gross_rent_collected REAL NOT NULL DEFAULT 0,
+    commission_rate REAL NOT NULL DEFAULT 0,
+    commission_amount REAL NOT NULL DEFAULT 0,
+    occupancy_rate REAL NOT NULL DEFAULT 0,
+    collection_rate REAL NOT NULL DEFAULT 0,
+    average_rent_per_unit REAL NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
+    FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
+    UNIQUE(user_id, property_id, month)
+  )`,
+
+  // Agent Other Income Summary
+  `CREATE TABLE IF NOT EXISTS agent_other_income_summaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    company_id INTEGER,
+    property_id INTEGER NOT NULL,
+    month TEXT NOT NULL,
+    property_name TEXT NOT NULL,
+    income_source TEXT NOT NULL,
+    amount REAL NOT NULL DEFAULT 0,
+    description TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
+    FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+  )`,
+
+  // Monthly Business Summary Cache
+  `CREATE TABLE IF NOT EXISTS monthly_business_summaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    company_id INTEGER,
+    month TEXT NOT NULL,
+    property_filter INTEGER,
+    total_commission_revenue REAL NOT NULL DEFAULT 0,
+    total_other_income_revenue REAL NOT NULL DEFAULT 0,
+    total_gross_revenue REAL NOT NULL DEFAULT 0,
+    total_properties_managed INTEGER NOT NULL DEFAULT 0,
+    total_units_managed INTEGER NOT NULL DEFAULT 0,
+    total_occupied_units INTEGER NOT NULL DEFAULT 0,
+    portfolio_occupancy_rate REAL NOT NULL DEFAULT 0,
+    average_commission_rate REAL NOT NULL DEFAULT 0,
+    total_business_expenses REAL NOT NULL DEFAULT 0,
+    net_income REAL NOT NULL DEFAULT 0,
+    profit_margin REAL NOT NULL DEFAULT 0,
+    revenue_per_property REAL NOT NULL DEFAULT 0,
+    revenue_per_unit REAL NOT NULL DEFAULT 0,
+    expense_ratio REAL NOT NULL DEFAULT 0,
+    last_calculated DATETIME DEFAULT CURRENT_TIMESTAMP,
+    is_stale INTEGER DEFAULT 0,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
+    FOREIGN KEY (property_filter) REFERENCES properties(id) ON DELETE CASCADE,
+    UNIQUE(user_id, month, property_filter)
+  )`,
+
+  // Agent KPI History
+  `CREATE TABLE IF NOT EXISTS agent_kpi_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    company_id INTEGER,
+    month TEXT NOT NULL,
+    portfolio_occupancy_rate REAL NOT NULL DEFAULT 0,
+    average_commission_rate REAL NOT NULL DEFAULT 0,
+    properties_under_management INTEGER NOT NULL DEFAULT 0,
+    units_under_management INTEGER NOT NULL DEFAULT 0,
+    monthly_recurring_revenue REAL NOT NULL DEFAULT 0,
+    revenue_per_property REAL NOT NULL DEFAULT 0,
+    revenue_per_unit REAL NOT NULL DEFAULT 0,
+    profit_margin REAL NOT NULL DEFAULT 0,
+    expense_ratio REAL NOT NULL DEFAULT 0,
+    collection_rate REAL NOT NULL DEFAULT 0,
+    turnover_rate REAL NOT NULL DEFAULT 0,
+    revenue_growth_rate REAL,
+    property_growth_rate REAL,
+    unit_growth_rate REAL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
+    UNIQUE(user_id, month)
+  )`
     ];
 
     for (const query of queries) {
@@ -1215,11 +1367,45 @@ async exportUserDataOffline(userId: number): Promise<{
       'CREATE INDEX IF NOT EXISTS idx_business_expenses_user_month ON business_expenses(user_id, month)',
       'CREATE INDEX IF NOT EXISTS idx_business_expenses_property_month ON business_expenses(property_id, month)',
       'CREATE INDEX IF NOT EXISTS idx_business_expenses_category ON business_expenses(category)',
-      'CREATE INDEX IF NOT EXISTS idx_business_expenses_recurring ON business_expenses(is_recurring)'
+      'CREATE INDEX IF NOT EXISTS idx_business_expenses_recurring ON business_expenses(is_recurring)',
+      'CREATE INDEX IF NOT EXISTS idx_business_expenses_created_at ON business_expenses(created_at)',
+
+      // Commission Summaries Indexes
+      'CREATE INDEX IF NOT EXISTS idx_commission_summaries_user_month ON agent_commission_summaries(user_id, month)',
+      'CREATE INDEX IF NOT EXISTS idx_commission_summaries_property_month ON agent_commission_summaries(property_id, month)',
+      'CREATE INDEX IF NOT EXISTS idx_commission_summaries_user_property ON agent_commission_summaries(user_id, property_id)',
+
+      // Other Income Summaries Indexes
+      'CREATE INDEX IF NOT EXISTS idx_other_income_summaries_user_month ON agent_other_income_summaries(user_id, month)',
+      'CREATE INDEX IF NOT EXISTS idx_other_income_summaries_property_month ON agent_other_income_summaries(property_id, month)',
+      'CREATE INDEX IF NOT EXISTS idx_other_income_summaries_source ON agent_other_income_summaries(income_source)',
+
+      // Business Summaries Cache Indexes
+      'CREATE INDEX IF NOT EXISTS idx_business_summaries_user_month ON monthly_business_summaries(user_id, month)',
+      'CREATE INDEX IF NOT EXISTS idx_business_summaries_stale ON monthly_business_summaries(is_stale)',
+      'CREATE INDEX IF NOT EXISTS idx_business_summaries_last_calculated ON monthly_business_summaries(last_calculated)',
+
+      // KPI History Indexes
+      'CREATE INDEX IF NOT EXISTS idx_kpi_history_user_month ON agent_kpi_history(user_id, month)',
+      'CREATE INDEX IF NOT EXISTS idx_kpi_history_created_at ON agent_kpi_history(created_at)'
     ];
 
     for (const index of indexes) {
       await this.db!.run(index);
+    }
+  }
+
+  async createAgentSummaryTriggers(): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      for (const query of AGENT_SUMMARY_TRIGGERS) {
+        await this.db.run(query);
+      }
+      console.log('Agent summary triggers created successfully');
+    } catch (error) {
+      console.error('Error creating agent summary triggers:', error);
+      throw error;
     }
   }
 
@@ -1251,6 +1437,88 @@ async exportUserDataOffline(userId: number): Promise<{
       console.error('Migration error:', error);
     }
   }
+
+  async cleanupStaleCache(): Promise<void> {
+  if (!this.db) throw new Error('Database not initialized');
+
+  try {
+    const query = `
+      DELETE FROM monthly_business_summaries 
+      WHERE is_stale = 1 
+      AND last_calculated < datetime('now', '-7 days')
+    `;
+    
+    const result = await this.db.run(query);
+    console.log(`Cleaned up ${result.changes} stale cache entries`);
+  } catch (error) {
+    console.error('Error cleaning up stale cache:', error);
+    throw error;
+  }
+}
+
+// Method to get database statistics for monitoring
+async getAgentSummaryStats(): Promise<{
+  businessExpenses: number;
+  commissionSummaries: number;
+  otherIncomeSummaries: number;
+  businessSummaries: number;
+  kpiHistory: number;
+  staleCacheEntries: number;
+}> {
+  if (!this.db) throw new Error('Database not initialized');
+
+  try {
+    const queries = [
+      'SELECT COUNT(*) as count FROM business_expenses',
+      'SELECT COUNT(*) as count FROM agent_commission_summaries',
+      'SELECT COUNT(*) as count FROM agent_other_income_summaries',
+      'SELECT COUNT(*) as count FROM monthly_business_summaries',
+      'SELECT COUNT(*) as count FROM agent_kpi_history',
+      'SELECT COUNT(*) as count FROM monthly_business_summaries WHERE is_stale = 1'
+    ];
+
+    const results = await Promise.all(
+      queries.map(query => this.db!.query(query))
+    );
+
+    return {
+      businessExpenses: results[0].values?.[0]?.count || 0,
+      commissionSummaries: results[1].values?.[0]?.count || 0,
+      otherIncomeSummaries: results[2].values?.[0]?.count || 0,
+      businessSummaries: results[3].values?.[0]?.count || 0,
+      kpiHistory: results[4].values?.[0]?.count || 0,
+      staleCacheEntries: results[5].values?.[0]?.count || 0
+    };
+  } catch (error) {
+    console.error('Error getting agent summary stats:', error);
+    throw error;
+  }
+}
+
+// Method to vacuum and optimize the database
+async optimizeAgentSummaryTables(): Promise<void> {
+  if (!this.db) throw new Error('Database not initialized');
+
+  try {
+    // Analyze tables to update query planner statistics
+    const tables = [
+      'business_expenses',
+      'agent_commission_summaries', 
+      'agent_other_income_summaries',
+      'monthly_business_summaries',
+      'agent_kpi_history'
+    ];
+
+    for (const table of tables) {
+      await this.db.run(`ANALYZE ${table}`);
+    }
+
+    console.log('Agent summary tables optimized successfully');
+  } catch (error) {
+    console.error('Error optimizing agent summary tables:', error);
+    throw error;
+  }
+}
 
   // ==================== ENHANCED USER OPERATIONS ====================
 
@@ -1556,7 +1824,7 @@ async getDashboardData(userId: number, propertyId?: number, month?: string): Pro
         COUNT(CASE WHEN i.is_paid = 1 AND t.is_restricted = 0 THEN 1 END) as paid_invoices,
         COUNT(CASE WHEN i.is_paid = 0 AND t.is_restricted = 0 THEN 1 END) as unpaid_invoices,
         COUNT(CASE WHEN t.is_active = 1 AND t.is_restricted = 0 THEN 1 END) as active_tenants,
-        COUNT(CASE WHEN t.is_restricted = 0 THEN t.id END) as total_tenant_spaces
+        SUM(CASE WHEN p.is_restricted = 0 THEN p.max_units ELSE 0 END) as total_max_units
       FROM properties p
       LEFT JOIN tenants t ON p.id = t.property_id
       LEFT JOIN invoices i ON t.id = i.tenant_id`;
@@ -1596,15 +1864,24 @@ async getDashboardData(userId: number, propertyId?: number, month?: string): Pro
     const result = await this.db!.query(query, params);
     const row = result.values?.[0] || {};
 
+    // Calculate net monthly revenue (revenue minus arrears)
+    const grossRevenue = row.monthly_revenue || 0;
+    const totalArrears = row.total_arrears || 0;
+    const netMonthlyRevenue = Math.max(0, grossRevenue - totalArrears);
+
+    // Calculate occupancy rate based on max_units
+    const activeTenants = row.active_tenants || 0;
+    const totalMaxUnits = row.total_max_units || 0;
+    const occupancyRate = totalMaxUnits > 0 ? (activeTenants / totalMaxUnits) * 100 : 0;
+
     return {
       totalProperties: row.total_properties || 0,
       totalTenants: row.total_tenants || 0,
-      monthlyRevenue: row.monthly_revenue || 0,
-      totalArrears: row.total_arrears || 0,
+      monthlyRevenue: netMonthlyRevenue, // Now returns net revenue (after deducting arrears)
+      totalArrears: totalArrears,
       paidInvoices: row.paid_invoices || 0,
       unpaidInvoices: row.unpaid_invoices || 0,
-      occupancyRate: row.total_tenant_spaces > 0 ? 
-        (row.active_tenants / row.total_tenant_spaces) * 100 : 0
+      occupancyRate: Math.round(occupancyRate * 100) / 100 // Round to 2 decimal places
     };
   } catch (error) {
     console.error('Error getting dashboard data:', error);
@@ -1655,9 +1932,9 @@ async createInvoice(invoice: InvoiceInput): Promise<Invoice> {
       tenant_id, property_id, invoice_number, billing_month, rent_amount,
       water_current_reading, water_previous_reading, water_standing_fee, water_unit_price,
       power_current_reading, power_previous_reading, power_unit_price,
-      other_charges, other_charges_description, total_amount, due_date
+      other_charges, other_charges_description, total_amount, due_date, is_paid
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   
   const result = await this.db!.run(query, [
@@ -1676,7 +1953,8 @@ async createInvoice(invoice: InvoiceInput): Promise<Invoice> {
     invoice.otherCharges || 0,
     invoice.otherChargesDescription || '',
     totalAmount,
-    invoice.dueDate || null
+    invoice.dueDate || null,
+    invoice.isPaid
   ]);
 
   const createdInvoice = await this.getInvoiceById(result.changes!.lastId!);

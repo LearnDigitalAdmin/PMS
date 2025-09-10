@@ -138,203 +138,554 @@ export interface ReportGenerationOptions {
 
 export class ReportsDatabase {
 
-  async generateMonthlyTranscript(input: MonthlyTranscriptInput, userId: number): Promise<TranscriptWithDetails> {
-    try {
-      // Get property and validate access
-      const property = await database.getPropertyById(input.propertyId);
-      if (!property) {
-        throw new Error('Property not found');
-      }
+  // Fixed methods for ReportsDatabase.tsx
 
-      if (property.isRestricted) {
-        throw new Error('Cannot generate transcript for restricted property');
-      }
+// ==================== HELPER METHODS ====================
 
-      // Get all invoices for the billing month
-      const invoices = await database.getInvoices({
-        propertyId: input.propertyId,
-        billingMonth: input.billingMonth
-      });
+private async getCurrentInvoiceData(propertyId: number, billingMonth: string) {
+  // Always get fresh invoice data to reflect any changes
+  const invoices = await database.getInvoices({
+    propertyId,
+    billingMonth
+  });
 
-      // Calculate base amounts from invoices
-      const grossRentCollected = invoices
-        .filter(inv => inv.isPaid)
-        .reduce((sum, inv) => sum + inv.rentAmount, 0);
+  const grossRentCollected = invoices
+    .filter(inv => inv.isPaid)
+    .reduce((sum, inv) => sum + inv.rentAmount, 0);
 
-      const invoiceWaterCharges = invoices
-        .filter(inv => inv.isPaid)
-        .reduce((sum, inv) => {
-          const waterAmount = (inv.waterCurrentReading - inv.waterPreviousReading) * 
-            inv.waterUnitPrice + inv.waterStandingFee;
-          return sum + waterAmount;
-        }, 0);
+  const invoiceWaterCharges = invoices
+    .filter(inv => inv.isPaid)
+    .reduce((sum, inv) => {
+      const waterAmount = (inv.waterCurrentReading - inv.waterPreviousReading) * 
+        inv.waterUnitPrice + inv.waterStandingFee;
+      return sum + waterAmount;
+    }, 0);
 
-      const invoicePowerCharges = invoices
-        .filter(inv => inv.isPaid)
-        .reduce((sum, inv) => {
-          const powerAmount = (inv.powerCurrentReading - inv.powerPreviousReading) * 
-            inv.powerUnitPrice;
-          return sum + powerAmount;
-        }, 0);
+  const invoicePowerCharges = invoices
+    .filter(inv => inv.isPaid)
+    .reduce((sum, inv) => {
+      const powerAmount = (inv.powerCurrentReading - inv.powerPreviousReading) * 
+        inv.powerUnitPrice;
+      return sum + powerAmount;
+    }, 0);
 
-      const totalOtherCharges = invoices
-        .filter(inv => inv.isPaid)
-        .reduce((sum, inv) => sum + inv.otherCharges, 0);
+  const totalOtherCharges = invoices
+    .filter(inv => inv.isPaid)
+    .reduce((sum, inv) => sum + inv.otherCharges, 0);
 
-      // Calculate commission on rent only (standard practice)
-      const agentCommission = grossRentCollected * (property.agentCommissionRate / 100);
+  // Calculate total arrears from all invoices (paid and unpaid)
+  const totalArrears = invoices
+    .reduce((sum, inv) => sum + inv.arrears, 0);
 
-      // Initialize with defaults - will be recalculated after adding items
-      let totalWaterCharges = 0;
-      let totalPowerCharges = 0;
-      let totalDeductibles = agentCommission; // Commission is always a deduction
-      let netAmountToLandlord = grossRentCollected + totalOtherCharges;
+  return {
+    invoices,
+    grossRentCollected,
+    invoiceWaterCharges,
+    invoicePowerCharges,
+    totalOtherCharges,
+    totalArrears
+  };
+}
 
-      // Create transcript record with initial values
-      const transcriptQuery = `
-        INSERT INTO monthly_transcripts (
-          property_id, billing_month, landlord_name, landlord_contact,
-          agent_commission_rate, gross_rent_collected, total_water_charges,
-          total_power_charges, total_other_charges, total_deductibles,
-          agent_commission, net_amount_to_landlord, notes, generated_by
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `;
+private async addOrUpdateArrearsItem(transcriptId: number, arrearsAmount: number, sortOrder: number): Promise<void> {
+  if (arrearsAmount <= 0) return; // Don't add arrears item if no arrears
 
-      const result = await database.db!.run(transcriptQuery, [
-        input.propertyId,
-        input.billingMonth,
-        input.landlordName,
-        input.landlordContact || '',
-        property.agentCommissionRate,
-        grossRentCollected,
-        totalWaterCharges,
-        totalPowerCharges,
-        totalOtherCharges,
-        totalDeductibles,
-        agentCommission,
-        netAmountToLandlord,
-        input.notes || '',
-        userId
-      ]);
+  // Check if arrears item already exists
+  const existingArrearsQuery = `
+    SELECT id FROM transcript_items 
+    WHERE transcript_id = ? AND description LIKE '%Arrears%' AND type = 'deductible'
+  `;
+  const existingResult = await database.db!.query(existingArrearsQuery, [transcriptId]);
 
-      const transcriptId = result.changes!.lastId!;
+  if (existingResult.values && existingResult.values.length > 0) {
+    // Update existing arrears item
+    const arrearsItemId = existingResult.values[0].id;
+    await database.db!.run(
+      'UPDATE transcript_items SET amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [arrearsAmount, arrearsItemId]
+    );
+  } else {
+    // Add new arrears item as deduction
+    await this.addTranscriptItem({
+      transcriptId,
+      description: 'Outstanding Arrears',
+      amount: arrearsAmount,
+      type: 'deductible',
+      category: 'Deductions',
+      isDeductible: true,
+      sortOrder
+    });
+  }
+}
 
-      // Add rent collected item (always income)
+// ==================== UPDATED METHODS ====================
+
+async generateMonthlyTranscript(input: MonthlyTranscriptInput, userId: number): Promise<TranscriptWithDetails> {
+  try {
+    // Get property and validate access
+    const property = await database.getPropertyById(input.propertyId);
+    if (!property) {
+      throw new Error('Property not found');
+    }
+
+    if (property.isRestricted) {
+      throw new Error('Cannot generate transcript for restricted property');
+    }
+
+    // Get fresh invoice data
+    const invoiceData = await this.getCurrentInvoiceData(input.propertyId, input.billingMonth);
+    const { 
+      grossRentCollected, 
+      invoiceWaterCharges, 
+      invoicePowerCharges, 
+      totalOtherCharges,
+      totalArrears 
+    } = invoiceData;
+
+    // Calculate commission on rent only (standard practice)
+    const agentCommission = grossRentCollected * (property.agentCommissionRate / 100);
+
+    // Initialize with defaults - will be recalculated after adding items
+    let totalWaterCharges = 0;
+    let totalPowerCharges = 0;
+    let totalDeductibles = agentCommission + totalArrears; // Commission + Arrears are deductions
+    let netAmountToLandlord = grossRentCollected + totalOtherCharges - totalDeductibles;
+
+    // Create transcript record with initial values
+    const transcriptQuery = `
+      INSERT INTO monthly_transcripts (
+        property_id, billing_month, landlord_name, landlord_contact,
+        agent_commission_rate, gross_rent_collected, total_water_charges,
+        total_power_charges, total_other_charges, total_deductibles,
+        agent_commission, net_amount_to_landlord, notes, generated_by
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const result = await database.db!.run(transcriptQuery, [
+      input.propertyId,
+      input.billingMonth,
+      input.landlordName,
+      input.landlordContact || '',
+      property.agentCommissionRate,
+      grossRentCollected,
+      totalWaterCharges,
+      totalPowerCharges,
+      totalOtherCharges,
+      totalDeductibles,
+      agentCommission,
+      netAmountToLandlord,
+      input.notes || '',
+      userId
+    ]);
+
+    const transcriptId = result.changes!.lastId!;
+
+    // Add rent collected item (always income)
+    await this.addTranscriptItem({
+      transcriptId,
+      description: 'Collectable Rent',
+      amount: grossRentCollected,
+      type: 'rent',
+      isDeductible: false,
+      sortOrder: 1
+    });
+
+    // Add other charges if any
+    if (totalOtherCharges > 0) {
       await this.addTranscriptItem({
         transcriptId,
-        description: 'Rent Collected',
-        amount: grossRentCollected,
-        type: 'rent',
+        description: 'Other Charges',
+        amount: totalOtherCharges,
+        type: 'custom',
         isDeductible: false,
-        sortOrder: 1
+        sortOrder: 2
       });
+    }
 
-      // Add other charges if any
-      if (totalOtherCharges > 0) {
+    // Add commission deduction (always deductible)
+    await this.addTranscriptItem({
+      transcriptId,
+      description: `Agent Commission (${property.agentCommissionRate}%)`,
+      amount: agentCommission,
+      type: 'deductible',
+      isDeductible: true,
+      sortOrder: 3
+    });
+
+    let sortOrder = 4;
+
+    // Add arrears as deduction if any
+    await this.addOrUpdateArrearsItem(transcriptId, totalArrears, sortOrder++);
+
+    // Process custom items (including utilities)
+    if (input.customItems) {
+      // Look for water and power items in custom items
+      const waterItem = input.customItems.find(item => item.type === 'water');
+      const powerItem = input.customItems.find(item => item.type === 'power');
+
+      // If no custom water item provided, use invoice default (remitted to landlord)
+      if (!waterItem && invoiceWaterCharges > 0) {
         await this.addTranscriptItem({
           transcriptId,
-          description: 'Other Charges',
-          amount: totalOtherCharges,
-          type: 'custom',
-          isDeductible: false,
-          sortOrder: 2
+          description: 'Water Charges',
+          amount: invoiceWaterCharges,
+          type: 'water',
+          category: 'Utilities',
+          isDeductible: false, // Default: remit to landlord
+          sortOrder: sortOrder++
         });
       }
 
-      // Add commission deduction (always deductible)
-      await this.addTranscriptItem({
-        transcriptId,
-        description: `Agent Commission (${property.agentCommissionRate}%)`,
-        amount: agentCommission,
-        type: 'deductible',
-        isDeductible: true,
-        sortOrder: 3
-      });
+      // If no custom power item provided, use invoice default (remitted to landlord)
+      if (!powerItem && invoicePowerCharges > 0) {
+        await this.addTranscriptItem({
+          transcriptId,
+          description: 'Power Charges',
+          amount: invoicePowerCharges,
+          type: 'power',
+          category: 'Utilities',
+          isDeductible: false, // Default: remit to landlord
+          sortOrder: sortOrder++
+        });
+      }
 
-      let sortOrder = 4;
+      // Add all custom items
+      for (const item of input.customItems) {
+        await this.addTranscriptItem({
+          transcriptId,
+          description: item.description,
+          amount: item.amount,
+          type: item.type,
+          category: item.category,
+          isDeductible: item.isDeductible,
+          sortOrder: item.sortOrder || sortOrder++
+        });
+      }
+    } else {
+      // No custom items provided, use invoice defaults
+      if (invoiceWaterCharges > 0) {
+        await this.addTranscriptItem({
+          transcriptId,
+          description: 'Water Charges',
+          amount: invoiceWaterCharges,
+          type: 'water',
+          category: 'Utilities',
+          isDeductible: false,
+          sortOrder: sortOrder++
+        });
+      }
 
-      // Process custom items (including utilities)
-      if (input.customItems) {
-        // Look for water and power items in custom items
-        const waterItem = input.customItems.find(item => item.type === 'water');
-        const powerItem = input.customItems.find(item => item.type === 'power');
+      if (invoicePowerCharges > 0) {
+        await this.addTranscriptItem({
+          transcriptId,
+          description: 'Power Charges',
+          amount: invoicePowerCharges,
+          type: 'power',
+          category: 'Utilities',
+          isDeductible: false,
+          sortOrder: sortOrder++
+        });
+      }
+    }
 
-        // If no custom water item provided, use invoice default (remitted to landlord)
-        if (!waterItem && invoiceWaterCharges > 0) {
-          await this.addTranscriptItem({
-            transcriptId,
-            description: 'Water Charges',
-            amount: invoiceWaterCharges,
-            type: 'water',
-            category: 'Utilities',
-            isDeductible: false, // Default: remit to landlord
-            sortOrder: sortOrder++
-          });
-        }
+    // Recalculate totals based on all items
+    await this.recalculateTranscriptTotals(transcriptId);
 
-        // If no custom power item provided, use invoice default (remitted to landlord)
-        if (!powerItem && invoicePowerCharges > 0) {
-          await this.addTranscriptItem({
-            transcriptId,
-            description: 'Power Charges',
-            amount: invoicePowerCharges,
-            type: 'power',
-            category: 'Utilities',
-            isDeductible: false, // Default: remit to landlord
-            sortOrder: sortOrder++
-          });
-        }
+    // Return full transcript with details
+    return await this.getTranscriptWithDetails(transcriptId);
+  } catch (error) {
+    console.error('Error generating monthly transcript:', error);
+    throw error;
+  }
+}
 
-        // Add all custom items
-        for (const item of input.customItems) {
-          await this.addTranscriptItem({
-            transcriptId,
-            description: item.description,
-            amount: item.amount,
-            type: item.type,
-            category: item.category,
-            isDeductible: item.isDeductible,
-            sortOrder: item.sortOrder || sortOrder++
-          });
-        }
+async getTranscriptWithDetails(transcriptId: number): Promise<TranscriptWithDetails> {
+  const transcript = await this.getTranscriptById(transcriptId);
+  if (!transcript) {
+    throw new Error('Transcript not found');
+  }
+
+  const property = await database.getPropertyById(transcript.propertyId);
+  if (!property) {
+    throw new Error('Property not found');
+  }
+
+  // Get fresh invoice data to ensure current state
+  const invoiceData = await this.getCurrentInvoiceData(transcript.propertyId, transcript.billingMonth);
+  
+  // Update arrears in transcript if it has changed
+  await this.addOrUpdateArrearsItem(transcriptId, invoiceData.totalArrears, 999); // High sort order to put at end
+  
+  // Recalculate totals to ensure they're current
+  await this.recalculateTranscriptTotals(transcriptId);
+  
+  // Get updated transcript after recalculation
+  const updatedTranscript = await this.getTranscriptById(transcriptId);
+  if (!updatedTranscript) {
+    throw new Error('Failed to get updated transcript');
+  }
+
+  const items = await this.getTranscriptItems(transcriptId);
+  
+  // Get tenant summary using fresh invoice data
+  const tenantSummary = {
+    totalTenants: invoiceData.invoices.length,
+    activeTenants: invoiceData.invoices.filter(inv => inv.isPaid || inv.amountPaid > 0).length,
+    paidInvoices: invoiceData.invoices.filter(inv => inv.isPaid).length,
+    unpaidInvoices: invoiceData.invoices.filter(inv => !inv.isPaid).length
+  };
+
+  return {
+    ...updatedTranscript,
+    property,
+    items,
+    tenantSummary
+  };
+}
+
+async generateRentRecordSheet(propertyId: number, billingMonth: string): Promise<RentRecordWithDetails> {
+  try {
+    console.log(`[RentRecord] Starting generation for property ${propertyId}, month ${billingMonth}`);
+    
+    // Get property and validate access
+    const property = await database.getPropertyById(propertyId);
+    if (!property) {
+      console.error(`[RentRecord] Property ${propertyId} not found`);
+      throw new Error('Property not found');
+    }
+
+    if (property.isRestricted) {
+      console.error(`[RentRecord] Property ${propertyId} is restricted`);
+      throw new Error('Cannot generate record sheet for restricted property');
+    }
+
+    console.log(`[RentRecord] Property found: ${property.name}, max units: ${property.maxUnits}`);
+
+    // Get all tenants for this property
+    const tenants = await database.getTenantsByProperty(propertyId);
+    console.log(`[RentRecord] Found ${tenants.length} tenants for property ${propertyId}`);
+    
+    // Get fresh invoice data
+    const invoiceData = await this.getCurrentInvoiceData(propertyId, billingMonth);
+    const { invoices } = invoiceData;
+    
+    console.log(`[RentRecord] Found ${invoices.length} invoices for ${billingMonth}`);
+
+    // Calculate sheet totals including arrears
+    let totalRentExpected = 0;
+    let totalRentCollected = 0;
+    let totalArrears = 0;
+    const occupiedUnits = tenants.filter(t => t.isActive).length;
+    console.log(`[RentRecord] Active tenants: ${occupiedUnits} of ${tenants.length} total`);
+
+    for (const tenant of tenants) {
+      const invoice = invoices.find(inv => inv.tenantId === tenant.id);
+      if (invoice) {
+        totalRentExpected += invoice.totalAmount;
+        totalRentCollected += invoice.amountPaid;
+        totalArrears += invoice.arrears; // Include arrears from invoice
+        console.log(`[RentRecord] Tenant ${tenant.id}: Expected ${invoice.totalAmount}, Collected ${invoice.amountPaid}, Arrears ${invoice.arrears}`);
       } else {
-        // No custom items provided, use invoice defaults
-        if (invoiceWaterCharges > 0) {
-          await this.addTranscriptItem({
-            transcriptId,
-            description: 'Water Charges',
-            amount: invoiceWaterCharges,
-            type: 'water',
-            category: 'Utilities',
-            isDeductible: false,
-            sortOrder: sortOrder++
-          });
-        }
+        console.warn(`[RentRecord] No invoice found for tenant ${tenant.id} (${tenant.name}) in month ${billingMonth}`);
+      }
+    }
 
-        if (invoicePowerCharges > 0) {
-          await this.addTranscriptItem({
-            transcriptId,
-            description: 'Power Charges',
-            amount: invoicePowerCharges,
-            type: 'power',
-            category: 'Utilities',
-            isDeductible: false,
-            sortOrder: sortOrder++
-          });
+    const collectionRate = totalRentExpected > 0 ? 
+      (totalRentCollected / totalRentExpected) * 100 : 0;
+
+    console.log(`[RentRecord] Totals - Expected: ${totalRentExpected}, Collected: ${totalRentCollected}, Arrears: ${totalArrears}, Rate: ${collectionRate.toFixed(2)}%`);
+
+    // Create record sheet
+    const sheetQuery = `
+      INSERT INTO rent_record_sheets (
+        property_id, billing_month, total_units, occupied_units,
+        total_rent_expected, total_rent_collected, total_arrears,
+        collection_rate
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const result = await database.db!.run(sheetQuery, [
+      propertyId,
+      billingMonth,
+      property.maxUnits,
+      occupiedUnits,
+      totalRentExpected,
+      totalRentCollected,
+      totalArrears,
+      collectionRate,
+    ]);
+
+    if (!result.changes || result.changes.changes === 0) {
+      console.error(`[RentRecord] Failed to insert record sheet - no changes made`);
+      throw new Error('Failed to create rent record sheet');
+    }
+
+    const recordSheetId = result.changes!.lastId!;
+    console.log(`[RentRecord] Created record sheet with ID: ${recordSheetId}`);
+
+    // Create entries for each tenant using fresh invoice data
+    let entriesCreated = 0;
+    for (const tenant of tenants) {
+      const invoice = invoices.find(inv => inv.tenantId === tenant.id);
+      
+      let waterCharges = 0;
+      let powerCharges = 0;
+      let totalDue = tenant.rentAmount;
+      let amountPaid = 0;
+      let paymentStatus: 'paid' | 'partial' | 'unpaid' | 'overpaid' = 'unpaid';
+      let paymentDate: string | undefined;
+
+      if (invoice) {
+        waterCharges = (invoice.waterCurrentReading - invoice.waterPreviousReading) * 
+          invoice.waterUnitPrice + invoice.waterStandingFee;
+        powerCharges = (invoice.powerCurrentReading - invoice.powerPreviousReading) * 
+          invoice.powerUnitPrice;
+        totalDue = invoice.totalAmount;
+        amountPaid = invoice.amountPaid;
+        paymentDate = invoice.paidDate || undefined;
+
+        if (invoice.isPaid) {
+          paymentStatus = 'paid';
+        } else if (amountPaid > 0) {
+          paymentStatus = amountPaid > totalDue ? 'overpaid' : 'partial';
         }
       }
 
-      // Recalculate totals based on all items
-      await this.recalculateTranscriptTotals(transcriptId);
+      // Calculate balance including arrears
+      const balance = totalDue - amountPaid + (invoice?.arrears || 0);
 
-      // Return full transcript with details
-      return await this.getTranscriptWithDetails(transcriptId);
-    } catch (error) {
-      console.error('Error generating monthly transcript:', error);
-      throw error;
+      try {
+        await this.addRentRecordEntry({
+          recordSheetId,
+          tenantId: tenant.id,
+          tenantName: tenant.name,
+          unitNumber: tenant.unitNumber || '',
+          rentAmount: tenant.rentAmount,
+          waterCharges,
+          powerCharges,
+          otherCharges: invoice?.otherCharges || 0,
+          totalDue,
+          amountPaid,
+          balance,
+          paymentStatus,
+          paymentDate
+        });
+        entriesCreated++;
+      } catch (entryError) {
+        console.error(`[RentRecord] Failed to create entry for tenant ${tenant.id}:`, entryError);
+        throw entryError;
+      }
+    }
+
+    console.log(`[RentRecord] Created ${entriesCreated} entries for record sheet ${recordSheetId}`);
+
+    const finalRecord = await this.getRentRecordWithDetails(recordSheetId);
+    console.log(`[RentRecord] Successfully generated record sheet ${recordSheetId} with ${finalRecord.entries.length} entries`);
+    
+    return finalRecord;
+  } catch (error) {
+    console.error('[RentRecord] Error generating rent record sheet:', error);
+    console.error('[RentRecord] Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
+    throw error;
+  }
+}
+
+async getRentRecordWithDetails(recordSheetId: number): Promise<RentRecordWithDetails> {
+  const recordSheet = await this.getRentRecordById(recordSheetId);
+  if (!recordSheet) {
+    console.error(`[RentRecord] Record sheet ${recordSheetId} not found when fetching details`);
+    throw new Error('Rent record sheet not found');
+  }
+
+  const property = await database.getPropertyById(recordSheet.propertyId);
+  if (!property) {
+    console.error(`[RentRecord] Property ${recordSheet.propertyId} not found when fetching details`);
+    throw new Error('Property not found');
+  }
+
+  // Get fresh invoice data to ensure current state
+  const invoiceData = await this.getCurrentInvoiceData(recordSheet.propertyId, recordSheet.billingMonth);
+  
+  // Recalculate record sheet totals with fresh data
+  let totalRentExpected = 0;
+  let totalRentCollected = 0;
+  let totalArrears = 0;
+
+  for (const invoice of invoiceData.invoices) {
+    totalRentExpected += invoice.totalAmount;
+    totalRentCollected += invoice.amountPaid;
+    totalArrears += invoice.arrears;
+  }
+
+  const collectionRate = totalRentExpected > 0 ? 
+    (totalRentCollected / totalRentExpected) * 100 : 0;
+
+  // Update record sheet with fresh totals
+  const updateQuery = `
+    UPDATE rent_record_sheets 
+    SET total_rent_expected = ?, total_rent_collected = ?, 
+        total_arrears = ?, collection_rate = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `;
+
+  await database.db!.run(updateQuery, [
+    totalRentExpected,
+    totalRentCollected,
+    totalArrears,
+    collectionRate,
+    recordSheetId
+  ]);
+
+  // Get updated record sheet
+  const updatedRecordSheet = await this.getRentRecordById(recordSheetId);
+  if (!updatedRecordSheet) {
+    throw new Error('Failed to get updated record sheet');
+  }
+
+  const entries = await this.getRentRecordEntries(recordSheetId);
+  console.log(`[RentRecord] Retrieved ${entries.length} entries for record sheet ${recordSheetId}`);
+
+  // Calculate summary statistics
+  const onTimePayments = entries.filter(e => e.paymentStatus === 'paid' && 
+    e.paymentDate && new Date(e.paymentDate) <= new Date(`${updatedRecordSheet.billingMonth}-05`)).length;
+  const latePayments = entries.filter(e => e.paymentStatus === 'paid' && 
+    e.paymentDate && new Date(e.paymentDate) > new Date(`${updatedRecordSheet.billingMonth}-05`)).length;
+  const defaulters = entries.filter(e => e.paymentStatus === 'unpaid').length;
+
+  // Calculate average collection days (simplified)
+  let totalDays = 0;
+  let paidCount = 0;
+  for (const entry of entries) {
+    if (entry.paymentStatus === 'paid' && entry.paymentDate) {
+      const paymentDate = new Date(entry.paymentDate);
+      const monthStart = new Date(`${updatedRecordSheet.billingMonth}-01`);
+      const days = Math.ceil((paymentDate.getTime() - monthStart.getTime()) / (1000 * 60 * 60 * 24));
+      totalDays += days;
+      paidCount++;
     }
   }
+
+  const averageCollectionDays = paidCount > 0 ? Math.round(totalDays / paidCount) : 0;
+
+  return {
+    ...updatedRecordSheet,
+    property,
+    entries,
+    summary: {
+      onTimePayments,
+      latePayments,
+      defaulters,
+      averageCollectionDays
+    }
+  };
+}
+
+
+
+
+
 
   async addTranscriptItem(item: TranscriptItemInput): Promise<TranscriptItem> {
     const query = `
@@ -413,39 +764,39 @@ export class ReportsDatabase {
     ]);
   }
 
-  async getTranscriptWithDetails(transcriptId: number): Promise<TranscriptWithDetails> {
-    const transcript = await this.getTranscriptById(transcriptId);
-    if (!transcript) {
-      throw new Error('Transcript not found');
-    }
+  // async getTranscriptWithDetails(transcriptId: number): Promise<TranscriptWithDetails> {
+  //   const transcript = await this.getTranscriptById(transcriptId);
+  //   if (!transcript) {
+  //     throw new Error('Transcript not found');
+  //   }
 
-    const property = await database.getPropertyById(transcript.propertyId);
-    if (!property) {
-      throw new Error('Property not found');
-    }
+  //   const property = await database.getPropertyById(transcript.propertyId);
+  //   if (!property) {
+  //     throw new Error('Property not found');
+  //   }
 
-    const items = await this.getTranscriptItems(transcriptId);
+  //   const items = await this.getTranscriptItems(transcriptId);
     
-    // Get tenant summary for the billing month
-    const invoices = await database.getInvoices({
-      propertyId: transcript.propertyId,
-      billingMonth: transcript.billingMonth
-    });
+  //   // Get tenant summary for the billing month
+  //   const invoices = await database.getInvoices({
+  //     propertyId: transcript.propertyId,
+  //     billingMonth: transcript.billingMonth
+  //   });
 
-    const tenantSummary = {
-      totalTenants: invoices.length,
-      activeTenants: invoices.filter(inv => inv.isPaid || inv.amountPaid > 0).length,
-      paidInvoices: invoices.filter(inv => inv.isPaid).length,
-      unpaidInvoices: invoices.filter(inv => !inv.isPaid).length
-    };
+  //   const tenantSummary = {
+  //     totalTenants: invoices.length,
+  //     activeTenants: invoices.filter(inv => inv.isPaid || inv.amountPaid > 0).length,
+  //     paidInvoices: invoices.filter(inv => inv.isPaid).length,
+  //     unpaidInvoices: invoices.filter(inv => !inv.isPaid).length
+  //   };
 
-    return {
-      ...transcript,
-      property,
-      items,
-      tenantSummary
-    };
-  }
+  //   return {
+  //     ...transcript,
+  //     property,
+  //     items,
+  //     tenantSummary
+  //   };
+  // }
 
   async finalizeTranscript(transcriptId: number): Promise<void> {
     const query = `
@@ -463,155 +814,6 @@ export class ReportsDatabase {
       WHERE id = ? AND status = 'finalized'
     `;
     await database.db!.run(query, [transcriptId]);
-  }
-
-  // ==================== RENT RECORD SHEET OPERATIONS ====================
-  async generateRentRecordSheet(propertyId: number, billingMonth: string): Promise<RentRecordWithDetails> {
-    try {
-      console.log(`[RentRecord] Starting generation for property ${propertyId}, month ${billingMonth}`);
-      
-      // Get property and validate access
-      const property = await database.getPropertyById(propertyId);
-      if (!property) {
-        console.error(`[RentRecord] Property ${propertyId} not found`);
-        throw new Error('Property not found');
-      }
-
-      if (property.isRestricted) {
-        console.error(`[RentRecord] Property ${propertyId} is restricted`);
-        throw new Error('Cannot generate record sheet for restricted property');
-      }
-
-      console.log(`[RentRecord] Property found: ${property.name}, max units: ${property.maxUnits}`);
-
-      // Get all tenants for this property
-      const tenants = await database.getTenantsByProperty(propertyId);
-      console.log(`[RentRecord] Found ${tenants.length} tenants for property ${propertyId}`);
-      
-      // Get all invoices for the billing month
-      const invoices = await database.getInvoices({
-        propertyId,
-        billingMonth
-      });
-      console.log(`[RentRecord] Found ${invoices.length} invoices for ${billingMonth}`);
-
-      // Calculate sheet totals
-      let totalRentExpected = 0;
-      let totalRentCollected = 0;
-      let totalArrears = 0;
-      const occupiedUnits = tenants.filter(t => t.isActive).length;
-      console.log(`[RentRecord] Active tenants: ${occupiedUnits} of ${tenants.length} total`);
-
-      for (const tenant of tenants) {
-        const invoice = invoices.find(inv => inv.tenantId === tenant.id);
-        if (invoice) {
-          totalRentExpected += invoice.totalAmount;
-          totalRentCollected += invoice.amountPaid;
-          totalArrears += invoice.arrears;
-          console.log(`[RentRecord] Tenant ${tenant.id}: Expected ${invoice.totalAmount}, Collected ${invoice.amountPaid}, Arrears ${invoice.arrears}`);
-        } else {
-          console.warn(`[RentRecord] No invoice found for tenant ${tenant.id} (${tenant.name}) in month ${billingMonth}`);
-        }
-      }
-
-      const collectionRate = totalRentExpected > 0 ? 
-        (totalRentCollected / totalRentExpected) * 100 : 0;
-
-      console.log(`[RentRecord] Totals - Expected: ${totalRentExpected}, Collected: ${totalRentCollected}, Arrears: ${totalArrears}, Rate: ${collectionRate.toFixed(2)}%`);
-
-      // Create record sheet
-      const sheetQuery = `
-        INSERT INTO rent_record_sheets (
-          property_id, billing_month, total_units, occupied_units,
-          total_rent_expected, total_rent_collected, total_arrears,
-          collection_rate
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `;
-
-      const result = await database.db!.run(sheetQuery, [
-        propertyId,
-        billingMonth,
-        property.maxUnits,
-        occupiedUnits,
-        totalRentExpected,
-        totalRentCollected,
-        totalArrears,
-        collectionRate,
-      ]);
-
-      if (!result.changes || result.changes.changes === 0) {
-        console.error(`[RentRecord] Failed to insert record sheet - no changes made`);
-        throw new Error('Failed to create rent record sheet');
-      }
-
-      const recordSheetId = result.changes!.lastId!;
-      console.log(`[RentRecord] Created record sheet with ID: ${recordSheetId}`);
-
-      // Create entries for each tenant
-      let entriesCreated = 0;
-      for (const tenant of tenants) {
-        const invoice = invoices.find(inv => inv.tenantId === tenant.id);
-        
-        let waterCharges = 0;
-        let powerCharges = 0;
-        let totalDue = tenant.rentAmount;
-        let amountPaid = 0;
-        let paymentStatus: 'paid' | 'partial' | 'unpaid' | 'overpaid' = 'unpaid';
-        let paymentDate: string | undefined;
-
-        if (invoice) {
-          waterCharges = (invoice.waterCurrentReading - invoice.waterPreviousReading) * 
-            invoice.waterUnitPrice + invoice.waterStandingFee;
-          powerCharges = (invoice.powerCurrentReading - invoice.powerPreviousReading) * 
-            invoice.powerUnitPrice;
-          totalDue = invoice.totalAmount;
-          amountPaid = invoice.amountPaid;
-          paymentDate = invoice.paidDate || undefined;
-
-          if (invoice.isPaid) {
-            paymentStatus = 'paid';
-          } else if (amountPaid > 0) {
-            paymentStatus = amountPaid > totalDue ? 'overpaid' : 'partial';
-          }
-        }
-
-        const balance = totalDue - amountPaid;
-
-        try {
-          await this.addRentRecordEntry({
-            recordSheetId,
-            tenantId: tenant.id,
-            tenantName: tenant.name,
-            unitNumber: tenant.unitNumber || '',
-            rentAmount: tenant.rentAmount,
-            waterCharges,
-            powerCharges,
-            otherCharges: invoice?.otherCharges || 0,
-            totalDue,
-            amountPaid,
-            balance,
-            paymentStatus,
-            paymentDate
-          });
-          entriesCreated++;
-        } catch (entryError) {
-          console.error(`[RentRecord] Failed to create entry for tenant ${tenant.id}:`, entryError);
-          throw entryError;
-        }
-      }
-
-      console.log(`[RentRecord] Created ${entriesCreated} entries for record sheet ${recordSheetId}`);
-
-      const finalRecord = await this.getRentRecordWithDetails(recordSheetId);
-      console.log(`[RentRecord] Successfully generated record sheet ${recordSheetId} with ${finalRecord.entries.length} entries`);
-      
-      return finalRecord;
-    } catch (error) {
-      console.error('[RentRecord] Error generating rent record sheet:', error);
-      console.error('[RentRecord] Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
-      throw error;
-    }
   }
 
   private async addRentRecordEntry(entry: {
@@ -660,57 +862,6 @@ export class ReportsDatabase {
       console.error(`[RentRecord] Failed to insert entry for tenant ${entry.tenantId} - no changes made`);
       throw new Error(`Failed to create rent record entry for tenant ${entry.tenantId}`);
     }
-  }
-
-  async getRentRecordWithDetails(recordSheetId: number): Promise<RentRecordWithDetails> {
-    const recordSheet = await this.getRentRecordById(recordSheetId);
-    if (!recordSheet) {
-      console.error(`[RentRecord] Record sheet ${recordSheetId} not found when fetching details`);
-      throw new Error('Rent record sheet not found');
-    }
-
-    const property = await database.getPropertyById(recordSheet.propertyId);
-    if (!property) {
-      console.error(`[RentRecord] Property ${recordSheet.propertyId} not found when fetching details`);
-      throw new Error('Property not found');
-    }
-
-    const entries = await this.getRentRecordEntries(recordSheetId);
-    console.log(`[RentRecord] Retrieved ${entries.length} entries for record sheet ${recordSheetId}`);
-
-    // Calculate summary statistics
-    const onTimePayments = entries.filter(e => e.paymentStatus === 'paid' && 
-      e.paymentDate && new Date(e.paymentDate) <= new Date(`${recordSheet.billingMonth}-05`)).length;
-    const latePayments = entries.filter(e => e.paymentStatus === 'paid' && 
-      e.paymentDate && new Date(e.paymentDate) > new Date(`${recordSheet.billingMonth}-05`)).length;
-    const defaulters = entries.filter(e => e.paymentStatus === 'unpaid').length;
-
-    // Calculate average collection days (simplified)
-    let totalDays = 0;
-    let paidCount = 0;
-    for (const entry of entries) {
-      if (entry.paymentStatus === 'paid' && entry.paymentDate) {
-        const paymentDate = new Date(entry.paymentDate);
-        const monthStart = new Date(`${recordSheet.billingMonth}-01`);
-        const days = Math.ceil((paymentDate.getTime() - monthStart.getTime()) / (1000 * 60 * 60 * 24));
-        totalDays += days;
-        paidCount++;
-      }
-    }
-
-    const averageCollectionDays = paidCount > 0 ? Math.round(totalDays / paidCount) : 0;
-
-    return {
-      ...recordSheet,
-      property,
-      entries,
-      summary: {
-        onTimePayments,
-        latePayments,
-        defaulters,
-        averageCollectionDays
-      }
-    };
   }
 
   // ==================== QUERY METHODS ====================

@@ -119,6 +119,10 @@ const Property: React.FC<PropertyProps> = ({
     }
   };
 
+
+
+  const canAddTenant = property ? property.tenants.length < property.maxUnits : false;
+
   const resetForm = () => {
     if (property) {
       setFormData({
@@ -726,7 +730,7 @@ return (
       )}
 
       {/* Add Tenant Modal */}
-      {showAddTenant && (
+      {showAddTenant && canAddTenant && (
         <AddTenant
           propertyId={propertyId}
           onClose={() => setShowAddTenant(false)}

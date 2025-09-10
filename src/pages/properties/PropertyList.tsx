@@ -80,7 +80,7 @@ const Properties: React.FC<PropertyListProps> = ({
   const canSeeSummary = user?.tier === 'enterprise' || user?.tier === 'pro';
 
 
-  const MAX_FREE_UNITS = USER_LIMITS[user!.tier].totalTenants;;
+  const MAX_FREE_UNITS = USER_LIMITS[user!.tier].tenantsPerProperty;;
   const canAddProperty = user!.tier === 'enterprise' || 
   properties.length < USER_LIMITS[user!.tier].properties;
 

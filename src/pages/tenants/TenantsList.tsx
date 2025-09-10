@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Search, 
-  Plus, 
   Phone, 
   Mail, 
   MessageCircle, 
@@ -16,7 +15,7 @@ import {
   DollarSign} from 'lucide-react';
 import { database } from '../../services/database/Database';
 import type { TenantWithInvoices } from '../../services/database/Database';
-import AddTenant from './AddTenant';
+//import AddTenant from './AddTenant';
 
 interface TenantsListProps {
   propertyId: number;
@@ -30,7 +29,7 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, onTenantAdded }) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedTenant, setExpandedTenant] = useState<number | null>(null);
-  const [showAddTenant, setShowAddTenant] = useState(false);
+  //const [showAddTenant, setShowAddTenant] = useState(false);
   const [deletingTenant, setDeletingTenant] = useState<number | null>(null);
 
   // Get current billing month
@@ -90,6 +89,8 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, onTenantAdded }) 
       setDeletingTenant(null);
     }
   };
+
+  //const canAddTenant = property ? property.tenants.length < property.maxUnits : false;
 
   const handleContactAction = (type: 'call' | 'whatsapp', phone: string) => {
     if (!phone) return;
@@ -213,7 +214,7 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, onTenantAdded }) 
                 : 'Add your first tenant to get started with billing and management'
               }
             </p>
-            {!searchTerm && (
+            {/* {!searchTerm && (
               <button
                 onClick={() => setShowAddTenant(true)}
                 className="inline-flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm sm:text-base"
@@ -221,7 +222,7 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, onTenantAdded }) 
                 <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
                 Add First Tenant
               </button>
-            )}
+            )} */}
           </div>
         ) : (
           <div className="space-y-3 sm:space-y-4">
@@ -417,7 +418,7 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, onTenantAdded }) 
       </div>
 
       {/* Add Tenant Modal */}
-      {showAddTenant && (
+      {/* {showAddTenant && (
         <AddTenant
           propertyId={propertyId}
           onClose={() => setShowAddTenant(false)}
@@ -427,7 +428,7 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, onTenantAdded }) 
             onTenantAdded?.(); // Refresh parent component data
           }}
         />
-      )}
+      )} */}
     </div>
   );
 };

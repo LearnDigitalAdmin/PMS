@@ -91,9 +91,38 @@ const Invoices: React.FC<InvoicesProps> = ({ user, userCompany }) => {
     loadData();
   }, []);
 
+  // useEffect(() => {
+  //   applyFilters();
+  // }, [searchTerm, filters, selectedProperty]);
+
   useEffect(() => {
-    applyFilters();
-  }, [searchTerm, filters, selectedProperty]);
+  applyFilters(); // This will run on mount AND when currentDate changes
+}, [searchTerm, filters, selectedProperty, currentDate]); // ← currentDate added here!
+
+// 4. applyFilters() uses the current month:
+const applyFilters = async () => {
+  const newFilters: InvoiceFilters = {
+    ...filters,
+    propertyId: selectedProperty || undefined,
+    billingMonth: getCurrentMonth() // Uses currentDate to get month
+  };
+
+  // This queries database for invoices in the selected month
+  const result = await database.getInvoices(newFilters);
+  let filteredInvoices = result;
+
+  if (searchTerm) {
+      filteredInvoices = result.filter(invoice =>
+        invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        invoice.tenantName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        invoice.propertyName.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    
+  setInvoices(filteredInvoices);
+  //setInvoices(result);
+};
+
 
   const loadData = async () => {
     try {
@@ -117,28 +146,6 @@ const Invoices: React.FC<InvoicesProps> = ({ user, userCompany }) => {
   const loadProperties = async () => {
     const result = await database.getProperties(user!.id);
     setProperties(result);
-  };
-
-  const applyFilters = async () => {
-    const newFilters: InvoiceFilters = {
-      ...filters,
-      propertyId: selectedProperty || undefined,
-      billingMonth: getCurrentMonth()
-    };
-
-    const result = await database.getInvoices(newFilters);
-    
-    let filteredInvoices = result;
-    
-    if (searchTerm) {
-      filteredInvoices = result.filter(invoice =>
-        invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        invoice.tenantName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        invoice.propertyName.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-    
-    setInvoices(filteredInvoices);
   };
 
   const handleRefresh = async () => {
@@ -479,7 +486,9 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
           <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
           
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 gap-3 mt-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 mt-4">Summary Estimates</h2>
+            <div className="grid grid-cols-2 gap-3 mt-4">
             <div className="bg-blue-50 rounded-lg p-3">
               <p className="text-xs text-blue-600 font-medium">Total</p>
               <p className="text-lg font-bold text-blue-700">{formatCurrency(summary.total)}</p>
@@ -496,6 +505,7 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
               <p className="text-xs text-red-600 font-medium">Overdue</p>
               <p className="text-lg font-bold text-red-700">{formatCurrency(summary.overdue)}</p>
             </div>
+          </div>
           </div>
         </div>
       </div>
