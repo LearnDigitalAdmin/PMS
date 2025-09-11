@@ -584,6 +584,7 @@ return (
           <div className="mb-6">
             <TenantsList
               propertyId={propertyId}
+              userId={userId}
               onTenantAdded={loadPropertyData}
             />
           </div>

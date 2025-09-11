@@ -1,7 +1,8 @@
 // Database.tsx - Complete SQLite Database Implementation with Transaction Fixes
 import { SQLiteDBConnection, type capSQLiteChanges } from '@capacitor-community/sqlite';
 import SQLiteConnectionManager from './Initializer';
-import { USER_LIMITS, type UserTier, type UserType } from './FirebaseSync';
+import { db, USER_LIMITS, type UserTier, type UserType } from './FirebaseSync';
+import { deleteDoc, doc } from 'firebase/firestore';
 
 // ==================== TYPE INTERFACES ====================
 export interface User {
@@ -126,6 +127,7 @@ export interface PropertyInput {
   image?: string;
   agentCommissionRate?: number;
   maxUnits?: number;
+  isRestricted?: boolean; // Added for access control
 }
 
 export interface UnitInput {
@@ -195,6 +197,25 @@ export interface Invoice {
   updatedAt: string;
 }
 
+export interface InvoiceInput {
+  id: number; 
+  tenantId: number;
+  propertyId: number;
+  billingMonth: string;
+  rentAmount: number;
+  waterCurrentReading?: number;
+  waterPreviousReading?: number;
+  waterStandingFee?: number;
+  waterUnitPrice?: number;
+  powerCurrentReading?: number;
+  powerPreviousReading?: number;
+  powerUnitPrice?: number;
+  otherCharges?: number;
+  otherChargesDescription?: string;
+  dueDate?: string;
+  isPaid?: string;
+}
+
 export interface Payment {
   id: number;
   invoiceId: number;
@@ -225,25 +246,7 @@ export interface TenantInput {
   depositAmount?: number;
   leaseStart?: string;
   leaseEnd?: string;
-}
-
-export interface InvoiceInput {
-  id: number; 
-  tenantId: number;
-  propertyId: number;
-  billingMonth: string;
-  rentAmount: number;
-  waterCurrentReading?: number;
-  waterPreviousReading?: number;
-  waterStandingFee?: number;
-  waterUnitPrice?: number;
-  powerCurrentReading?: number;
-  powerPreviousReading?: number;
-  powerUnitPrice?: number;
-  otherCharges?: number;
-  otherChargesDescription?: string;
-  dueDate?: string;
-  isPaid?: string;
+  isRestricted?: boolean;
 }
 
 // Dashboard and analytics interfaces
@@ -382,6 +385,7 @@ export class DatabaseManager {
   private connectionManager: SQLiteConnectionManager;
   public db: SQLiteDBConnection | null = null;
   private readonly DB_NAME = 'Plot';
+  private fireDB = db;
   // 2. FIX: Add missing USER_LIMITS constant
 USER_LIMITS: any = {USER_LIMITS};
 
@@ -865,22 +869,7 @@ async updateUser(id: number, user: Partial<{
 }
 
 // 13. FIX: Secure deletion with cascade validation
-async deleteInvoice(id: number): Promise<void> {
-  const invoice = await this.getInvoiceById(id);
-  if (!invoice) {
-    throw new Error('Invoice not found');
-  }
 
-  // Validate access through tenant and property
-  const tenant = await this.getTenantById(invoice.tenantId);
-  const property = await this.getPropertyById(invoice.propertyId);
-  
-  if (!tenant || !property || tenant.isRestricted || property.isRestricted) {
-    throw new Error('Cannot delete invoice for restricted tenant/property. Upgrade your plan to access.');
-  }
-  
-  await this.db!.run('DELETE FROM invoices WHERE id = ?', [id]);
-}
 
 // 14. FIX: Secure payment operations with validation
 async markInvoicePaid(id: number, paidAmount: number, arrears: number = 0): Promise<void> {
@@ -1898,6 +1887,109 @@ async getDashboardData(userId: number, propertyId?: number, month?: string): Pro
 }
 
 // 10. FIX: Secure createInvoice with validation
+async deleteInvoice(id: number, userId: number): Promise<void> {
+  const invoice = await this.getInvoiceById(id);
+  if (!invoice) {
+    throw new Error('Invoice not found');
+  }
+
+  // Validate access through tenant and property
+  const tenant = await this.getTenantById(invoice.tenantId);
+  const property = await this.getPropertyById(invoice.propertyId);
+  
+  if (!tenant || !property || tenant.isRestricted || property.isRestricted) {
+    throw new Error('Cannot delete invoice for restricted tenant/property. Upgrade your plan to access.');
+  }
+  
+  // Delete from SQLite first
+  await this.db!.run('DELETE FROM invoices WHERE id = ?', [id]);
+  
+  // Delete from Firestore
+  try {
+    const docRef = doc(this.fireDB, 'users', userId.toString(), 'invoices', id.toString());
+    await deleteDoc(docRef);
+  } catch (error) {
+    console.error('Error deleting invoice from Firestore:', error);
+    // Consider whether to rollback SQLite deletion or continue
+  }
+}
+
+async deleteTenant(id: number, userId: number): Promise<void> {
+  const tenant = await this.getTenantById(id);
+  if (!tenant) {
+    throw new Error('Tenant not found');
+  }
+  
+  if (tenant.isRestricted) {
+    throw new Error('Cannot delete restricted tenant. Upgrade your plan to access.');
+  }
+  
+  // Delete from SQLite first
+  await this.db!.run('DELETE FROM tenants WHERE id = ? AND is_restricted = 0', [id]);
+  
+  // Delete from Firestore
+  try {
+    const docRef = doc(this.fireDB, 'users', userId.toString(), 'tenants', id.toString());
+    await deleteDoc(docRef);
+  } catch (error) {
+    console.error('Error deleting tenant from Firestore:', error);
+    // Consider whether to rollback SQLite deletion or continue
+  }
+}
+
+async deleteProperty(id: number, userId: number): Promise<void> {
+  const property = await this.getPropertyById(id);
+  if (!property) {
+    throw new Error('Property not found');
+  }
+  
+  if (property.isRestricted) {
+    throw new Error('Cannot delete restricted property. Upgrade your plan to access.');
+  }
+
+  // Get associated tenants and invoices before deletion
+  const associatedTenants = await this.db!.query(
+    'SELECT id FROM tenants WHERE property_id = ?', 
+    [id]
+  );
+  const associatedInvoices = await this.db!.query(
+    'SELECT id FROM invoices WHERE property_id = ?', 
+    [id]
+  );
+
+  // Delete from SQLite (cascade delete)
+  await this.db!.run('DELETE FROM invoices WHERE property_id = ?', [id]);
+  await this.db!.run('DELETE FROM tenants WHERE property_id = ?', [id]);
+  await this.db!.run('DELETE FROM properties WHERE id = ? AND is_restricted = 0', [id]);
+  
+  // Delete from Firestore
+  try {
+    // Delete property
+    const propertyDocRef = doc(this.fireDB, 'users', userId.toString(), 'properties', id.toString());
+    await deleteDoc(propertyDocRef);
+    
+    // Delete associated tenants from Firestore
+    if (associatedTenants.values) {
+      for (const tenant of associatedTenants.values) {
+        const tenantDocRef = doc(this.fireDB, 'users', userId.toString(), 'tenants', tenant.id.toString());
+        await deleteDoc(tenantDocRef);
+      }
+    }
+    
+    // Delete associated invoices from Firestore
+    if (associatedInvoices.values) {
+      for (const invoice of associatedInvoices.values) {
+        const invoiceDocRef = doc(this.fireDB, 'users', userId.toString(), 'invoices', invoice.id.toString());
+        await deleteDoc(invoiceDocRef);
+      }
+    }
+    
+  } catch (error) {
+    console.error('Error deleting property and associations from Firestore:', error);
+    // Consider whether to rollback SQLite deletions or continue
+  }
+}
+
 async createInvoice(invoice: InvoiceInput): Promise<Invoice> {
   // CRITICAL: Validate tenant and property access before creating invoice
   const tenant = await this.getTenantById(invoice.tenantId);
@@ -1967,6 +2059,88 @@ async createInvoice(invoice: InvoiceInput): Promise<Invoice> {
   
   return createdInvoice;
 }
+
+private async generateInvoiceNumber(): Promise<string> {
+  try {
+    const date = new Date();
+    const year = date.getFullYear().toString().slice(-2);
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const currentPrefix = `INV-${year}${month}-`;
+    
+    // Get the highest invoice number for current month/year
+    const query = `
+      SELECT invoice_number 
+      FROM invoices 
+      WHERE invoice_number LIKE ? 
+      ORDER BY invoice_number DESC 
+      LIMIT 1
+    `;
+    
+    const result = await this.db!.query(query, [`${currentPrefix}%`]);
+    
+    let nextNumber = 1;
+    if (result.values && result.values.length > 0) {
+      const lastInvoiceNumber = result.values[0].invoice_number as string;
+      // Extract the number part (last 4 digits)
+      const lastNumber = parseInt(lastInvoiceNumber.slice(-4));
+      nextNumber = lastNumber + 1;
+    }
+    
+    return `${currentPrefix}${nextNumber.toString().padStart(4, '0')}`;
+  } catch (error) {
+    console.error('Error generating invoice number:', error);
+    return `INV-${Date.now()}`;
+  }
+}
+
+async updateInvoice(id: number, invoice: Partial<InvoiceInput>): Promise<void> {
+    const fields = [];
+    const values = [];
+    
+    // Recalculate total if any amounts change
+    if (invoice.rentAmount !== undefined || 
+        invoice.waterCurrentReading !== undefined ||
+        invoice.waterPreviousReading !== undefined ||
+        invoice.waterUnitPrice !== undefined ||
+        invoice.waterStandingFee !== undefined ||
+        invoice.powerCurrentReading !== undefined ||
+        invoice.powerPreviousReading !== undefined ||
+        invoice.powerUnitPrice !== undefined ||
+        invoice.otherCharges !== undefined) {
+      
+      const currentInvoice = await this.getInvoiceById(id);
+      if (currentInvoice) {
+        const rentAmount = invoice.rentAmount ?? currentInvoice.rentAmount;
+        const waterAmount = ((invoice.waterCurrentReading ?? currentInvoice.waterCurrentReading) - 
+                            (invoice.waterPreviousReading ?? currentInvoice.waterPreviousReading)) * 
+                           (invoice.waterUnitPrice ?? currentInvoice.waterUnitPrice) + 
+                           (invoice.waterStandingFee ?? currentInvoice.waterStandingFee);
+        const powerAmount = ((invoice.powerCurrentReading ?? currentInvoice.powerCurrentReading) - 
+                            (invoice.powerPreviousReading ?? currentInvoice.powerPreviousReading)) * 
+                           (invoice.powerUnitPrice ?? currentInvoice.powerUnitPrice);
+        const totalAmount = rentAmount + waterAmount + powerAmount + 
+                           (invoice.otherCharges ?? currentInvoice.otherCharges);
+        
+        fields.push('total_amount = ?');
+        values.push(totalAmount);
+      }
+    }
+    
+    // Add other fields
+    Object.entries(invoice).forEach(([key, value]) => {
+      if (value !== undefined) {
+        const dbKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+        fields.push(`${dbKey} = ?`);
+        values.push(value);
+      }
+    });
+    
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(id);
+    
+    const query = `UPDATE invoices SET ${fields.join(', ')} WHERE id = ?`;
+    await this.db!.run(query, values);
+  }
 
 // 11. FIX: Secure update operations with validation
 async updateProperty(id: number, property: Partial<PropertyInput>): Promise<void> {
@@ -2081,31 +2255,9 @@ async updateTenant(id: number, tenant: Partial<TenantInput>): Promise<void> {
 }
 
 // 13. FIX: Secure deletion methods
-async deleteProperty(id: number): Promise<void> {
-  const property = await this.getPropertyById(id);
-  if (!property) {
-    throw new Error('Property not found');
-  }
-  
-  if (property.isRestricted) {
-    throw new Error('Cannot delete restricted property. Upgrade your plan to access.');
-  }
-  
-  await this.db!.run('DELETE FROM properties WHERE id = ? AND is_restricted = 0', [id]);
-}
 
-async deleteTenant(id: number): Promise<void> {
-  const tenant = await this.getTenantById(id);
-  if (!tenant) {
-    throw new Error('Tenant not found');
-  }
-  
-  if (tenant.isRestricted) {
-    throw new Error('Cannot delete restricted tenant. Upgrade your plan to access.');
-  }
-  
-  await this.db!.run('DELETE FROM tenants WHERE id = ? AND is_restricted = 0', [id]);
-}
+
+
 
 // 14. FIX: Enhanced checkUserLimits with real-time data
 async checkUserLimits(userId: number): Promise<{
@@ -2946,55 +3098,6 @@ async createPayment(payment: {
     }
   }
 
-  async updateInvoice(id: number, invoice: Partial<InvoiceInput>): Promise<void> {
-    const fields = [];
-    const values = [];
-    
-    // Recalculate total if any amounts change
-    if (invoice.rentAmount !== undefined || 
-        invoice.waterCurrentReading !== undefined ||
-        invoice.waterPreviousReading !== undefined ||
-        invoice.waterUnitPrice !== undefined ||
-        invoice.waterStandingFee !== undefined ||
-        invoice.powerCurrentReading !== undefined ||
-        invoice.powerPreviousReading !== undefined ||
-        invoice.powerUnitPrice !== undefined ||
-        invoice.otherCharges !== undefined) {
-      
-      const currentInvoice = await this.getInvoiceById(id);
-      if (currentInvoice) {
-        const rentAmount = invoice.rentAmount ?? currentInvoice.rentAmount;
-        const waterAmount = ((invoice.waterCurrentReading ?? currentInvoice.waterCurrentReading) - 
-                            (invoice.waterPreviousReading ?? currentInvoice.waterPreviousReading)) * 
-                           (invoice.waterUnitPrice ?? currentInvoice.waterUnitPrice) + 
-                           (invoice.waterStandingFee ?? currentInvoice.waterStandingFee);
-        const powerAmount = ((invoice.powerCurrentReading ?? currentInvoice.powerCurrentReading) - 
-                            (invoice.powerPreviousReading ?? currentInvoice.powerPreviousReading)) * 
-                           (invoice.powerUnitPrice ?? currentInvoice.powerUnitPrice);
-        const totalAmount = rentAmount + waterAmount + powerAmount + 
-                           (invoice.otherCharges ?? currentInvoice.otherCharges);
-        
-        fields.push('total_amount = ?');
-        values.push(totalAmount);
-      }
-    }
-    
-    // Add other fields
-    Object.entries(invoice).forEach(([key, value]) => {
-      if (value !== undefined) {
-        const dbKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-        fields.push(`${dbKey} = ?`);
-        values.push(value);
-      }
-    });
-    
-    fields.push('updated_at = CURRENT_TIMESTAMP');
-    values.push(id);
-    
-    const query = `UPDATE invoices SET ${fields.join(', ')} WHERE id = ?`;
-    await this.db!.run(query, values);
-  }
-
   async markInvoiceUnpaid(id: number): Promise<void> {
     const query = `
       UPDATE invoices 
@@ -3004,20 +3107,7 @@ async createPayment(payment: {
     await this.db!.run(query, [id]);
   }
 
-  private async generateInvoiceNumber(): Promise<string> {
-    try {
-      const query = 'SELECT COUNT(*) as count FROM invoices';
-      const result = await this.db!.query(query);
-      const count = result.values?.[0]?.count || 0;
-      const date = new Date();
-      const year = date.getFullYear().toString().slice(-2);
-      const month = (date.getMonth() + 1).toString().padStart(2, '0');
-      return `INV-${year}${month}-${(count + 1).toString().padStart(4, '0')}`;
-    } catch (error) {
-      console.error('Error generating invoice number:', error);
-      return `INV-${Date.now()}`;
-    }
-  }
+  
 
   async getPaymentsByInvoice(invoiceId: number): Promise<Payment[]> {
     try {

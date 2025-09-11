@@ -295,7 +295,7 @@ const Properties: React.FC<PropertyListProps> = ({
     if (!selectedProperty) return;
 
     try {
-      await database.deleteProperty(selectedProperty.id);
+      await database.deleteProperty(selectedProperty.id, user!.id);
       await loadProperties();
       setShowDeleteModal(false);
       setSelectedProperty(null);

@@ -41,35 +41,72 @@ const Sheet: React.FC<SheetProps> = ({
     loadRentRecord();
   }, [propertyId, currentMonth]);
 
+  // const loadRentRecord = async () => {
+  //   try {
+  //     setLoading(true);
+  //     setError(null);
+
+  //     // Try to get existing rent record for this month
+  //     const existingRecords = await reportsDatabase.getRentRecordsByProperty(propertyId, 12);
+  //     const monthRecord = existingRecords.find(r => r.billingMonth === currentMonth);
+
+  //     if (monthRecord) {
+  //       const recordWithDetails = await reportsDatabase.getRentRecordWithDetails(monthRecord.id);
+  //       setRentRecord(recordWithDetails);
+  //     } else {
+  //       // Generate new rent record for this month
+  //       try {
+  //         const newRecord = await reportsDatabase.generateRentRecordSheet(propertyId, currentMonth);
+  //         setRentRecord(newRecord);
+  //       } catch (generateError) {
+  //         console.error('Error generating rent record:', generateError);
+  //         setRentRecord(null);
+  //       }
+  //     }
+  //   } catch (error) {
+  //     console.error('Error loading rent record:', error);
+  //     setError('Failed to load rent record data');
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
   const loadRentRecord = async () => {
+  try {
+    setLoading(true);
+    setError(null);
+    console.log(`[Sheet] Loading rent record for property ${propertyId}, month ${currentMonth}`);
+
+    // ALWAYS generate/refresh the rent record to get latest data
+    // This ensures we see fresh invoice data, new tenants, updated payments, etc.
     try {
-      setLoading(true);
-      setError(null);
+      console.log(`[Sheet] Generating fresh rent record sheet...`);
+      const newRecord = await reportsDatabase.generateRentRecordSheet(propertyId, currentMonth);
+      setRentRecord(newRecord);
+      console.log(`[Sheet] Successfully loaded fresh rent record with ${newRecord.entries.length} entries`);
+    } catch (generateError) {
+      console.error('Error generating rent record:', generateError);
+      
+      // Fallback: try to get existing record if generation fails
+      //const existingRecords = await reportsDatabase.getRentRecordsByProperty(propertyId, 12);
+      //const monthRecord = existingRecords.find(r => r.billingMonth === currentMonth);
 
-      // Try to get existing rent record for this month
-      const existingRecords = await reportsDatabase.getRentRecordsByProperty(propertyId, 12);
-      const monthRecord = existingRecords.find(r => r.billingMonth === currentMonth);
-
-      if (monthRecord) {
-        const recordWithDetails = await reportsDatabase.getRentRecordWithDetails(monthRecord.id);
-        setRentRecord(recordWithDetails);
-      } else {
-        // Generate new rent record for this month
-        try {
-          const newRecord = await reportsDatabase.generateRentRecordSheet(propertyId, currentMonth);
-          setRentRecord(newRecord);
-        } catch (generateError) {
-          console.error('Error generating rent record:', generateError);
-          setRentRecord(null);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading rent record:', error);
-      setError('Failed to load rent record data');
-    } finally {
-      setLoading(false);
+      //if (monthRecord) {
+        //console.log(`[Sheet] Falling back to existing record ${monthRecord.id}`);
+        //const recordWithDetails = await reportsDatabase.getRentRecordWithDetails(monthRecord.id);
+        //setRentRecord(recordWithDetails);
+      //} else {
+        setRentRecord(null);
+        setError('Failed to load or generate rent record. Please check if there are active tenants for this property.');
+      //}
     }
-  };
+  } catch (error) {
+    console.error('Error loading rent record:', error);
+    setError('Failed to load rent record data. Please try refreshing the page.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const getMonthName = (monthStr: string) => {
     const [year, month] = monthStr.split('-');

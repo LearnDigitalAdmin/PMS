@@ -19,10 +19,11 @@ import type { TenantWithInvoices } from '../../services/database/Database';
 
 interface TenantsListProps {
   propertyId: number;
+  userId: number;
   onTenantAdded?: () => void;
 }
 
-const TenantsList: React.FC<TenantsListProps> = ({ propertyId, onTenantAdded }) => {
+const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantAdded }) => {
   const [tenants, setTenants] = useState<TenantWithInvoices[]>([]);
   const [filteredTenants, setFilteredTenants] = useState<TenantWithInvoices[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -79,7 +80,7 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, onTenantAdded }) 
 
     try {
       setDeletingTenant(tenantId);
-      await database.deleteTenant(tenantId);
+      await database.deleteTenant(tenantId, userId);
       await loadTenants();
       onTenantAdded?.(); // Refresh parent component data
     } catch (err) {
