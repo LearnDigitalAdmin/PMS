@@ -1206,6 +1206,18 @@ public async canCreateProperty(userId: number): Promise<{ allowed: boolean; reas
 }
 
 // 7. FIX: Enhanced canCreateTenant with real-time validation
+private async generateTenantId(): Promise<number> {
+  const query = `SELECT MAX(id) as max_id FROM tenants WHERE id >= 11111 AND id <= 1111109`;
+  const result = await this.db!.query(query);
+  const maxId = result.values?.[0]?.max_id || 11110;
+  
+  if (maxId >= 1111109) {
+    throw new Error('Maximum tenants limit reached (1.1M). Cannot create more tenants.');
+  }
+  
+  return maxId + 1;
+}
+
 public async canCreateTenant(propertyId: number): Promise<{ allowed: boolean; reason: string }> {
   const property = await this.getPropertyById(propertyId);
   if (!property) {
@@ -1521,6 +1533,7 @@ async createInvoice(invoice: InvoiceInput): Promise<Invoice> {
   }
 
   const invoiceNumber = await this.generateInvoiceNumber();
+  const invoiceId = await this.generateInvoiceId();
   
   // Calculate total amount
   const waterAmount = ((invoice.waterCurrentReading || 0) - (invoice.waterPreviousReading || 0)) * 
@@ -1531,15 +1544,16 @@ async createInvoice(invoice: InvoiceInput): Promise<Invoice> {
   
   const query = `
     INSERT INTO invoices (
-      tenant_id, property_id, invoice_number, billing_month, rent_amount,
+      id, tenant_id, property_id, invoice_number, billing_month, rent_amount,
       water_current_reading, water_previous_reading, water_standing_fee, water_unit_price,
       power_current_reading, power_previous_reading, power_unit_price,
       other_charges, other_charges_description, total_amount, due_date, is_paid
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   
   const result = await this.db!.run(query, [
+    invoiceId,
     invoice.tenantId,
     invoice.propertyId,
     invoiceNumber,
@@ -1568,6 +1582,14 @@ async createInvoice(invoice: InvoiceInput): Promise<Invoice> {
   await this.autoSyncAfterChange(createdInvoice.id, 'invoice');
   
   return createdInvoice;
+}
+
+private async generateInvoiceId(): Promise<number> {
+  const query = `SELECT MAX(id) as max_id FROM invoices WHERE id >= 1111111`;
+  const result = await this.db!.query(query);
+  const maxId = result.values?.[0]?.max_id || 1111110;
+  
+  return maxId + 1;
 }
 
 private async generateInvoiceNumber(): Promise<string> {
@@ -1965,6 +1987,17 @@ async checkUserLimits(userId: number): Promise<{
   }
 
   // ==================== ENHANCED PROPERTY OPERATIONS ====================
+  private async generatePropertyId(): Promise<number> {
+  const query = `SELECT MAX(id) as max_id FROM properties WHERE id >= 111 AND id <= 11109`;
+  const result = await this.db!.query(query);
+  const maxId = result.values?.[0]?.max_id || 110;
+  
+  if (maxId >= 11109) {
+    throw new Error('Maximum properties limit reached (11,000). Cannot create more properties.');
+  }
+  
+  return maxId + 1;
+}
 
   async createProperty(property: PropertyInput): Promise<Property> {
     // Check limits before creation
@@ -1972,13 +2005,15 @@ async checkUserLimits(userId: number): Promise<{
     if (!canCreate.allowed) {
       throw new Error(canCreate.reason);
     }
+    const newPropertyId = await this.generatePropertyId();
 
     const query = `
-      INSERT INTO properties (user_id, company_id, name, address, description, image, agent_commission_rate, max_units)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO properties (id, user_id, company_id, name, address, description, image, agent_commission_rate, max_units)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
     const result = await this.db!.run(query, [
+      newPropertyId,
       property.userId,
       property.companyId || null,
       property.name,
@@ -2016,15 +2051,18 @@ async checkUserLimits(userId: number): Promise<{
       throw new Error(canCreate.reason);
     }
 
+    const newTenantId = await this.generateTenantId();
+
     const query = `
       INSERT INTO tenants (
-        property_id, name, phone, email, unit_number, 
+        id, property_id, name, phone, email, unit_number, 
         rent_amount, standing_fees, deposit_amount, lease_start, lease_end
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
     const result = await this.db!.run(query, [
+      newTenantId,
       tenant.propertyId,
       tenant.name,
       tenant.phone || '',

@@ -97,7 +97,7 @@ export class Tables {
     
           // Add access control to properties
           `CREATE TABLE IF NOT EXISTS properties (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY,
             user_id INTEGER NOT NULL,
             company_id INTEGER,
             name TEXT NOT NULL,
@@ -115,7 +115,7 @@ export class Tables {
     
           // Add access control to tenants
           `CREATE TABLE IF NOT EXISTS tenants (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY,
             property_id INTEGER NOT NULL,
             unit_id INTEGER,
             name TEXT NOT NULL,
@@ -137,7 +137,7 @@ export class Tables {
     
           // Invoices table
           `CREATE TABLE IF NOT EXISTS invoices (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY,
             tenant_id INTEGER NOT NULL,
             property_id INTEGER NOT NULL,
             invoice_number TEXT UNIQUE NOT NULL,
