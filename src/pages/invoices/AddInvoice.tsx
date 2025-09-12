@@ -272,6 +272,7 @@ const handleSave = async () => {
     };
 
     let savedInvoice: Invoice;
+    console.log('INVOICE ID:', invoiceId);
     if (invoiceId) {
       await database.updateInvoice(invoiceId, invoiceData);
       savedInvoice = await database.getInvoiceById(invoiceId) as Invoice;

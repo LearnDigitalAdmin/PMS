@@ -71,7 +71,7 @@ const AnInvoice: React.FC<AnInvoiceProps> = ({ invoiceId, onBack, isModal = fals
         setPayments(paymentsData);
         
         // Load property details
-        const properties = await database.getProperties(1);
+        const properties = await database.getProperties(invoiceData.propertyId);
         const propertyData = properties.find(p => p.id === invoiceData.propertyId);
         setProperty(propertyData || null);
         
@@ -261,7 +261,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
     if (!invoice) return;
     
     try {
-      await database.deleteInvoice(invoice.id);
+      await database.deleteInvoice(invoice.id, user.id);
       setShowDeleteModal(false);
       onBack?.();
     } catch (error) {
