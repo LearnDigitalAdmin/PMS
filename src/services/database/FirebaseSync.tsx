@@ -1162,51 +1162,57 @@ export class FirebaseSyncService {
 
   // ==================== EXISTING HELPER METHODS (Updated) ====================
 
-  async downloadUserUpdates(userId: number): Promise<void> {
-    try {
-      console.log('📥 Downloading user updates...');
-      
-      const userRef = doc(db, 'users', userId.toString());
-      const userDoc = await getDoc(userRef);
-      
-      if (!userDoc.exists()) {
-        console.log('No user document found in Firestore for userId:', userId);
-        return;
-      }
-      
-      const userData = userDoc.data();
-      
-      if (!userData || typeof userData !== 'object') {
-        console.warn('⚠️ Invalid or empty user data received from Firestore:', userData);
-        return;
-      }
-      
-      console.log('✅ User document loaded from Firestore');
-      
-      // Update tier and type if changed
-      const tier = userData.tier || 'free';
-      const type = userData.type || 'free';
-      const storage = userData.storage !== undefined ? userData.storage : false;
-      
-      if (userData.tier || userData.type || userData.storage !== undefined) {
-        await database.updateUserTierAndType(userId, tier, type, storage);
-        console.log('✅ User tier and permissions updated');
-      }
-      
-      // Update company data if exists
-      if (userData.company && typeof userData.company === 'object' && userData.company !== null) {
-        await this.syncCompanyData(userId, userData.company);
-      }
-      
-    } catch (error: any) {
-      console.error('❌ Failed to download user updates:', error);
-      
-      if (error.code === 'permission-denied') {
-        throw new Error(`User updates download failed: Access denied for user ${userId}`);
-      }
-      // Continue even if user updates fail
+  
+  async downloadUserUpdates(userId: number): Promise<{ tier: string; type: string; storage: boolean; company?: any } | null> {
+  try {
+    console.log('📥 Downloading user updates for userId:', userId);
+    
+    const userRef = doc(db, 'users', userId.toString());
+    const userDoc = await getDoc(userRef);
+    
+    if (!userDoc.exists()) {
+      console.log('No user document found in Firestore');
+      return null;
     }
+    
+    const userData = userDoc.data();
+    if (!userData) {
+      console.warn('Empty user data received from Firestore');
+      return null;
+    }
+    
+    console.log('✅ User document loaded from Firestore');
+    
+    // Extract and normalize the data
+    const result = {
+      tier: userData.tier || 'free',
+      type: userData.type || 'free', 
+      storage: userData.storage === true,
+      company: userData.company || undefined
+    };
+    
+    // Update local database
+    await database.updateUserTierAndType(userId, result.tier, result.type, result.storage);
+    console.log('✅ User tier and permissions updated locally');
+    
+    // Update company if exists
+    if (result.company) {
+      await this.syncCompanyData(userId, result.company);
+      console.log('✅ Company data updated');
+    }
+    
+    return result;
+    
+  } catch (error: any) {
+    console.error('❌ Failed to download user updates:', error);
+    
+    if (error.code === 'permission-denied') {
+      console.warn('Access denied - user may not have Firestore permissions');
+    }
+    
+    return null; // Return null on any error - app continues offline
   }
+}
 
   private async syncCompanyData(userId: number, companyData: any): Promise<void> {
     try {

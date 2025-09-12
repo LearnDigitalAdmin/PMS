@@ -664,26 +664,26 @@ export class SummariesService {
       
       if (transcript) {
         // Water charges
-        if (transcript.totalWaterCharges > 0) {
-          breakdown.push({
-            propertyId: property.id,
-            propertyName: property.name,
-            amount: transcript.totalWaterCharges,
-            source: "Water charges",
-            description: "Water utility management fees"
-          });
-        }
+        // if (transcript.totalWaterCharges > 0) {
+        //   breakdown.push({
+        //     propertyId: property.id,
+        //     propertyName: property.name,
+        //     amount: transcript.totalWaterCharges,
+        //     source: "Water charges",
+        //     description: "Water utility management fees"
+        //   });
+        // }
 
-        // Power charges
-        if (transcript.totalPowerCharges > 0) {
-          breakdown.push({
-            propertyId: property.id,
-            propertyName: property.name,
-            amount: transcript.totalPowerCharges,
-            source: "Power charges",
-            description: "Power utility management fees"
-          });
-        }
+        // // Power charges
+        // if (transcript.totalPowerCharges > 0) {
+        //   breakdown.push({
+        //     propertyId: property.id,
+        //     propertyName: property.name,
+        //     amount: transcript.totalPowerCharges,
+        //     source: "Power charges",
+        //     description: "Power utility management fees"
+        //   });
+        // }
 
         // Other charges
         if (transcript.totalOtherCharges > 0) {

@@ -77,13 +77,13 @@ export interface RentRecordEntry {
 
 // Input interfaces
 export interface TranscriptItemInput {
-  transcriptId: number;
   description: string;
   amount: number;
   type: 'rent' | 'water' | 'power' | 'deductible' | 'custom';
   category?: string;
   isDeductible: boolean;
   sortOrder?: number;
+  billingMonth: string;
 }
 
 export interface MonthlyTranscriptInput {
@@ -246,49 +246,49 @@ private async rebuildTranscriptItems(
   // Add rent collected item (always income)
   if (grossRentCollected > 0) {
     await this.addTranscriptItem({
-      transcriptId,
       description: 'Collectable Rent',
       amount: grossRentCollected,
       type: 'rent',
       isDeductible: false,
-      sortOrder: sortOrder++
+      sortOrder: sortOrder++,
+      billingMonth
     });
   }
 
   // Add other charges if any
   if (totalOtherCharges > 0) {
     await this.addTranscriptItem({
-      transcriptId,
       description: 'Other Charges',
       amount: totalOtherCharges,
       type: 'custom',
       isDeductible: false,
-      sortOrder: sortOrder++
+      sortOrder: sortOrder++,
+      billingMonth
     });
   }
 
   // Add commission deduction (always deductible)
   if (agentCommission > 0) {
     await this.addTranscriptItem({
-      transcriptId,
       description: `Agent Commission (${property.agentCommissionRate}%)`,
       amount: agentCommission,
       type: 'deductible',
       isDeductible: true,
-      sortOrder: sortOrder++
+      sortOrder: sortOrder++,
+      billingMonth
     });
   }
 
   // Add arrears as deduction if any
   if (totalArrears > 0) {
     await this.addTranscriptItem({
-      transcriptId,
       description: 'Outstanding Arrears',
       amount: totalArrears,
       type: 'deductible',
       category: 'Deductions',
       isDeductible: true,
-      sortOrder: sortOrder++
+      sortOrder: sortOrder++,
+      billingMonth
     });
   }
 
@@ -300,64 +300,64 @@ private async rebuildTranscriptItems(
     // Add default water if not overridden by custom
     if (!waterItem && invoiceWaterCharges > 0) {
       await this.addTranscriptItem({
-        transcriptId,
         description: 'Water Charges',
         amount: invoiceWaterCharges,
         type: 'water',
         category: 'Utilities',
         isDeductible: false,
-        sortOrder: sortOrder++
+        sortOrder: sortOrder++,
+        billingMonth
       });
     }
 
     // Add default power if not overridden by custom
     if (!powerItem && invoicePowerCharges > 0) {
       await this.addTranscriptItem({
-        transcriptId,
         description: 'Power Charges',
         amount: invoicePowerCharges,
         type: 'power',
         category: 'Utilities',
         isDeductible: false,
-        sortOrder: sortOrder++
+        sortOrder: sortOrder++,
+        billingMonth
       });
     }
 
     // Add all custom items
     for (const item of customItems) {
       await this.addTranscriptItem({
-        transcriptId,
         description: item.description,
         amount: item.amount,
         type: item.type,
         category: item.category,
         isDeductible: item.isDeductible,
-        sortOrder: item.sortOrder || sortOrder++
+        sortOrder: item.sortOrder || sortOrder++,
+        billingMonth
       });
     }
   } else {
     // No custom items, use invoice defaults
     if (invoiceWaterCharges > 0) {
       await this.addTranscriptItem({
-        transcriptId,
         description: 'Water Charges',
         amount: invoiceWaterCharges,
         type: 'water',
         category: 'Utilities',
         isDeductible: false,
-        sortOrder: sortOrder++
+        sortOrder: sortOrder++,
+        billingMonth
       });
     }
 
     if (invoicePowerCharges > 0) {
       await this.addTranscriptItem({
-        transcriptId,
         description: 'Power Charges',
         amount: invoicePowerCharges,
         type: 'power',
         category: 'Utilities',
         isDeductible: false,
-        sortOrder: sortOrder++
+        sortOrder: sortOrder++,
+        billingMonth
       });
     }
   }
@@ -376,9 +376,7 @@ async getTranscriptWithDetails(transcriptId: number): Promise<TranscriptWithDeta
   if (!property) {
     throw new Error('Property not found');
   }
-
-  // DON'T rebuild items here - just get current state
-  // Items are only rebuilt when explicitly generating/updating transcript
+  
   const items = await this.getTranscriptItems(transcriptId);
   
   // Get tenant summary using fresh invoice data
@@ -402,24 +400,21 @@ async getTranscriptWithDetails(transcriptId: number): Promise<TranscriptWithDeta
 async addTranscriptItem(item: TranscriptItemInput): Promise<TranscriptItem> {
   const query = `
     INSERT INTO transcript_items (
-      transcript_id, description, amount, type, category, 
-      is_deductible, sort_order
+      description, amount, type, category, 
+      is_deductible, sort_order, billing_month
     )
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `;
 
   const result = await database.db!.run(query, [
-    item.transcriptId,
     item.description,
     item.amount,
     item.type,
     item.category || '',
     item.isDeductible ? 1 : 0,
-    item.sortOrder || 0
+    item.sortOrder || 0,
+    item.billingMonth
   ]);
-
-  // DON'T auto-recalculate here to prevent recursive calls during rebuild
-  // Recalculation happens explicitly after all items are added
 
   return await this.getTranscriptItemById(result.changes!.lastId!);
 }
