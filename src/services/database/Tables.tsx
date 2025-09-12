@@ -49,281 +49,354 @@ const AGENT_SUMMARY_TRIGGERS = [
 
 // NEW: Database maintenance class
 export class DatabaseMaintenance {
-  
+  private lastFullCleanup: Date | null = null;
+  private lastCacheCleanup: Date | null = null;
+  private cleanupRunning = false;
+
+  // Check if cleanup is needed before running
+  private needsFullCleanup(): boolean {
+    if (!this.lastFullCleanup) return true;
+    const daysSinceCleanup = (Date.now() - this.lastFullCleanup.getTime()) / (1000 * 60 * 60 * 24);
+    return daysSinceCleanup >= 30; // Only run monthly
+  }
+
+  private needsCacheCleanup(): boolean {
+    if (!this.lastCacheCleanup) return true;
+    const hoursSinceCleanup = (Date.now() - this.lastCacheCleanup.getTime()) / (1000 * 60 * 60);
+    return hoursSinceCleanup >= 6; // Only run every 6 hours
+  }
+
   // Automatic cleanup for old data (run monthly/quarterly)
   async cleanupOldData(): Promise<void> {
-    const retentionMonths = 18; // Keep 1.5 years of data
-    const cutoffDate = new Date();
-    cutoffDate.setMonth(cutoffDate.getMonth() - retentionMonths);
-    const cutoffMonth = cutoffDate.toISOString().slice(0, 7); // YYYY-MM format
-
-    const cleanupQueries = [
-      // Archive old invoices (older than 18 months)
-      `DELETE FROM invoices WHERE billing_month < '${cutoffMonth}'`,
-      
-      // Clean old payment records
-      `DELETE FROM payments WHERE payment_date < '${cutoffDate.toISOString().split('T')[0]}'`,
-      
-      // Archive old business expenses
-      `DELETE FROM business_expenses WHERE month < '${cutoffMonth}'`,
-      
-      // Clean stale cache entries
-      `DELETE FROM monthly_business_summaries WHERE month < '${cutoffMonth}' AND is_stale = 1`,
-      
-      // Archive old KPI history (keep last 2 years for trends)
-      `DELETE FROM agent_kpi_history WHERE month < '${cutoffMonth}'`,
-      
-      // Clean old rent record sheets
-      `DELETE FROM rent_record_sheets WHERE billing_month < '${cutoffMonth}'`,
-      
-      // Remove orphaned transcript items
-      `DELETE FROM transcript_items WHERE transcript_id NOT IN (SELECT id FROM monthly_transcripts)`
-    ];
-
-    for (const query of cleanupQueries) {
-      try {
-        await database.db!.run(query);
-        console.log('Cleanup completed for:', query.substring(0, 50) + '...');
-      } catch (error) {
-        console.error('Cleanup error:', error);
-      }
+    if (this.cleanupRunning || !this.needsFullCleanup()) {
+      console.log('Skipping cleanup - not needed or already running');
+      return;
     }
 
-    // Vacuum database after cleanup to reclaim space
-    await database.db!.run('VACUUM');
-    await database.db!.run('ANALYZE');
-    console.log('Database maintenance completed');
+    this.cleanupRunning = true;
+    console.log('Starting database cleanup...');
+
+    try {
+      if (!database.db) {
+        throw new Error('Database not initialized');
+      }
+
+      const retentionMonths = 18; // Keep 1.5 years of data
+      const cutoffDate = new Date();
+      cutoffDate.setMonth(cutoffDate.getMonth() - retentionMonths);
+      const cutoffMonth = cutoffDate.toISOString().slice(0, 7); // YYYY-MM format
+
+      const cleanupQueries = [
+        // Archive old invoices (older than 18 months)
+        { query: `DELETE FROM invoices WHERE billing_month < ?`, params: [cutoffMonth] },
+        
+        // Clean old payment records
+        { query: `DELETE FROM payments WHERE payment_date < ?`, params: [cutoffDate.toISOString().split('T')[0]] },
+        
+        // Archive old business expenses
+        { query: `DELETE FROM business_expenses WHERE month < ?`, params: [cutoffMonth] },
+        
+        // Clean stale cache entries
+        { query: `DELETE FROM monthly_business_summaries WHERE month < ? AND is_stale = 1`, params: [cutoffMonth] },
+        
+        // Archive old KPI history (keep last 2 years for trends)
+        { query: `DELETE FROM agent_kpi_history WHERE month < ?`, params: [cutoffMonth] },
+        
+        // Clean old rent record sheets
+        { query: `DELETE FROM rent_record_sheets WHERE billing_month < ?`, params: [cutoffMonth] },
+        
+        // Remove orphaned transcript items
+        { query: `DELETE FROM transcript_items WHERE transcript_id NOT IN (SELECT id FROM monthly_transcripts)`, params: [] }
+      ];
+
+      let totalDeleted = 0;
+      for (const { query, params } of cleanupQueries) {
+        try {
+          const result = await database.db.run(query, params);
+          const deleted = result.changes || 0;
+          totalDeleted += (deleted as number);
+          if ((deleted as number) > 0) {
+            console.log(`Cleanup: ${deleted} records deleted from query: ${query.substring(0, 50)}...`);
+          }
+        } catch (error) {
+          console.error('Cleanup error for query:', query, error);
+        }
+      }
+
+      // Only vacuum if we actually deleted something
+      if (totalDeleted > 0) {
+        console.log('Running database optimization...');
+        await database.db.run('PRAGMA incremental_vacuum');
+        await database.db.run('ANALYZE');
+      }
+
+      this.lastFullCleanup = new Date();
+      console.log(`Database cleanup completed. ${totalDeleted} total records removed.`);
+    } catch (error) {
+      console.error('Database cleanup failed:', error);
+    } finally {
+      this.cleanupRunning = false;
+    }
   }
 
   // Clean stale cache entries (run daily/weekly)
   async cleanupStaleCache(): Promise<void> {
-    const staleCutoff = new Date();
-    staleCutoff.setHours(staleCutoff.getHours() - 24); // 24 hours old
+    if (!this.needsCacheCleanup()) {
+      return; // Skip if not needed
+    }
 
-    await database.db!.run(`
+    try {
+      if (!database.db) {
+        throw new Error('Database not initialized');
+      }
+
+      const staleCutoff = new Date();
+      staleCutoff.setHours(staleCutoff.getHours() - 24); // 24 hours old
+
+      const result = await database.db.run(`
         DELETE FROM monthly_business_summaries 
         WHERE is_stale = 1 
         AND last_calculated < ?
-        `, [staleCutoff.toISOString()]);
-    
-    console.log('Stale cache cleanup completed');
+      `, [staleCutoff.toISOString()]);
+
+      const deleted = result.changes || 0;
+      if ((deleted as number) > 0) {
+        console.log(`Stale cache cleanup: ${deleted} entries removed`);
+      }
+
+      this.lastCacheCleanup = new Date();
+    } catch (error) {
+      console.error('Stale cache cleanup failed:', error);
+    }
+  }
+
+  // Manual cleanup trigger (for immediate cleanup if needed)
+  async forceCleanup(): Promise<void> {
+    this.lastFullCleanup = null; // Reset to force cleanup
+    await this.cleanupOldData();
   }
 }
 
 export class Tables {
+  private maintenanceScheduled = false;
 
-    async createTables(): Promise<void> {
-        const queries = [
-    
-          // Companies table (new)
-          `CREATE TABLE IF NOT EXISTS companies (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            address TEXT,
-            phone TEXT,
-            email TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-          )`,
-    
-        // New Units table
-        `CREATE TABLE IF NOT EXISTS units (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          property_id INTEGER NOT NULL,
-          unit_number TEXT NOT NULL,
-          rent_amount REAL NOT NULL,
-          is_occupied INTEGER DEFAULT 0,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
-          UNIQUE(property_id, unit_number)
-        )`,
-    
-        `CREATE TABLE IF NOT EXISTS users (
-            id TEXT UNIQUE NOT NULL,
-            name TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            phone TEXT,
-            password_hash TEXT NOT NULL,
-            is_premium INTEGER DEFAULT 0,
-            type TEXT DEFAULT 'free' CHECK (type IN ('free', 'paid')),
-            tier TEXT DEFAULT 'free' CHECK (tier IN ('free', 'low', 'business', 'pro', 'enterprise')),
-            storage INTEGER DEFAULT 0,
-            revenuecat_user_id TEXT,
-            selected_property_ids TEXT, -- JSON array of property IDs for restricted users
-            restricted_access INTEGER DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-          )`,
-    
-          // Add access control to properties
-          `CREATE TABLE IF NOT EXISTS properties (
-            id INTEGER PRIMARY KEY,
-            user_id INTEGER NOT NULL,
-            company_id INTEGER,
-            name TEXT NOT NULL,
-            address TEXT,
-            description TEXT,
-            image TEXT,
-            agent_commission_rate REAL DEFAULT 0,
-            max_units INTEGER DEFAULT 1,
-            is_restricted INTEGER DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-            FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
-          )`,
-    
-          // Add access control to tenants
-          `CREATE TABLE IF NOT EXISTS tenants (
-            id INTEGER PRIMARY KEY,
-            property_id INTEGER NOT NULL,
-            unit_id INTEGER,
-            name TEXT NOT NULL,
-            phone TEXT,
-            email TEXT,
-            unit_number TEXT,
-            rent_amount REAL NOT NULL,
-            standing_fees REAL DEFAULT 0,
-            deposit_amount REAL DEFAULT 0,
-            lease_start DATE,
-            lease_end DATE,
-            is_active INTEGER DEFAULT 1,
-            is_restricted INTEGER DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
-            FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE SET NULL
-          )`,
-    
-          // Invoices table
-          `CREATE TABLE IF NOT EXISTS invoices (
-            id INTEGER PRIMARY KEY,
-            tenant_id INTEGER NOT NULL,
-            property_id INTEGER NOT NULL,
-            invoice_number TEXT UNIQUE NOT NULL,
-            billing_month TEXT NOT NULL,
-            rent_amount REAL NOT NULL,
-            water_current_reading REAL DEFAULT 0,
-            water_previous_reading REAL DEFAULT 0,
-            water_standing_fee REAL DEFAULT 0,
-            water_unit_price REAL DEFAULT 0,
-            power_current_reading REAL DEFAULT 0,
-            power_previous_reading REAL DEFAULT 0,
-            power_unit_price REAL DEFAULT 0,
-            other_charges REAL DEFAULT 0,
-            other_charges_description TEXT,
-            total_amount REAL NOT NULL,
-            amount_paid REAL DEFAULT 0,
-            arrears REAL DEFAULT 0,
-            is_paid INTEGER DEFAULT 0,
-            due_date DATE,
-            paid_date DATE,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-            FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
-          )`,
-    
-          // Payments table
-          `CREATE TABLE IF NOT EXISTS payments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            invoice_id INTEGER NOT NULL,
-            amount REAL NOT NULL,
-            payment_date DATE NOT NULL,
-            payment_method TEXT,
-            notes TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
-          )`,
-    
-          `CREATE TABLE IF NOT EXISTS monthly_transcripts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            property_id INTEGER NOT NULL,
-            billing_month TEXT NOT NULL,
-            landlord_name TEXT NOT NULL,
-            landlord_contact TEXT,
-            agent_commission_rate REAL NOT NULL,
-            gross_rent_collected REAL NOT NULL DEFAULT 0,
-            total_water_charges REAL NOT NULL DEFAULT 0,
-            total_power_charges REAL NOT NULL DEFAULT 0,
-            total_other_charges REAL NOT NULL DEFAULT 0,
-            total_deductibles REAL NOT NULL DEFAULT 0,
-            agent_commission REAL NOT NULL DEFAULT 0,
-            net_amount_to_landlord REAL NOT NULL DEFAULT 0,
-            status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'finalized', 'sent', 'acknowledged')),
-            notes TEXT,
-            generated_by INTEGER NOT NULL,
-            sent_date DATE,
-            acknowledged_date DATE,
-            is_archived INTEGER DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
-            FOREIGN KEY (generated_by) REFERENCES users(id) ON DELETE CASCADE,
-            UNIQUE(property_id, billing_month)
-          )`,
-    
-          // Transcript Items table (for custom deductibles and expenses)
-          `CREATE TABLE IF NOT EXISTS transcript_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            transcript_id INTEGER NOT NULL,
-            description TEXT NOT NULL,
-            amount REAL NOT NULL,
-            type TEXT NOT NULL CHECK (type IN ('rent', 'water', 'power', 'deductible', 'expense', 'custom')),
-            category TEXT,
-            is_deductible INTEGER DEFAULT 0,
-            sort_order INTEGER DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (transcript_id) REFERENCES monthly_transcripts(id) ON DELETE CASCADE
-          )`,
-    
-          // Rent Record Sheets table
-          `CREATE TABLE IF NOT EXISTS rent_record_sheets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            property_id INTEGER NOT NULL,
-            billing_month TEXT NOT NULL,
-            total_units INTEGER NOT NULL DEFAULT 0,
-            occupied_units INTEGER NOT NULL DEFAULT 0,
-            total_rent_expected REAL NOT NULL DEFAULT 0,
-            total_rent_collected REAL NOT NULL DEFAULT 0,
-            total_arrears REAL NOT NULL DEFAULT 0,
-            collection_rate REAL NOT NULL DEFAULT 0,
-            status TEXT DEFAULT 'current' CHECK (status IN ('current', 'archived')),
-            is_archived INTEGER DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
-            UNIQUE(property_id, billing_month)
-          )`,
-    
-          // Rent Record Entries table (individual tenant records)
-          `CREATE TABLE IF NOT EXISTS rent_record_entries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            record_sheet_id INTEGER NOT NULL,
-            tenant_id INTEGER NOT NULL,
-            tenant_name TEXT NOT NULL,
-            unit_number TEXT NOT NULL,
-            rent_amount REAL NOT NULL,
-            water_charges REAL NOT NULL DEFAULT 0,
-            power_charges REAL NOT NULL DEFAULT 0,
-            other_charges REAL NOT NULL DEFAULT 0,
-            total_due REAL NOT NULL,
-            amount_paid REAL NOT NULL DEFAULT 0,
-            balance REAL NOT NULL DEFAULT 0,
-            payment_status TEXT DEFAULT 'unpaid' CHECK (payment_status IN ('paid', 'partial', 'unpaid', 'overpaid')),
-            payment_date DATE,
-            notes TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (record_sheet_id) REFERENCES rent_record_sheets(id) ON DELETE CASCADE,
-            FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
-          )`,
-    
-          `CREATE TABLE IF NOT EXISTS business_expenses (
+  async createTables(): Promise<void> {
+    if (!database.db) {
+      throw new Error('Database not initialized');
+    }
+
+    console.log('Creating database tables...');
+    const queries = [
+
+      // Companies table (new)
+      `CREATE TABLE IF NOT EXISTS companies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        address TEXT,
+        phone TEXT,
+        email TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`,
+
+      // New Units table
+      `CREATE TABLE IF NOT EXISTS units (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        property_id INTEGER NOT NULL,
+        unit_number TEXT NOT NULL,
+        rent_amount REAL NOT NULL,
+        is_occupied INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
+        UNIQUE(property_id, unit_number)
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS users (
+        id TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        phone TEXT,
+        password_hash TEXT NOT NULL,
+        is_premium INTEGER DEFAULT 0,
+        type TEXT DEFAULT 'free' CHECK (type IN ('free', 'paid')),
+        tier TEXT DEFAULT 'free' CHECK (tier IN ('free', 'low', 'business', 'pro', 'enterprise')),
+        storage INTEGER DEFAULT 0,
+        revenuecat_user_id TEXT,
+        selected_property_ids TEXT, -- JSON array of property IDs for restricted users
+        restricted_access INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+
+      // Add access control to properties
+      `CREATE TABLE IF NOT EXISTS properties (
+        id INTEGER PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        company_id INTEGER,
+        name TEXT NOT NULL,
+        address TEXT,
+        description TEXT,
+        image TEXT,
+        agent_commission_rate REAL DEFAULT 0,
+        max_units INTEGER DEFAULT 1,
+        is_restricted INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
+      )`,
+
+      // Add access control to tenants
+      `CREATE TABLE IF NOT EXISTS tenants (
+        id INTEGER PRIMARY KEY,
+        property_id INTEGER NOT NULL,
+        unit_id INTEGER,
+        name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        unit_number TEXT,
+        rent_amount REAL NOT NULL,
+        standing_fees REAL DEFAULT 0,
+        deposit_amount REAL DEFAULT 0,
+        lease_start DATE,
+        lease_end DATE,
+        is_active INTEGER DEFAULT 1,
+        is_restricted INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
+        FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE SET NULL
+      )`,
+
+      // Invoices table
+      `CREATE TABLE IF NOT EXISTS invoices (
+        id INTEGER PRIMARY KEY,
+        tenant_id INTEGER NOT NULL,
+        property_id INTEGER NOT NULL,
+        invoice_number TEXT UNIQUE NOT NULL,
+        billing_month TEXT NOT NULL,
+        rent_amount REAL NOT NULL,
+        water_current_reading REAL DEFAULT 0,
+        water_previous_reading REAL DEFAULT 0,
+        water_standing_fee REAL DEFAULT 0,
+        water_unit_price REAL DEFAULT 0,
+        power_current_reading REAL DEFAULT 0,
+        power_previous_reading REAL DEFAULT 0,
+        power_unit_price REAL DEFAULT 0,
+        other_charges REAL DEFAULT 0,
+        other_charges_description TEXT,
+        total_amount REAL NOT NULL,
+        amount_paid REAL DEFAULT 0,
+        arrears REAL DEFAULT 0,
+        is_paid INTEGER DEFAULT 0,
+        due_date DATE,
+        paid_date DATE,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+        FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+      )`,
+
+      // Payments table
+      `CREATE TABLE IF NOT EXISTS payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_id INTEGER NOT NULL,
+        amount REAL NOT NULL,
+        payment_date DATE NOT NULL,
+        payment_method TEXT,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS monthly_transcripts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        property_id INTEGER NOT NULL,
+        billing_month TEXT NOT NULL,
+        landlord_name TEXT NOT NULL,
+        landlord_contact TEXT,
+        agent_commission_rate REAL NOT NULL,
+        gross_rent_collected REAL NOT NULL DEFAULT 0,
+        total_water_charges REAL NOT NULL DEFAULT 0,
+        total_power_charges REAL NOT NULL DEFAULT 0,
+        total_other_charges REAL NOT NULL DEFAULT 0,
+        total_deductibles REAL NOT NULL DEFAULT 0,
+        agent_commission REAL NOT NULL DEFAULT 0,
+        net_amount_to_landlord REAL NOT NULL DEFAULT 0,
+        status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'finalized', 'sent', 'acknowledged')),
+        notes TEXT,
+        generated_by INTEGER NOT NULL,
+        sent_date DATE,
+        acknowledged_date DATE,
+        is_archived INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
+        FOREIGN KEY (generated_by) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(property_id, billing_month)
+      )`,
+
+      // Transcript Items table (for custom deductibles and expenses)
+      `CREATE TABLE IF NOT EXISTS transcript_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        transcript_id INTEGER NOT NULL,
+        description TEXT NOT NULL,
+        amount REAL NOT NULL,
+        type TEXT NOT NULL CHECK (type IN ('rent', 'water', 'power', 'deductible', 'expense', 'custom')),
+        category TEXT,
+        is_deductible INTEGER DEFAULT 0,
+        sort_order INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (transcript_id) REFERENCES monthly_transcripts(id) ON DELETE CASCADE
+      )`,
+
+      // Rent Record Sheets table
+      `CREATE TABLE IF NOT EXISTS rent_record_sheets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        property_id INTEGER NOT NULL,
+        billing_month TEXT NOT NULL,
+        total_units INTEGER NOT NULL DEFAULT 0,
+        occupied_units INTEGER NOT NULL DEFAULT 0,
+        total_rent_expected REAL NOT NULL DEFAULT 0,
+        total_rent_collected REAL NOT NULL DEFAULT 0,
+        total_arrears REAL NOT NULL DEFAULT 0,
+        collection_rate REAL NOT NULL DEFAULT 0,
+        status TEXT DEFAULT 'current' CHECK (status IN ('current', 'archived')),
+        is_archived INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
+        UNIQUE(property_id, billing_month)
+      )`,
+
+      // Rent Record Entries table (individual tenant records)
+      `CREATE TABLE IF NOT EXISTS rent_record_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        record_sheet_id INTEGER NOT NULL,
+        tenant_id INTEGER NOT NULL,
+        tenant_name TEXT NOT NULL,
+        unit_number TEXT NOT NULL,
+        rent_amount REAL NOT NULL,
+        water_charges REAL NOT NULL DEFAULT 0,
+        power_charges REAL NOT NULL DEFAULT 0,
+        other_charges REAL NOT NULL DEFAULT 0,
+        total_due REAL NOT NULL,
+        amount_paid REAL NOT NULL DEFAULT 0,
+        balance REAL NOT NULL DEFAULT 0,
+        payment_status TEXT DEFAULT 'unpaid' CHECK (payment_status IN ('paid', 'partial', 'unpaid', 'overpaid')),
+        payment_date DATE,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (record_sheet_id) REFERENCES rent_record_sheets(id) ON DELETE CASCADE,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS business_expenses (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
         company_id INTEGER,
@@ -344,7 +417,7 @@ export class Tables {
         FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
         FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
       )`,
-    
+
       // Agent Commission Summary Cache
       `CREATE TABLE IF NOT EXISTS agent_commission_summaries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -368,7 +441,7 @@ export class Tables {
         FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
         UNIQUE(user_id, property_id, month)
       )`,
-    
+
       // Agent Other Income Summary
       `CREATE TABLE IF NOT EXISTS agent_other_income_summaries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -386,7 +459,7 @@ export class Tables {
         FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
         FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
       )`,
-    
+
       // Monthly Business Summary Cache
       `CREATE TABLE IF NOT EXISTS monthly_business_summaries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -415,7 +488,7 @@ export class Tables {
         FOREIGN KEY (property_filter) REFERENCES properties(id) ON DELETE CASCADE,
         UNIQUE(user_id, month, property_filter)
       )`,
-    
+
       // Agent KPI History
       `CREATE TABLE IF NOT EXISTS agent_kpi_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -441,214 +514,352 @@ export class Tables {
         FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
         UNIQUE(user_id, month)
       )`
-        ];
-    
-        for (const query of queries) {
-          await database.db!.run(query);
-        }
-      }
-    
-      async createIndexes(): Promise<void> {
-        const indexes = [
-          // User indexes
-          'CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)',
-          
-          // Company indexes
-          'CREATE INDEX IF NOT EXISTS idx_companies_user_id ON companies(user_id)',
-          
-          // Property indexes
-          'CREATE INDEX IF NOT EXISTS idx_properties_user_id ON properties(user_id)',
-          
-          // Tenant indexes
-          'CREATE INDEX IF NOT EXISTS idx_tenants_property_id ON tenants(property_id)',
-          'CREATE INDEX IF NOT EXISTS idx_tenants_active ON tenants(is_active)',
-          'CREATE INDEX IF NOT EXISTS idx_tenants_name ON tenants(name)',
-          
-          // Invoice indexes
-          'CREATE INDEX IF NOT EXISTS idx_invoices_tenant_id ON invoices(tenant_id)',
-          'CREATE INDEX IF NOT EXISTS idx_invoices_property_id ON invoices(property_id)',
-          'CREATE INDEX IF NOT EXISTS idx_invoices_billing_month ON invoices(billing_month)',
-          'CREATE INDEX IF NOT EXISTS idx_invoices_is_paid ON invoices(is_paid)',
-          'CREATE INDEX IF NOT EXISTS idx_invoices_due_date ON invoices(due_date)',
-          'CREATE INDEX IF NOT EXISTS idx_invoices_invoice_number ON invoices(invoice_number)',
-          
-          // Payment indexes
-          'CREATE INDEX IF NOT EXISTS idx_payments_invoice_id ON payments(invoice_id)',
-          'CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(payment_date)',
+    ];
 
-          'CREATE INDEX IF NOT EXISTS idx_transcripts_property_month ON monthly_transcripts(property_id, billing_month)',
-          'CREATE INDEX IF NOT EXISTS idx_transcripts_status ON monthly_transcripts(status)',
-          'CREATE INDEX IF NOT EXISTS idx_transcripts_generated_by ON monthly_transcripts(generated_by)',
-          'CREATE INDEX IF NOT EXISTS idx_transcript_items_transcript_id ON transcript_items(transcript_id)',
-          'CREATE INDEX IF NOT EXISTS idx_transcript_items_type ON transcript_items(type)',
-          'CREATE INDEX IF NOT EXISTS idx_record_sheets_property_month ON rent_record_sheets(property_id, billing_month)',
-          'CREATE INDEX IF NOT EXISTS idx_record_sheets_status ON rent_record_sheets(status)',
-          'CREATE INDEX IF NOT EXISTS idx_record_entries_sheet_id ON rent_record_entries(record_sheet_id)',
-          'CREATE INDEX IF NOT EXISTS idx_record_entries_tenant_id ON rent_record_entries(tenant_id)',
-          'CREATE INDEX IF NOT EXISTS idx_record_entries_payment_status ON rent_record_entries(payment_status)',
+    // Create tables in batches to improve performance
+    const batchSize = 5;
+    for (let i = 0; i < queries.length; i += batchSize) {
+      const batch = queries.slice(i, i + batchSize);
+      await Promise.all(batch.map(query => database.db!.run(query)));
+    }
 
-          'CREATE INDEX IF NOT EXISTS idx_business_expenses_user_month ON business_expenses(user_id, month)',
-          'CREATE INDEX IF NOT EXISTS idx_business_expenses_property_month ON business_expenses(property_id, month)',
-          'CREATE INDEX IF NOT EXISTS idx_business_expenses_category ON business_expenses(category)',
-          'CREATE INDEX IF NOT EXISTS idx_business_expenses_recurring ON business_expenses(is_recurring)',
-          'CREATE INDEX IF NOT EXISTS idx_business_expenses_created_at ON business_expenses(created_at)',
+    console.log('Tables created successfully');
+  }
 
-          // Commission Summaries Indexes
-          'CREATE INDEX IF NOT EXISTS idx_commission_summaries_user_month ON agent_commission_summaries(user_id, month)',
-          'CREATE INDEX IF NOT EXISTS idx_commission_summaries_property_month ON agent_commission_summaries(property_id, month)',
-          'CREATE INDEX IF NOT EXISTS idx_commission_summaries_user_property ON agent_commission_summaries(user_id, property_id)',
+  async createIndexes(): Promise<void> {
+    if (!database.db) {
+      throw new Error('Database not initialized');
+    }
 
-          // Other Income Summaries Indexes
-          'CREATE INDEX IF NOT EXISTS idx_other_income_summaries_user_month ON agent_other_income_summaries(user_id, month)',
-          'CREATE INDEX IF NOT EXISTS idx_other_income_summaries_property_month ON agent_other_income_summaries(property_id, month)',
-          'CREATE INDEX IF NOT EXISTS idx_other_income_summaries_source ON agent_other_income_summaries(income_source)',
+    console.log('Creating database indexes...');
+    const indexes = [
+      // User indexes
+      'CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)',
+      
+      // Company indexes
+      'CREATE INDEX IF NOT EXISTS idx_companies_user_id ON companies(user_id)',
+      
+      // Property indexes
+      'CREATE INDEX IF NOT EXISTS idx_properties_user_id ON properties(user_id)',
+      
+      // Tenant indexes
+      'CREATE INDEX IF NOT EXISTS idx_tenants_property_id ON tenants(property_id)',
+      'CREATE INDEX IF NOT EXISTS idx_tenants_active ON tenants(is_active)',
+      'CREATE INDEX IF NOT EXISTS idx_tenants_name ON tenants(name)',
+      
+      // Invoice indexes
+      'CREATE INDEX IF NOT EXISTS idx_invoices_tenant_id ON invoices(tenant_id)',
+      'CREATE INDEX IF NOT EXISTS idx_invoices_property_id ON invoices(property_id)',
+      'CREATE INDEX IF NOT EXISTS idx_invoices_billing_month ON invoices(billing_month)',
+      'CREATE INDEX IF NOT EXISTS idx_invoices_is_paid ON invoices(is_paid)',
+      'CREATE INDEX IF NOT EXISTS idx_invoices_due_date ON invoices(due_date)',
+      'CREATE INDEX IF NOT EXISTS idx_invoices_invoice_number ON invoices(invoice_number)',
+      
+      // Payment indexes
+      'CREATE INDEX IF NOT EXISTS idx_payments_invoice_id ON payments(invoice_id)',
+      'CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(payment_date)',
 
-          // Business Summaries Cache Indexes
-          'CREATE INDEX IF NOT EXISTS idx_business_summaries_user_month ON monthly_business_summaries(user_id, month)',
-          'CREATE INDEX IF NOT EXISTS idx_business_summaries_stale ON monthly_business_summaries(is_stale)',
-          'CREATE INDEX IF NOT EXISTS idx_business_summaries_last_calculated ON monthly_business_summaries(last_calculated)',
+      'CREATE INDEX IF NOT EXISTS idx_transcripts_property_month ON monthly_transcripts(property_id, billing_month)',
+      'CREATE INDEX IF NOT EXISTS idx_transcripts_status ON monthly_transcripts(status)',
+      'CREATE INDEX IF NOT EXISTS idx_transcripts_generated_by ON monthly_transcripts(generated_by)',
+      'CREATE INDEX IF NOT EXISTS idx_transcript_items_transcript_id ON transcript_items(transcript_id)',
+      'CREATE INDEX IF NOT EXISTS idx_transcript_items_type ON transcript_items(type)',
+      'CREATE INDEX IF NOT EXISTS idx_record_sheets_property_month ON rent_record_sheets(property_id, billing_month)',
+      'CREATE INDEX IF NOT EXISTS idx_record_sheets_status ON rent_record_sheets(status)',
+      'CREATE INDEX IF NOT EXISTS idx_record_entries_sheet_id ON rent_record_entries(record_sheet_id)',
+      'CREATE INDEX IF NOT EXISTS idx_record_entries_tenant_id ON rent_record_entries(tenant_id)',
+      'CREATE INDEX IF NOT EXISTS idx_record_entries_payment_status ON rent_record_entries(payment_status)',
 
-          // KPI History Indexes
-          'CREATE INDEX IF NOT EXISTS idx_kpi_history_user_month ON agent_kpi_history(user_id, month)',
-          'CREATE INDEX IF NOT EXISTS idx_kpi_history_created_at ON agent_kpi_history(created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_business_expenses_user_month ON business_expenses(user_id, month)',
+      'CREATE INDEX IF NOT EXISTS idx_business_expenses_property_month ON business_expenses(property_id, month)',
+      'CREATE INDEX IF NOT EXISTS idx_business_expenses_category ON business_expenses(category)',
+      'CREATE INDEX IF NOT EXISTS idx_business_expenses_recurring ON business_expenses(is_recurring)',
+      'CREATE INDEX IF NOT EXISTS idx_business_expenses_created_at ON business_expenses(created_at)',
 
-          // NEW PERFORMANCE INDEXES
-          // Composite indexes for common query patterns
-          'CREATE INDEX IF NOT EXISTS idx_invoices_property_month_paid ON invoices(property_id, billing_month, is_paid)',
-          'CREATE INDEX IF NOT EXISTS idx_tenants_property_active ON tenants(property_id, is_active)',
-          'CREATE INDEX IF NOT EXISTS idx_business_expenses_user_month_category ON business_expenses(user_id, month, category)',
-          
-          // Partial indexes for active records only (more efficient)
-          'CREATE INDEX IF NOT EXISTS idx_tenants_active_only ON tenants(property_id, name) WHERE is_active = 1',
-          'CREATE INDEX IF NOT EXISTS idx_invoices_unpaid_only ON invoices(property_id, billing_month, due_date) WHERE is_paid = 0'
-        ];
-    
-        for (const index of indexes) {
-          try {
-            await database.db!.run(index);
-          } catch (error) {
-            // Index might already exist, continue
-            console.log('Index creation skipped:', error);
-          }
-        }
-      }
+      // Commission Summaries Indexes
+      'CREATE INDEX IF NOT EXISTS idx_commission_summaries_user_month ON agent_commission_summaries(user_id, month)',
+      'CREATE INDEX IF NOT EXISTS idx_commission_summaries_property_month ON agent_commission_summaries(property_id, month)',
+      'CREATE INDEX IF NOT EXISTS idx_commission_summaries_user_property ON agent_commission_summaries(user_id, property_id)',
 
-      // NEW: Initialize database optimizations
-      async initializeOptimizations(): Promise<void> {
-        if (!database.db) throw new Error('Database not initialized');
+      // Other Income Summaries Indexes
+      'CREATE INDEX IF NOT EXISTS idx_other_income_summaries_user_month ON agent_other_income_summaries(user_id, month)',
+      'CREATE INDEX IF NOT EXISTS idx_other_income_summaries_property_month ON agent_other_income_summaries(property_id, month)',
+      'CREATE INDEX IF NOT EXISTS idx_other_income_summaries_source ON agent_other_income_summaries(income_source)',
 
-        const optimizations = [
-          // WAL mode for better concurrency
-          'PRAGMA journal_mode = WAL',
-          
-          // Optimize for performance over safety
-          'PRAGMA synchronous = NORMAL',
-          
-          // Increase cache size (64MB cache)
-          'PRAGMA cache_size = -64000',
-          
-          // Enable query optimization
-          'PRAGMA optimize',
-          
-          // Set auto-vacuum for space reclamation
-          'PRAGMA auto_vacuum = INCREMENTAL',
-          
-          // Optimize page size
-          'PRAGMA page_size = 4096'
-        ];
+      // Business Summaries Cache Indexes
+      'CREATE INDEX IF NOT EXISTS idx_business_summaries_user_month ON monthly_business_summaries(user_id, month)',
+      'CREATE INDEX IF NOT EXISTS idx_business_summaries_stale ON monthly_business_summaries(is_stale)',
+      'CREATE INDEX IF NOT EXISTS idx_business_summaries_last_calculated ON monthly_business_summaries(last_calculated)',
 
-        for (const pragma of optimizations) {
-          try {
-            await database.db.run(pragma);
-          } catch (error) {
-            console.log('Optimization skipped:', error);
-          }
-        }
+      // KPI History Indexes
+      'CREATE INDEX IF NOT EXISTS idx_kpi_history_user_month ON agent_kpi_history(user_id, month)',
+      'CREATE INDEX IF NOT EXISTS idx_kpi_history_created_at ON agent_kpi_history(created_at)',
 
-        console.log('Database optimizations applied');
-      }
-    
-      async createAgentSummaryTriggers(): Promise<void> {
-        if (!database.db) throw new Error('Database not initialized');
-    
+      // NEW PERFORMANCE INDEXES
+      // Composite indexes for common query patterns
+      'CREATE INDEX IF NOT EXISTS idx_invoices_property_month_paid ON invoices(property_id, billing_month, is_paid)',
+      'CREATE INDEX IF NOT EXISTS idx_tenants_property_active ON tenants(property_id, is_active)',
+      'CREATE INDEX IF NOT EXISTS idx_business_expenses_user_month_category ON business_expenses(user_id, month, category)',
+      
+      // Partial indexes for active records only (more efficient)
+      'CREATE INDEX IF NOT EXISTS idx_tenants_active_only ON tenants(property_id, name) WHERE is_active = 1',
+      'CREATE INDEX IF NOT EXISTS idx_invoices_unpaid_only ON invoices(property_id, billing_month, due_date) WHERE is_paid = 0'
+    ];
+
+    // Create indexes in smaller batches to avoid blocking
+    const batchSize = 10;
+    for (let i = 0; i < indexes.length; i += batchSize) {
+      const batch = indexes.slice(i, i + batchSize);
+      await Promise.all(batch.map(async (index) => {
         try {
-          for (const query of AGENT_SUMMARY_TRIGGERS) {
-            await database.db.run(query);
-          }
-          console.log('Agent summary triggers created successfully');
+          await database.db!.run(index);
         } catch (error) {
-          console.error('Error creating agent summary triggers:', error);
-          throw error;
+          // Index might already exist, continue silently
         }
+      }));
+    }
+
+    console.log('Indexes created successfully');
+  }
+
+  // NEW: Initialize database optimizations
+  async initializeOptimizations(): Promise<void> {
+    if (!database.db) throw new Error('Database not initialized');
+
+    console.log('Applying database optimizations...');
+    const optimizations = [
+      // WAL mode for better concurrency
+      'PRAGMA journal_mode = WAL',
+      
+      // Optimize for performance over safety
+      'PRAGMA synchronous = NORMAL',
+      
+      // Increase cache size (32MB cache - reduced from 64MB to use less memory)
+      'PRAGMA cache_size = -32000',
+      
+      // Set auto-vacuum for space reclamation
+      'PRAGMA auto_vacuum = INCREMENTAL',
+      
+      // Optimize page size
+      'PRAGMA page_size = 4096',
+
+      // Enable memory-mapped I/O for faster reads
+      'PRAGMA mmap_size = 268435456', // 256MB
+
+      // Optimize temp storage
+      'PRAGMA temp_store = MEMORY'
+    ];
+
+    for (const pragma of optimizations) {
+      try {
+        await database.db.run(pragma);
+      } catch (error) {
+        console.log('Optimization skipped:', pragma, error);
       }
-    
-      async migrateExistingData(): Promise<void> {
+    }
+
+    // Run optimization at the end
+    try {
+      await database.db.run('PRAGMA optimize');
+      console.log('Database optimizations applied successfully');
+    } catch (error) {
+      console.log('Final optimization skipped:', error);
+    }
+  }
+
+  async createAgentSummaryTriggers(): Promise<void> {
+    if (!database.db) throw new Error('Database not initialized');
+
+    console.log('Creating agent summary triggers...');
+    try {
+      for (const query of AGENT_SUMMARY_TRIGGERS) {
+        await database.db.run(query);
+      }
+      console.log('Agent summary triggers created successfully');
+    } catch (error) {
+      console.error('Error creating agent summary triggers:', error);
+      throw error;
+    }
+  }
+
+  async migrateExistingData(): Promise<void> {
+    if (!database.db) throw new Error('Database not initialized');
+
+    console.log('Running database migrations...');
+    try {
+      // Add new columns to existing tables if they don't exist
+      const migrations = [
+        { query: `ALTER TABLE users ADD COLUMN type TEXT DEFAULT 'free'`, column: 'type' },
+        { query: `ALTER TABLE users ADD COLUMN tier TEXT DEFAULT 'free'`, column: 'tier' },
+        { query: `ALTER TABLE users ADD COLUMN storage INTEGER DEFAULT 0`, column: 'storage' },
+        { query: `ALTER TABLE users ADD COLUMN revenuecat_user_id TEXT`, column: 'revenuecat_user_id' },
+        { query: `ALTER TABLE users ADD COLUMN selected_property_ids TEXT`, column: 'selected_property_ids' },
+        { query: `ALTER TABLE users ADD COLUMN restricted_access INTEGER DEFAULT 0`, column: 'restricted_access' },
+        { query: `ALTER TABLE properties ADD COLUMN is_restricted INTEGER DEFAULT 0`, column: 'is_restricted' },
+        { query: `ALTER TABLE tenants ADD COLUMN is_restricted INTEGER DEFAULT 0`, column: 'is_restricted' },
+        // NEW: Add archival flags
+        { query: `ALTER TABLE monthly_transcripts ADD COLUMN is_archived INTEGER DEFAULT 0`, column: 'is_archived' },
+        { query: `ALTER TABLE rent_record_sheets ADD COLUMN is_archived INTEGER DEFAULT 0`, column: 'is_archived' }
+      ];
+
+      for (const migration of migrations) {
         try {
-          // Add new columns to existing tables if they don't exist
-          const migrations = [
-            `ALTER TABLE users ADD COLUMN type TEXT DEFAULT 'free'`,
-            `ALTER TABLE users ADD COLUMN tier TEXT DEFAULT 'free'`,
-            `ALTER TABLE users ADD COLUMN storage INTEGER DEFAULT 0`,
-            `ALTER TABLE users ADD COLUMN revenuecat_user_id TEXT`,
-            `ALTER TABLE users ADD COLUMN selected_property_ids TEXT`,
-            `ALTER TABLE users ADD COLUMN restricted_access INTEGER DEFAULT 0`,
-            `ALTER TABLE properties ADD COLUMN is_restricted INTEGER DEFAULT 0`,
-            `ALTER TABLE tenants ADD COLUMN is_restricted INTEGER DEFAULT 0`,
-            // NEW: Add archival flags
-            `ALTER TABLE monthly_transcripts ADD COLUMN is_archived INTEGER DEFAULT 0`,
-            `ALTER TABLE rent_record_sheets ADD COLUMN is_archived INTEGER DEFAULT 0`
-          ];
-    
-          for (const migration of migrations) {
-            try {
-              await database.db!.run(migration);
-            } catch (error) {
-              // Column might already exist, ignore error
-              console.log('Migration skipped (column exists):', migration);
-            }
-          }
+          await database.db.run(migration.query);
         } catch (error) {
-          console.error('Migration error:', error);
+          // Column might already exist, ignore error
+          console.log(`Migration skipped (${migration.column} exists)`);
         }
       }
+      console.log('Database migrations completed successfully');
+    } catch (error) {
+      console.error('Migration error:', error);
+    }
+  }
 
-      // NEW: Setup automatic maintenance
-      setupMaintenanceSchedule(): void {
-        const maintenance = new DatabaseMaintenance();
-        
-        // Clean stale cache every 6 hours
-        setInterval(async () => {
-          try {
-            await maintenance.cleanupStaleCache();
-          } catch (error) {
-            console.error('Stale cache cleanup failed:', error);
-          }
-        }, 6 * 60 * 60 * 1000); // 6 hours
+  // NEW: Setup automatic maintenance (FIXED - no infinite loops)
+  setupMaintenanceSchedule(): void {
+    if (this.maintenanceScheduled) {
+      console.log('Maintenance schedule already setup, skipping...');
+      return;
+    }
 
-        // Full cleanup monthly (you can adjust this)
-        setInterval(async () => {
-          try {
-            await maintenance.cleanupOldData();
-          } catch (error) {
-            console.error('Monthly cleanup failed:', error);
-          }
-        }, 30 * 24 * 60 * 60 * 1000); // 30 days
-
-        console.log('Database maintenance schedule setup completed');
+    const maintenance = new DatabaseMaintenance();
+    
+    // Clean stale cache every 6 hours (but only if needed)
+    const cacheCleanupInterval = setInterval(async () => {
+      try {
+        await maintenance.cleanupStaleCache();
+      } catch (error) {
+        console.error('Stale cache cleanup failed:', error);
       }
+    }, 6 * 60 * 60 * 1000); // 6 hours
 
-      // NEW: Initialize everything with optimizations
-      async initializeDatabase(): Promise<void> {
-        await this.createTables();
+    // Full cleanup check every 24 hours (but only run if needed)
+    const fullCleanupInterval = setInterval(async () => {
+      try {
+        await maintenance.cleanupOldData();
+      } catch (error) {
+        console.error('Full cleanup failed:', error);
+      }
+    }, 24 * 60 * 60 * 1000); // 24 hours
+
+    // Store intervals for potential cleanup later
+    (globalThis as any).__maintenanceIntervals = {
+      cacheCleanupInterval,
+      fullCleanupInterval
+    };
+
+    this.maintenanceScheduled = true;
+    console.log('Database maintenance schedule setup completed');
+  }
+
+  // NEW: Cleanup maintenance intervals
+  clearMaintenanceSchedule(): void {
+    const intervals = (globalThis as any).__maintenanceIntervals;
+    if (intervals) {
+      clearInterval(intervals.cacheCleanupInterval);
+      clearInterval(intervals.fullCleanupInterval);
+      delete (globalThis as any).__maintenanceIntervals;
+      this.maintenanceScheduled = false;
+      console.log('Maintenance schedule cleared');
+    }
+  }
+
+  // NEW: Lightweight initialization for faster app startup
+  async quickInitialize(): Promise<void> {
+    console.log('Starting quick database initialization...');
+    
+    // Only run essential setup
+    await this.initializeOptimizations();
+    await this.createTables();
+    
+    // Skip heavy operations on startup
+    console.log('Quick database initialization completed');
+    
+    // Schedule the heavy operations for later
+    setTimeout(async () => {
+      try {
+        console.log('Running deferred initialization...');
         await this.createIndexes();
         await this.createAgentSummaryTriggers();
         await this.migrateExistingData();
-        await this.initializeOptimizations();
         this.setupMaintenanceSchedule();
-        
-        console.log('Database initialization with optimizations completed');
+        console.log('Deferred initialization completed');
+      } catch (error) {
+        console.error('Deferred initialization failed:', error);
       }
+    }, 2000); // Run after 2 seconds
+  }
+
+  // NEW: Full initialization (use this for production)
+  async initializeDatabase(): Promise<void> {
+    console.log('Starting full database initialization...');
+    
+    try {
+      await this.initializeOptimizations();
+      await this.createTables();
+      await this.createIndexes();
+      await this.createAgentSummaryTriggers();
+      await this.migrateExistingData();
+      this.setupMaintenanceSchedule();
+      
+      console.log('Database initialization completed successfully');
+    } catch (error) {
+      console.error('Database initialization failed:', error);
+      throw error;
+    }
+  }
+
+  // NEW: Check if database needs initialization
+//   async needsInitialization(): Promise<boolean> {
+//     if (!database.db) return true;
+    
+//     try {
+//       // Check if core tables exist
+//       const result = await database.db.get(`
+//         SELECT COUNT(*) as count 
+//         FROM sqlite_master 
+//         WHERE type='table' AND name IN ('users', 'properties', 'tenants', 'invoices')
+//       `);
+      
+//       return result.count < 4; // If less than 4 core tables exist
+//     } catch (error) {
+//       return true; // Assume needs initialization if check fails
+//     }
+//   }
+
+  // NEW: Health check for database
+  
+
+  // NEW: Force stop all maintenance (emergency cleanup)
+  emergencyStop(): void {
+    this.clearMaintenanceSchedule();
+    console.log('Emergency stop executed - all maintenance stopped');
+  }
 }
 
 export const tables = new Tables();
 export const maintenance = new DatabaseMaintenance();
+
+// Export utility functions for external use
+export const DatabaseUtils = {
+  // Quick check if app startup can be fast
+//   async canUseFastStartup(): Promise<boolean> {
+//     return !(await tables.needsInitialization());
+//   },
+  
+  // Get database health status
+//   async getHealthStatus() {
+//     return await tables.healthCheck();
+//   },
+  
+  // Force immediate maintenance
+  async runMaintenance() {
+    await maintenance.forceCleanup();
+  },
+  
+  // Emergency stop all operations
+  emergencyStop() {
+    tables.emergencyStop();
+  }
+};

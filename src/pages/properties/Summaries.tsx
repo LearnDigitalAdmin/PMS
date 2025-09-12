@@ -20,14 +20,14 @@ import {
   Home,
   Activity,
   Briefcase,
-  BookOpen
+  //BookOpen
 } from 'lucide-react';
 import { 
   summariesService, 
   type AgentBusinessSummary, 
   type BusinessExpense, 
   type ProfitLossStatement,
-  type BalanceSheet,
+//   type BalanceSheet,
   type AgentKPIs
 } from '../../services/database/SummariesService';
 
@@ -271,7 +271,7 @@ const SummariesModal: React.FC<SummariesModalProps> = ({
 }) => {
   const [summary, setSummary] = useState<AgentBusinessSummary | null>(null);
   const [plStatement, setPLStatement] = useState<ProfitLossStatement | null>(null);
-  const [balanceSheet, setBalanceSheet] = useState<BalanceSheet | null>(null);
+  //const [balanceSheet, setBalanceSheet] = useState<BalanceSheet | null>(null);
   const [kpis, setKPIs] = useState<AgentKPIs | null>(null);
   const [expenses, setExpenses] = useState<BusinessExpense[]>([]);
   const [loading, setLoading] = useState(false);
@@ -302,7 +302,7 @@ const SummariesModal: React.FC<SummariesModalProps> = ({
     try {
       const filters = { month: selectedMonth, propertyId: selectedProperty };
       
-      const [summaryData, plData, balanceData, kpiData, expensesData] = await Promise.all([
+      const [summaryData, plData, _balanceData, kpiData, expensesData] = await Promise.all([
         summariesService.generateAgentSummary(userId, filters),
         summariesService.generateProfitLossStatement(userId, filters),
         summariesService.generateBalanceSheet(userId, filters),
@@ -315,7 +315,7 @@ const SummariesModal: React.FC<SummariesModalProps> = ({
 
       setSummary(summaryData);
       setPLStatement(plData);
-      setBalanceSheet(balanceData);
+      //setBalanceSheet(balanceData);
       setKPIs(kpiData);
       setExpenses(expensesData);
     } catch (error) {
@@ -458,7 +458,7 @@ const SummariesModal: React.FC<SummariesModalProps> = ({
             {[
               { id: 'summary', label: 'Business Summary', icon: BarChart3 },
               { id: 'pl', label: 'P&L Statement', icon: Calculator },
-              { id: 'balance', label: 'Balance Sheet', icon: BookOpen },
+              //{ id: 'balance', label: 'Balance Sheet', icon: BookOpen },
               { id: 'kpis', label: 'KPIs', icon: Target }
             ].map(tab => (
               <button
@@ -879,108 +879,7 @@ const SummariesModal: React.FC<SummariesModalProps> = ({
                 </div>
               )}
 
-              {activeTab === 'balance' && balanceSheet && (
-                <div className="space-y-6">
-                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-                    <div className="p-6 border-b border-gray-200">
-                      <h3 className="text-xl font-bold text-gray-900 flex items-center">
-                        <BookOpen className="w-6 h-6 mr-3 text-purple-600" />
-                        Balance Sheet
-                      </h3>
-                      <p className="text-sm text-gray-600 mt-1">Financial position as of {getMonthName(selectedMonth)}</p>
-                    </div>
-
-                    <div className="p-6">
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        {/* Assets */}
-                        <div className="space-y-6">
-                          <div className="bg-green-50 rounded-lg p-6 border border-green-100">
-                            <h4 className="text-lg font-semibold text-green-800 mb-4">Assets</h4>
-                            <div className="space-y-3">
-                              <div className="flex justify-between">
-                                <span className="text-gray-700">Cash & Equivalents:</span>
-                                <span className="font-medium text-green-700">{formatCurrency(balanceSheet.assets.cashEquivalents)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-700">Accounts Receivable:</span>
-                                <span className="font-medium text-green-700">{formatCurrency(balanceSheet.assets.accountsReceivable)}</span>
-                              </div>
-                              <div className="flex justify-between border-t border-green-200 pt-3 text-lg">
-                                <span className="font-bold text-green-800">Total Current Assets:</span>
-                                <span className="font-bold text-green-800">{formatCurrency(balanceSheet.assets.totalCurrentAssets)}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Liabilities */}
-                          <div className="bg-red-50 rounded-lg p-6 border border-red-100">
-                            <h4 className="text-lg font-semibold text-red-800 mb-4">Liabilities</h4>
-                            <div className="space-y-3">
-                              <div className="flex justify-between">
-                                <span className="text-gray-700">Accounts Payable:</span>
-                                <span className="font-medium text-red-700">{formatCurrency(balanceSheet.liabilities.accountsPayable)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-700">Accrued Expenses:</span>
-                                <span className="font-medium text-red-700">{formatCurrency(balanceSheet.liabilities.accruedExpenses)}</span>
-                              </div>
-                              <div className="flex justify-between border-t border-red-200 pt-3 text-lg">
-                                <span className="font-bold text-red-800">Total Current Liabilities:</span>
-                                <span className="font-bold text-red-800">{formatCurrency(balanceSheet.liabilities.totalCurrentLiabilities)}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Equity */}
-                        <div className="space-y-6">
-                          <div className="bg-blue-50 rounded-lg p-6 border border-blue-100">
-                            <h4 className="text-lg font-semibold text-blue-800 mb-4">Owner's Equity</h4>
-                            <div className="space-y-3">
-                              <div className="flex justify-between">
-                                <span className="text-gray-700">Retained Earnings:</span>
-                                <span className="font-medium text-blue-700">{formatCurrency(balanceSheet.equity.retainedEarnings)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-700">Current Period Earnings:</span>
-                                <span className="font-medium text-blue-700">{formatCurrency(balanceSheet.equity.currentPeriodEarnings)}</span>
-                              </div>
-                              <div className="flex justify-between border-t border-blue-200 pt-3 text-lg">
-                                <span className="font-bold text-blue-800">Total Equity:</span>
-                                <span className="font-bold text-blue-800">{formatCurrency(balanceSheet.equity.totalEquity)}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Balance Check */}
-                          <div className="bg-purple-50 rounded-lg p-6 border border-purple-100">
-                            <h4 className="text-lg font-semibold text-purple-800 mb-4">Balance Check</h4>
-                            <div className="space-y-3">
-                              <div className="flex justify-between">
-                                <span className="text-gray-700">Total Assets:</span>
-                                <span className="font-medium">{formatCurrency(balanceSheet.assets.totalCurrentAssets)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-700">Total Liabilities & Equity:</span>
-                                <span className="font-medium">{formatCurrency(balanceSheet.liabilities.totalCurrentLiabilities + balanceSheet.equity.totalEquity)}</span>
-                              </div>
-                              <div className="flex justify-between border-t border-purple-200 pt-3">
-                                <span className="font-bold text-purple-800">Difference:</span>
-                                <span className={`font-bold ${
-                                  Math.abs(balanceSheet.assets.totalCurrentAssets - (balanceSheet.liabilities.totalCurrentLiabilities + balanceSheet.equity.totalEquity)) < 0.01
-                                    ? 'text-green-600' : 'text-red-600'
-                                }`}>
-                                  {formatCurrency(balanceSheet.assets.totalCurrentAssets - (balanceSheet.liabilities.totalCurrentLiabilities + balanceSheet.equity.totalEquity))}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+              
 
               {activeTab === 'kpis' && kpis && (
                 <div className="space-y-6">

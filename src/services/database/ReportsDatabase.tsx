@@ -366,178 +366,6 @@ private async rebuildTranscriptItems(
   await this.recalculateTranscriptTotals(transcriptId);
 }
 
-async generateRentRecordSheet(propertyId: number, billingMonth: string): Promise<RentRecordWithDetails> {
-  try {
-    console.log(`[RentRecord] Starting generation for property ${propertyId}, month ${billingMonth}`);
-    
-    // Get property and validate access
-    const property = await database.getPropertyById(propertyId);
-    if (!property) {
-      console.error(`[RentRecord] Property ${propertyId} not found`);
-      throw new Error('Property not found');
-    }
-
-    if (property.isRestricted) {
-      console.error(`[RentRecord] Property ${propertyId} is restricted`);
-      throw new Error('Cannot generate record sheet for restricted property');
-    }
-
-    console.log(`[RentRecord] Property found: ${property.name}, max units: ${property.maxUnits}`);
-
-    // Check if record sheet already exists
-    const existingSheetQuery = `
-      SELECT id FROM rent_record_sheets 
-      WHERE property_id = ? AND billing_month = ?
-    `;
-    const existingResult = await database.db!.query(existingSheetQuery, [propertyId, billingMonth]);
-
-    let recordSheetId: number;
-
-    if (existingResult.values && existingResult.values.length > 0) {
-      // Use existing sheet
-      recordSheetId = existingResult.values[0].id;
-      console.log(`[RentRecord] Using existing sheet ${recordSheetId}`);
-    } else {
-      // Create new record sheet
-      console.log(`[RentRecord] Creating new record sheet`);
-      
-      const sheetQuery = `
-        INSERT INTO rent_record_sheets (
-          property_id, billing_month, total_units, occupied_units,
-          total_rent_expected, total_rent_collected, total_arrears,
-          collection_rate, status
-        )
-        VALUES (?, ?, ?, 0, 0, 0, 0, 0, 'current')
-      `;
-
-      const result = await database.db!.run(sheetQuery, [
-        propertyId,
-        billingMonth,
-        property.maxUnits
-      ]);
-
-      recordSheetId = result.changes!.lastId!;
-    }
-
-    // Always rebuild with fresh data
-    await this.rebuildRentRecordSheet(recordSheetId, propertyId, billingMonth);
-
-    const finalRecord = await this.getRentRecordWithDetails(recordSheetId);
-    console.log(`[RentRecord] Successfully generated/updated record sheet ${recordSheetId} with ${finalRecord.entries.length} entries`);
-    
-    return finalRecord;
-  } catch (error) {
-    console.error('[RentRecord] Error generating rent record sheet:', error);
-    throw error;
-  }
-}
-
-private async rebuildRentRecordSheet(recordSheetId: number, propertyId: number, billingMonth: string): Promise<void> {
-  console.log(`[RentRecord] Rebuilding sheet ${recordSheetId} with fresh data`);
-  
-  // DELETE ALL EXISTING ENTRIES FIRST
-  await database.db!.run('DELETE FROM rent_record_entries WHERE record_sheet_id = ?', [recordSheetId]);
-  
-  // Get ALL current tenants (fresh data)
-  const tenants = await database.getTenantsByProperty(propertyId);
-  console.log(`[RentRecord] Found ${tenants.length} tenants for property ${propertyId}`);
-  
-  // Get fresh invoice data
-  const invoiceData = await this.getCurrentInvoiceData(propertyId, billingMonth);
-  const { invoices } = invoiceData;
-  
-  console.log(`[RentRecord] Found ${invoices.length} invoices for ${billingMonth}`);
-
-  // Calculate fresh totals
-  let totalRentExpected = 0;
-  let totalRentCollected = 0;
-  let totalArrears = 0;
-  const occupiedUnits = tenants.filter(t => t.isActive).length;
-
-  // Create entries for ALL tenants with fresh data
-  for (const tenant of tenants) {
-    const invoice = invoices.find(inv => inv.tenantId === tenant.id);
-    
-    let waterCharges = 0;
-    let powerCharges = 0;
-    let totalDue = tenant.rentAmount;
-    let amountPaid = 0;
-    let paymentStatus: 'paid' | 'partial' | 'unpaid' | 'overpaid' = 'unpaid';
-    let paymentDate: string | undefined;
-    let invoiceArrears = 0;
-
-    if (invoice) {
-      waterCharges = (invoice.waterCurrentReading - invoice.waterPreviousReading) * 
-        invoice.waterUnitPrice + invoice.waterStandingFee;
-      powerCharges = (invoice.powerCurrentReading - invoice.powerPreviousReading) * 
-        invoice.powerUnitPrice;
-      totalDue = invoice.totalAmount;
-      amountPaid = invoice.amountPaid;
-      invoiceArrears = invoice.arrears || 0;
-      paymentDate = invoice.paidDate || undefined;
-
-      if (invoice.isPaid) {
-        paymentStatus = 'paid';
-      } else if (amountPaid > 0) {
-        paymentStatus = amountPaid > totalDue ? 'overpaid' : 'partial';
-      }
-    }
-
-    // Calculate balance: what's still owed
-    const balance = totalDue - amountPaid;
-    
-    // Update running totals
-    totalRentExpected += totalDue;
-    totalRentCollected += amountPaid;
-    totalArrears += invoiceArrears;
-
-    console.log(`[RentRecord] Tenant ${tenant.id}: Expected ${totalDue}, Collected ${amountPaid}, Arrears ${invoiceArrears}, Balance ${balance}`);
-
-    // Create fresh entry (no duplication since we deleted all first)
-    await this.addRentRecordEntry({
-      recordSheetId,
-      tenantId: tenant.id,
-      tenantName: tenant.name,
-      unitNumber: tenant.unitNumber || '',
-      rentAmount: tenant.rentAmount,
-      waterCharges,
-      powerCharges,
-      otherCharges: invoice?.otherCharges || 0,
-      totalDue,
-      amountPaid,
-      balance,
-      paymentStatus,
-      paymentDate
-    });
-  }
-
-  const collectionRate = totalRentExpected > 0 ? 
-    (totalRentCollected / totalRentExpected) * 100 : 0;
-
-  console.log(`[RentRecord] Final totals - Expected: ${totalRentExpected}, Collected: ${totalRentCollected}, Arrears: ${totalArrears}, Rate: ${collectionRate.toFixed(2)}%`);
-
-  // Update the record sheet with fresh totals
-  const updateQuery = `
-    UPDATE rent_record_sheets SET
-      occupied_units = ?,
-      total_rent_expected = ?,
-      total_rent_collected = ?,
-      total_arrears = ?,
-      collection_rate = ?,
-      updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `;
-
-  await database.db!.run(updateQuery, [
-    occupiedUnits,
-    totalRentExpected,
-    totalRentCollected,
-    totalArrears,
-    collectionRate,
-    recordSheetId
-  ]);
-}
-
 async getTranscriptWithDetails(transcriptId: number): Promise<TranscriptWithDetails> {
   const transcript = await this.getTranscriptById(transcriptId);
   if (!transcript) {
@@ -567,59 +395,6 @@ async getTranscriptWithDetails(transcriptId: number): Promise<TranscriptWithDeta
     property,
     items,
     tenantSummary
-  };
-}
-
-async getRentRecordWithDetails(recordSheetId: number): Promise<RentRecordWithDetails> {
-  const recordSheet = await this.getRentRecordById(recordSheetId);
-  if (!recordSheet) {
-    console.error(`[RentRecord] Record sheet ${recordSheetId} not found when fetching details`);
-    throw new Error('Rent record sheet not found');
-  }
-
-  const property = await database.getPropertyById(recordSheet.propertyId);
-  if (!property) {
-    console.error(`[RentRecord] Property ${recordSheet.propertyId} not found when fetching details`);
-    throw new Error('Property not found');
-  }
-
-  // DON'T rebuild here - just get current state
-  // Entries are only rebuilt when explicitly generating/updating record sheet
-  const entries = await this.getRentRecordEntries(recordSheetId);
-  console.log(`[RentRecord] Retrieved ${entries.length} entries for record sheet ${recordSheetId}`);
-
-  // Calculate summary statistics
-  const onTimePayments = entries.filter(e => e.paymentStatus === 'paid' && 
-    e.paymentDate && new Date(e.paymentDate) <= new Date(`${recordSheet.billingMonth}-05`)).length;
-  const latePayments = entries.filter(e => e.paymentStatus === 'paid' && 
-    e.paymentDate && new Date(e.paymentDate) > new Date(`${recordSheet.billingMonth}-05`)).length;
-  const defaulters = entries.filter(e => e.paymentStatus === 'unpaid').length;
-
-  // Calculate average collection days
-  let totalDays = 0;
-  let paidCount = 0;
-  for (const entry of entries) {
-    if (entry.paymentStatus === 'paid' && entry.paymentDate) {
-      const paymentDate = new Date(entry.paymentDate);
-      const monthStart = new Date(`${recordSheet.billingMonth}-01`);
-      const days = Math.ceil((paymentDate.getTime() - monthStart.getTime()) / (1000 * 60 * 60 * 24));
-      totalDays += days;
-      paidCount++;
-    }
-  }
-
-  const averageCollectionDays = paidCount > 0 ? Math.round(totalDays / paidCount) : 0;
-
-  return {
-    ...recordSheet,
-    property,
-    entries,
-    summary: {
-      onTimePayments,
-      latePayments,
-      defaulters,
-      averageCollectionDays
-    }
   };
 }
 
@@ -798,53 +573,313 @@ private async getCurrentInvoiceData(propertyId: number, billingMonth: string) {
     await database.db!.run(query, [transcriptId]);
   }
 
-  private async addRentRecordEntry(entry: {
-    recordSheetId: number;
-    tenantId: number;
-    tenantName: string;
-    unitNumber: string;
-    rentAmount: number;
-    waterCharges: number;
-    powerCharges: number;
-    otherCharges: number;
-    totalDue: number;
-    amountPaid: number;
-    balance: number;
-    paymentStatus: 'paid' | 'partial' | 'unpaid' | 'overpaid';
-    paymentDate?: string;
-    notes?: string;
-  }): Promise<void> {
-    const query = `
-      INSERT INTO rent_record_entries (
-        record_sheet_id, tenant_id, tenant_name, unit_number,
-        rent_amount, water_charges, power_charges, other_charges,
-        total_due, amount_paid, balance, payment_status, payment_date, notes
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
 
-    const result = await database.db!.run(query, [
-      entry.recordSheetId,
-      entry.tenantId,
-      entry.tenantName,
-      entry.unitNumber,
-      entry.rentAmount,
-      entry.waterCharges,
-      entry.powerCharges,
-      entry.otherCharges,
-      entry.totalDue,
-      entry.amountPaid,
-      entry.balance,
-      entry.paymentStatus,
-      entry.paymentDate || null,
-      entry.notes || ''
-    ]);
 
-    if (!result.changes || result.changes.changes === 0) {
-      console.error(`[RentRecord] Failed to insert entry for tenant ${entry.tenantId} - no changes made`);
-      throw new Error(`Failed to create rent record entry for tenant ${entry.tenantId}`);
+
+  // UPDATED METHODS - Dynamic Rent Record Generation
+// These methods ensure rent records are always generated from live data
+
+async generateRentRecordSheet(propertyId: number, billingMonth: string): Promise<RentRecordWithDetails> {
+  try {
+    console.log(`[RentRecord] Starting dynamic generation for property ${propertyId}, month ${billingMonth}`);
+    
+    // Get property and validate access
+    const property = await database.getPropertyById(propertyId);
+    if (!property) {
+      console.error(`[RentRecord] Property ${propertyId} not found`);
+      throw new Error('Property not found');
+    }
+
+    if (property.isRestricted) {
+      console.error(`[RentRecord] Property ${propertyId} is restricted`);
+      throw new Error('Cannot generate record sheet for restricted property');
+    }
+
+    console.log(`[RentRecord] Property found: ${property.name}, max units: ${property.maxUnits}`);
+
+    // ALWAYS generate from live data - no database persistence
+    const recordSheet = await this.generateDynamicRentRecord(propertyId, billingMonth, property);
+    
+    console.log(`[RentRecord] Successfully generated dynamic record sheet with ${recordSheet.entries.length} entries`);
+    
+    return recordSheet;
+  } catch (error) {
+    console.error('[RentRecord] Error generating rent record sheet:', error);
+    throw error;
+  }
+}
+
+private async generateDynamicRentRecord(
+  propertyId: number, 
+  billingMonth: string, 
+  property: any
+): Promise<RentRecordWithDetails> {
+  console.log(`[RentRecord] Generating dynamic record from live data`);
+  
+  // Get ALL current tenants (fresh data)
+  const tenants = await database.getTenantsByProperty(propertyId);
+  console.log(`[RentRecord] Found ${tenants.length} tenants for property ${propertyId}`);
+  
+  // Get fresh invoice data
+  const invoiceData = await this.getCurrentInvoiceData(propertyId, billingMonth);
+  const { invoices } = invoiceData;
+  
+  console.log(`[RentRecord] Found ${invoices.length} invoices for ${billingMonth}`);
+
+  // Calculate fresh totals
+  let totalRentExpected = 0;
+  let totalRentCollected = 0;
+  let totalArrears = 0;
+  const occupiedUnits = tenants.filter(t => t.isActive).length;
+
+  // Generate entries dynamically from live data
+  const entries: RentRecordEntry[] = [];
+  let entryId = 1; // Dynamic ID for consistent interface
+
+  for (const tenant of tenants) {
+    const invoice = invoices.find(inv => inv.tenantId === tenant.id);
+    
+    let waterCharges = 0;
+    let powerCharges = 0;
+    let totalDue = tenant.rentAmount;
+    let amountPaid = 0;
+    let paymentStatus: 'paid' | 'partial' | 'unpaid' | 'overpaid' = 'unpaid';
+    let paymentDate: string | undefined;
+    let invoiceArrears = 0;
+
+    if (invoice) {
+      waterCharges = (invoice.waterCurrentReading - invoice.waterPreviousReading) * 
+        invoice.waterUnitPrice + invoice.waterStandingFee;
+      powerCharges = (invoice.powerCurrentReading - invoice.powerPreviousReading) * 
+        invoice.powerUnitPrice;
+      totalDue = invoice.totalAmount;
+      amountPaid = invoice.amountPaid;
+      invoiceArrears = invoice.arrears || 0;
+      paymentDate = invoice.paidDate || undefined;
+
+      if (invoice.isPaid) {
+        paymentStatus = 'paid';
+      } else if (amountPaid > 0) {
+        paymentStatus = amountPaid > totalDue ? 'overpaid' : 'partial';
+      }
+    }
+
+    // Calculate balance: what's still owed
+    const balance = totalDue - amountPaid;
+    
+    // Update running totals
+    totalRentExpected += totalDue;
+    totalRentCollected += amountPaid;
+    totalArrears += invoiceArrears;
+
+    console.log(`[RentRecord] Tenant ${tenant.id}: Expected ${totalDue}, Collected ${amountPaid}, Arrears ${invoiceArrears}, Balance ${balance}`);
+
+    // Create dynamic entry
+    entries.push({
+      id: entryId++,
+      recordSheetId: 0, // Dynamic - no DB persistence
+      tenantId: tenant.id,
+      tenantName: tenant.name,
+      unitNumber: tenant.unitNumber || '',
+      rentAmount: tenant.rentAmount,
+      waterCharges,
+      powerCharges,
+      otherCharges: invoice?.otherCharges || 0,
+      totalDue,
+      amountPaid,
+      balance,
+      paymentStatus,
+      paymentDate,
+      notes: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  const collectionRate = totalRentExpected > 0 ? 
+    (totalRentCollected / totalRentExpected) * 100 : 0;
+
+  console.log(`[RentRecord] Final totals - Expected: ${totalRentExpected}, Collected: ${totalRentCollected}, Arrears: ${totalArrears}, Rate: ${collectionRate.toFixed(2)}%`);
+
+  // Create dynamic record sheet
+  const recordSheet: RentRecordSheet = {
+    id: 0, // Dynamic - no DB persistence
+    propertyId,
+    billingMonth,
+    totalUnits: property.maxUnits,
+    occupiedUnits,
+    totalRentExpected,
+    totalRentCollected,
+    totalArrears,
+    collectionRate,
+    status: 'current',
+    generatedBy: 0, // Dynamic
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  // Calculate summary statistics
+  const onTimePayments = entries.filter(e => e.paymentStatus === 'paid' && 
+    e.paymentDate && new Date(e.paymentDate) <= new Date(`${billingMonth}-05`)).length;
+  const latePayments = entries.filter(e => e.paymentStatus === 'paid' && 
+    e.paymentDate && new Date(e.paymentDate) > new Date(`${billingMonth}-05`)).length;
+  const defaulters = entries.filter(e => e.paymentStatus === 'unpaid').length;
+
+  // Calculate average collection days
+  let totalDays = 0;
+  let paidCount = 0;
+  for (const entry of entries) {
+    if (entry.paymentStatus === 'paid' && entry.paymentDate) {
+      const paymentDate = new Date(entry.paymentDate);
+      const monthStart = new Date(`${billingMonth}-01`);
+      const days = Math.ceil((paymentDate.getTime() - monthStart.getTime()) / (1000 * 60 * 60 * 24));
+      totalDays += days;
+      paidCount++;
     }
   }
+
+  const averageCollectionDays = paidCount > 0 ? Math.round(totalDays / paidCount) : 0;
+
+  return {
+    ...recordSheet,
+    property,
+    entries,
+    summary: {
+      onTimePayments,
+      latePayments,
+      defaulters,
+      averageCollectionDays
+    }
+  };
+}
+
+async getRentRecordWithDetails(recordSheetId: number): Promise<RentRecordWithDetails> {
+  // For backward compatibility - if called with ID 0, treat as dynamic request
+  if (recordSheetId === 0) {
+    throw new Error('Dynamic rent records should be generated via generateRentRecordSheet');
+  }
+
+  // Legacy DB-based lookup (backward compatibility)
+  const recordSheet = await this.getRentRecordById(recordSheetId);
+  if (!recordSheet) {
+    console.error(`[RentRecord] Record sheet ${recordSheetId} not found when fetching details`);
+    throw new Error('Rent record sheet not found');
+  }
+
+  const property = await database.getPropertyById(recordSheet.propertyId);
+  if (!property) {
+    console.error(`[RentRecord] Property ${recordSheet.propertyId} not found when fetching details`);
+    throw new Error('Property not found');
+  }
+
+  // For legacy records, regenerate dynamically to ensure fresh data
+  console.log(`[RentRecord] Converting legacy record ${recordSheetId} to dynamic generation`);
+  return await this.generateDynamicRentRecord(recordSheet.propertyId, recordSheet.billingMonth, property);
+}
+
+async getRentRecordsByProperty(propertyId: number, limit: number = 12): Promise<RentRecordSheet[]> {
+  // For backward compatibility, return dynamic records based on recent months
+  console.log(`[RentRecord] Generating dynamic rent records list for property ${propertyId}`);
+  
+  const property = await database.getPropertyById(propertyId);
+  if (!property) {
+    return [];
+  }
+
+  // Generate records for the last 12 months dynamically
+  const records: RentRecordSheet[] = [];
+  const currentDate = new Date();
+  
+  for (let i = 0; i < limit; i++) {
+    const monthDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
+    const billingMonth = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`;
+    
+    // Check if there's any invoice data for this month
+    const invoices = await database.getInvoices({
+      propertyId,
+      billingMonth
+    });
+
+    // Only include months with invoice data
+    if (invoices.length > 0) {
+      try {
+        const dynamicRecord = await this.generateDynamicRentRecord(propertyId, billingMonth, property);
+        records.push({
+          id: i + 1, // Dynamic ID for UI consistency
+          propertyId: dynamicRecord.propertyId,
+          billingMonth: dynamicRecord.billingMonth,
+          totalUnits: dynamicRecord.totalUnits,
+          occupiedUnits: dynamicRecord.occupiedUnits,
+          totalRentExpected: dynamicRecord.totalRentExpected,
+          totalRentCollected: dynamicRecord.totalRentCollected,
+          totalArrears: dynamicRecord.totalArrears,
+          collectionRate: dynamicRecord.collectionRate,
+          status: dynamicRecord.status,
+          generatedBy: dynamicRecord.generatedBy,
+          createdAt: dynamicRecord.createdAt,
+          updatedAt: dynamicRecord.updatedAt
+        });
+      } catch (error) {
+        console.warn(`[RentRecord] Could not generate record for ${billingMonth}:`, error);
+      }
+    }
+  }
+
+  return records.sort((a, b) => b.billingMonth.localeCompare(a.billingMonth));
+}
+
+// REMOVED METHODS - No longer needed for dynamic generation
+// - rebuildRentRecordSheet (replaced by generateDynamicRentRecord)
+// - addRentRecordEntry (entries generated dynamically)
+// - recalculateRecordSheetTotals (totals calculated dynamically)
+
+
+async archiveRentRecord(recordSheetId: number): Promise<void> {
+  // For backward compatibility - archiving dynamic records is not applicable
+  console.warn('[RentRecord] archiveRentRecord called on dynamic record - operation not applicable');
+  
+  if (recordSheetId === 0) {
+    console.log('[RentRecord] Dynamic records do not need archiving');
+    return;
+  }
+
+  // Legacy DB archiving for existing records
+  const query = `
+    UPDATE rent_record_sheets 
+    SET status = 'archived', updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `;
+  await database.db!.run(query, [recordSheetId]);
+}
+
+// UTILITY METHOD - For checking if dynamic generation is available
+async isDynamicRentRecordAvailable(propertyId: number, billingMonth: string): Promise<boolean> {
+  try {
+    const property = await database.getPropertyById(propertyId);
+    if (!property || property.isRestricted) {
+      return false;
+    }
+
+    const invoices = await database.getInvoices({
+      propertyId,
+      billingMonth
+    });
+
+    return invoices.length > 0;
+  } catch (error) {
+    console.error('[RentRecord] Error checking dynamic availability:', error);
+    return false;
+  }
+}
+
+
+
+
+
+
+
+
+
 
   // ==================== QUERY METHODS ====================
 
@@ -871,16 +906,16 @@ private async getCurrentInvoiceData(propertyId: number, billingMonth: string) {
     return this.mapToTranscripts(result.values || []);
   }
 
-  async getRentRecordsByProperty(propertyId: number, limit: number = 12): Promise<RentRecordSheet[]> {
-    const query = `
-      SELECT * FROM rent_record_sheets 
-      WHERE property_id = ? 
-      ORDER BY billing_month DESC 
-      LIMIT ?
-    `;
-    const result = await database.db!.query(query, [propertyId, limit]);
-    return this.mapToRentRecords(result.values || []);
-  }
+  // async getRentRecordsByProperty(propertyId: number, limit: number = 12): Promise<RentRecordSheet[]> {
+  //   const query = `
+  //     SELECT * FROM rent_record_sheets 
+  //     WHERE property_id = ? 
+  //     ORDER BY billing_month DESC 
+  //     LIMIT ?
+  //   `;
+  //   const result = await database.db!.query(query, [propertyId, limit]);
+  //   return this.mapToRentRecords(result.values || []);
+  // }
 
   // ==================== PRIVATE QUERY METHODS ====================
 
@@ -922,16 +957,6 @@ private async getCurrentInvoiceData(propertyId: number, billingMonth: string) {
       return this.mapToRentRecord(result.values[0]);
     }
     return null;
-  }
-
-  private async getRentRecordEntries(recordSheetId: number): Promise<RentRecordEntry[]> {
-    const query = `
-      SELECT * FROM rent_record_entries 
-      WHERE record_sheet_id = ? 
-      ORDER BY unit_number ASC
-    `;
-    const result = await database.db!.query(query, [recordSheetId]);
-    return this.mapToRentRecordEntries(result.values || []);
   }
 
   // ==================== UPDATE OPERATIONS ====================
@@ -1020,97 +1045,6 @@ private async getCurrentInvoiceData(propertyId: number, billingMonth: string) {
         await database.db!.run(query, values);
     }
 
-  async updateRentRecordEntry(entryId: number, updates: Partial<{
-    amountPaid: number;
-    paymentStatus: 'paid' | 'partial' | 'unpaid' | 'overpaid';
-    paymentDate: string;
-    notes: string;
-  }>): Promise<void> {
-    const fields = [];
-    const values = [];
-
-    if (updates.amountPaid !== undefined) {
-      fields.push('amount_paid = ?');
-      values.push(updates.amountPaid);
-      
-      // Recalculate balance
-      const entryQuery = 'SELECT total_due FROM rent_record_entries WHERE id = ?';
-      const entryResult = await database.db!.query(entryQuery, [entryId]);
-      if (entryResult.values && entryResult.values.length > 0) {
-        const totalDue = entryResult.values[0].total_due;
-        const balance = totalDue - updates.amountPaid;
-        fields.push('balance = ?');
-        values.push(balance);
-      }
-    }
-
-    if (updates.paymentStatus !== undefined) {
-      fields.push('payment_status = ?');
-      values.push(updates.paymentStatus);
-    }
-    if (updates.paymentDate !== undefined) {
-      fields.push('payment_date = ?');
-      values.push(updates.paymentDate);
-    }
-    if (updates.notes !== undefined) {
-      fields.push('notes = ?');
-      values.push(updates.notes);
-    }
-
-    if (fields.length === 0) return;
-
-    fields.push('updated_at = CURRENT_TIMESTAMP');
-    values.push(entryId);
-
-    const query = `UPDATE rent_record_entries SET ${fields.join(', ')} WHERE id = ?`;
-    await database.db!.run(query, values);
-
-    // Recalculate record sheet totals
-    await this.recalculateRecordSheetTotals(entryId);
-  }
-
-  private async recalculateRecordSheetTotals(entryId: number): Promise<void> {
-    // Get record sheet ID
-    const entryQuery = 'SELECT record_sheet_id FROM rent_record_entries WHERE id = ?';
-    const entryResult = await database.db!.query(entryQuery, [entryId]);
-    
-    if (!entryResult.values || entryResult.values.length === 0) return;
-    
-    const recordSheetId = entryResult.values[0].record_sheet_id;
-
-    // Recalculate totals from all entries
-    const totalsQuery = `
-      SELECT 
-        SUM(total_due) as total_expected,
-        SUM(amount_paid) as total_collected,
-        SUM(balance) as total_arrears
-      FROM rent_record_entries 
-      WHERE record_sheet_id = ?
-    `;
-    const totalsResult = await database.db!.query(totalsQuery, [recordSheetId]);
-    
-    if (totalsResult.values && totalsResult.values.length > 0) {
-      const totals = totalsResult.values[0];
-      const collectionRate = totals.total_expected > 0 ? 
-        (totals.total_collected / totals.total_expected) * 100 : 0;
-
-      const updateQuery = `
-        UPDATE rent_record_sheets 
-        SET total_rent_expected = ?, total_rent_collected = ?, 
-            total_arrears = ?, collection_rate = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `;
-
-      await database.db!.run(updateQuery, [
-        totals.total_expected || 0,
-        totals.total_collected || 0,
-        totals.total_arrears || 0,
-        collectionRate,
-        recordSheetId
-      ]);
-    }
-  }
-
   // ==================== DELETION OPERATIONS ====================
 
   async deleteTranscript(transcriptId: number): Promise<void> {
@@ -1125,15 +1059,6 @@ private async getCurrentInvoiceData(propertyId: number, billingMonth: string) {
     }
 
     await database.db!.run('DELETE FROM monthly_transcripts WHERE id = ?', [transcriptId]);
-  }
-
-  async archiveRentRecord(recordSheetId: number): Promise<void> {
-    const query = `
-      UPDATE rent_record_sheets 
-      SET status = 'archived', updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `;
-    await database.db!.run(query, [recordSheetId]);
   }
 
   // ==================== REPORTING & ANALYTICS ====================
@@ -1438,35 +1363,6 @@ private async getCurrentInvoiceData(propertyId: number, billingMonth: string) {
     };
   }
 
-  private mapToRentRecords(rows: any[]): RentRecordSheet[] {
-    return rows.map(row => this.mapToRentRecord(row));
-  }
-
-  private mapToRentRecordEntry(row: any): RentRecordEntry {
-    return {
-      id: row.id,
-      recordSheetId: row.record_sheet_id,
-      tenantId: row.tenant_id,
-      tenantName: row.tenant_name,
-      unitNumber: row.unit_number,
-      rentAmount: row.rent_amount,
-      waterCharges: row.water_charges,
-      powerCharges: row.power_charges,
-      otherCharges: row.other_charges,
-      totalDue: row.total_due,
-      amountPaid: row.amount_paid,
-      balance: row.balance,
-      paymentStatus: row.payment_status,
-      paymentDate: row.payment_date,
-      notes: row.notes,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    };
-  }
-
-  private mapToRentRecordEntries(rows: any[]): RentRecordEntry[] {
-    return rows.map(row => this.mapToRentRecordEntry(row));
-  }
 
   // ==================== UTILITY METHODS ====================
 

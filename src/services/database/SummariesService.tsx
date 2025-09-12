@@ -654,6 +654,8 @@ export class SummariesService {
     return breakdown;
   }
 
+
+
   private async generateOtherIncomeBreakdown(properties: Property[], transcripts: MonthlyTranscript[]): Promise<OtherIncomeRevenue[]> {
     const breakdown: OtherIncomeRevenue[] = [];
 
@@ -838,33 +840,4 @@ export class SummariesService {
   }
 }
 
-// ==================== DATABASE SCHEMA ====================
-/*
--- Business Expenses Table
-CREATE TABLE IF NOT EXISTS business_expenses (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL,
-  company_id INTEGER,
-  property_id INTEGER,
-  month TEXT NOT NULL,
-  description TEXT NOT NULL,
-  amount REAL NOT NULL,
-  category TEXT NOT NULL CHECK (category IN ('office', 'marketing', 'maintenance', 'utilities', 'transport', 'professional', 'insurance', 'software', 'legal', 'other')),
-  is_recurring INTEGER DEFAULT 0,
-  notes TEXT,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
-  FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
-);
-
--- Indexes for Business Expenses
-CREATE INDEX IF NOT EXISTS idx_business_expenses_user_month ON business_expenses(user_id, month);
-CREATE INDEX IF NOT EXISTS idx_business_expenses_property_month ON business_expenses(property_id, month);
-CREATE INDEX IF NOT EXISTS idx_business_expenses_category ON business_expenses(category);
-CREATE INDEX IF NOT EXISTS idx_business_expenses_recurring ON business_expenses(is_recurring);
-*/
-
-// ==================== SINGLETON INSTANCE ====================
 export const summariesService = new SummariesService();

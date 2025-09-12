@@ -88,17 +88,17 @@ const Sheet: React.FC<SheetProps> = ({
       console.error('Error generating rent record:', generateError);
       
       // Fallback: try to get existing record if generation fails
-      //const existingRecords = await reportsDatabase.getRentRecordsByProperty(propertyId, 12);
-      //const monthRecord = existingRecords.find(r => r.billingMonth === currentMonth);
+      const existingRecords = await reportsDatabase.getRentRecordsByProperty(propertyId, 12);
+      const monthRecord = existingRecords.find(r => r.billingMonth === currentMonth);
 
-      //if (monthRecord) {
-        //console.log(`[Sheet] Falling back to existing record ${monthRecord.id}`);
-        //const recordWithDetails = await reportsDatabase.getRentRecordWithDetails(monthRecord.id);
-        //setRentRecord(recordWithDetails);
-      //} else {
+      if (monthRecord) {
+        console.log(`[Sheet] Falling back to existing record ${monthRecord.id}`);
+        const recordWithDetails = await reportsDatabase.getRentRecordWithDetails(monthRecord.id);
+        setRentRecord(recordWithDetails);
+      } else {
         setRentRecord(null);
         setError('Failed to load or generate rent record. Please check if there are active tenants for this property.');
-      //}
+      }
     }
   } catch (error) {
     console.error('Error loading rent record:', error);
