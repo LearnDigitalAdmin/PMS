@@ -343,6 +343,7 @@ export class Tables {
       `CREATE TABLE IF NOT EXISTS transcript_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         billing_month TEXT NOT NULL,
+        property_id INTEGER NOT NULL,
         description TEXT NOT NULL,
         amount REAL NOT NULL,
         type TEXT NOT NULL CHECK (type IN ('rent', 'water', 'power', 'deductible', 'expense', 'custom')),
@@ -351,7 +352,7 @@ export class Tables {
         sort_order INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (billing_month) REFERENCES invoices(billing_month) ON DELETE CASCADE
+        FOREIGN KEY (property_id) REFERENCES properties(id) on DELETE CASCADE
       )`,
 
       // Rent Record Sheets table
