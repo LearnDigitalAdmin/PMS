@@ -920,12 +920,9 @@ async exportUserDataOffline(userId: number): Promise<{
       console.log('Initializing Database...');
       
       this.db = await this.connectionManager.getConnection(this.DB_NAME);
-      await tables.createTables();
-      await tables.createIndexes();
-      await tables.migrateExistingData();
-      await tables.createAgentSummaryTriggers();
+      await tables.initializeDatabase();
 
-      await this.cleanupStaleCache();
+      //await this.cleanupStaleCache();
       await this.optimizeAgentSummaryTables();
       
       console.log('Database initialized successfully');

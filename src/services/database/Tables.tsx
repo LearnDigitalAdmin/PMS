@@ -1,6 +1,5 @@
 import { database } from './Database';
 
-
 const AGENT_SUMMARY_TRIGGERS = [
   // Update timestamp trigger for business expenses
   `CREATE TRIGGER IF NOT EXISTS trigger_business_expenses_updated_at
@@ -12,20 +11,21 @@ const AGENT_SUMMARY_TRIGGERS = [
     WHERE id = NEW.id;
   END`,
 
-  // Cache invalidation triggers
-  `CREATE TRIGGER IF NOT EXISTS trigger_invalidate_cache_on_expense_insert
-    AFTER INSERT ON business_expenses
+  // OPTIMIZED Cache invalidation triggers - only invalidate when values actually change
+  `CREATE TRIGGER IF NOT EXISTS trigger_smart_cache_invalidation
+    AFTER UPDATE ON business_expenses
     FOR EACH ROW
+    WHEN NEW.amount != OLD.amount OR NEW.category != OLD.category OR NEW.month != OLD.month
   BEGIN
     UPDATE monthly_business_summaries 
-    SET is_stale = 1 
+    SET is_stale = 1, last_calculated = CURRENT_TIMESTAMP
     WHERE user_id = NEW.user_id 
-    AND month = NEW.month
+    AND (month = NEW.month OR month = OLD.month)
     AND (property_filter IS NULL OR property_filter = NEW.property_id);
   END`,
 
-  `CREATE TRIGGER IF NOT EXISTS trigger_invalidate_cache_on_expense_update
-    AFTER UPDATE ON business_expenses
+  `CREATE TRIGGER IF NOT EXISTS trigger_invalidate_cache_on_expense_insert
+    AFTER INSERT ON business_expenses
     FOR EACH ROW
   BEGIN
     UPDATE monthly_business_summaries 
@@ -46,6 +46,69 @@ const AGENT_SUMMARY_TRIGGERS = [
     AND (property_filter IS NULL OR property_filter = OLD.property_id);
   END`
 ];
+
+// NEW: Database maintenance class
+export class DatabaseMaintenance {
+  
+  // Automatic cleanup for old data (run monthly/quarterly)
+  async cleanupOldData(): Promise<void> {
+    const retentionMonths = 18; // Keep 1.5 years of data
+    const cutoffDate = new Date();
+    cutoffDate.setMonth(cutoffDate.getMonth() - retentionMonths);
+    const cutoffMonth = cutoffDate.toISOString().slice(0, 7); // YYYY-MM format
+
+    const cleanupQueries = [
+      // Archive old invoices (older than 18 months)
+      `DELETE FROM invoices WHERE billing_month < '${cutoffMonth}'`,
+      
+      // Clean old payment records
+      `DELETE FROM payments WHERE payment_date < '${cutoffDate.toISOString().split('T')[0]}'`,
+      
+      // Archive old business expenses
+      `DELETE FROM business_expenses WHERE month < '${cutoffMonth}'`,
+      
+      // Clean stale cache entries
+      `DELETE FROM monthly_business_summaries WHERE month < '${cutoffMonth}' AND is_stale = 1`,
+      
+      // Archive old KPI history (keep last 2 years for trends)
+      `DELETE FROM agent_kpi_history WHERE month < '${cutoffMonth}'`,
+      
+      // Clean old rent record sheets
+      `DELETE FROM rent_record_sheets WHERE billing_month < '${cutoffMonth}'`,
+      
+      // Remove orphaned transcript items
+      `DELETE FROM transcript_items WHERE transcript_id NOT IN (SELECT id FROM monthly_transcripts)`
+    ];
+
+    for (const query of cleanupQueries) {
+      try {
+        await database.db!.run(query);
+        console.log('Cleanup completed for:', query.substring(0, 50) + '...');
+      } catch (error) {
+        console.error('Cleanup error:', error);
+      }
+    }
+
+    // Vacuum database after cleanup to reclaim space
+    await database.db!.run('VACUUM');
+    await database.db!.run('ANALYZE');
+    console.log('Database maintenance completed');
+  }
+
+  // Clean stale cache entries (run daily/weekly)
+  async cleanupStaleCache(): Promise<void> {
+    const staleCutoff = new Date();
+    staleCutoff.setHours(staleCutoff.getHours() - 24); // 24 hours old
+
+    await database.db!.run(`
+        DELETE FROM monthly_business_summaries 
+        WHERE is_stale = 1 
+        AND last_calculated < ?
+        `, [staleCutoff.toISOString()]);
+    
+    console.log('Stale cache cleanup completed');
+  }
+}
 
 export class Tables {
 
@@ -195,6 +258,7 @@ export class Tables {
             generated_by INTEGER NOT NULL,
             sent_date DATE,
             acknowledged_date DATE,
+            is_archived INTEGER DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
@@ -229,6 +293,7 @@ export class Tables {
             total_arrears REAL NOT NULL DEFAULT 0,
             collection_rate REAL NOT NULL DEFAULT 0,
             status TEXT DEFAULT 'current' CHECK (status IN ('current', 'archived')),
+            is_archived INTEGER DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
@@ -410,8 +475,7 @@ export class Tables {
           // Payment indexes
           'CREATE INDEX IF NOT EXISTS idx_payments_invoice_id ON payments(invoice_id)',
           'CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(payment_date)',
-    
-    
+
           'CREATE INDEX IF NOT EXISTS idx_transcripts_property_month ON monthly_transcripts(property_id, billing_month)',
           'CREATE INDEX IF NOT EXISTS idx_transcripts_status ON monthly_transcripts(status)',
           'CREATE INDEX IF NOT EXISTS idx_transcripts_generated_by ON monthly_transcripts(generated_by)',
@@ -422,37 +486,86 @@ export class Tables {
           'CREATE INDEX IF NOT EXISTS idx_record_entries_sheet_id ON rent_record_entries(record_sheet_id)',
           'CREATE INDEX IF NOT EXISTS idx_record_entries_tenant_id ON rent_record_entries(tenant_id)',
           'CREATE INDEX IF NOT EXISTS idx_record_entries_payment_status ON rent_record_entries(payment_status)',
-    
-    
+
           'CREATE INDEX IF NOT EXISTS idx_business_expenses_user_month ON business_expenses(user_id, month)',
           'CREATE INDEX IF NOT EXISTS idx_business_expenses_property_month ON business_expenses(property_id, month)',
           'CREATE INDEX IF NOT EXISTS idx_business_expenses_category ON business_expenses(category)',
           'CREATE INDEX IF NOT EXISTS idx_business_expenses_recurring ON business_expenses(is_recurring)',
           'CREATE INDEX IF NOT EXISTS idx_business_expenses_created_at ON business_expenses(created_at)',
-    
+
           // Commission Summaries Indexes
           'CREATE INDEX IF NOT EXISTS idx_commission_summaries_user_month ON agent_commission_summaries(user_id, month)',
           'CREATE INDEX IF NOT EXISTS idx_commission_summaries_property_month ON agent_commission_summaries(property_id, month)',
           'CREATE INDEX IF NOT EXISTS idx_commission_summaries_user_property ON agent_commission_summaries(user_id, property_id)',
-    
+
           // Other Income Summaries Indexes
           'CREATE INDEX IF NOT EXISTS idx_other_income_summaries_user_month ON agent_other_income_summaries(user_id, month)',
           'CREATE INDEX IF NOT EXISTS idx_other_income_summaries_property_month ON agent_other_income_summaries(property_id, month)',
           'CREATE INDEX IF NOT EXISTS idx_other_income_summaries_source ON agent_other_income_summaries(income_source)',
-    
+
           // Business Summaries Cache Indexes
           'CREATE INDEX IF NOT EXISTS idx_business_summaries_user_month ON monthly_business_summaries(user_id, month)',
           'CREATE INDEX IF NOT EXISTS idx_business_summaries_stale ON monthly_business_summaries(is_stale)',
           'CREATE INDEX IF NOT EXISTS idx_business_summaries_last_calculated ON monthly_business_summaries(last_calculated)',
-    
+
           // KPI History Indexes
           'CREATE INDEX IF NOT EXISTS idx_kpi_history_user_month ON agent_kpi_history(user_id, month)',
-          'CREATE INDEX IF NOT EXISTS idx_kpi_history_created_at ON agent_kpi_history(created_at)'
+          'CREATE INDEX IF NOT EXISTS idx_kpi_history_created_at ON agent_kpi_history(created_at)',
+
+          // NEW PERFORMANCE INDEXES
+          // Composite indexes for common query patterns
+          'CREATE INDEX IF NOT EXISTS idx_invoices_property_month_paid ON invoices(property_id, billing_month, is_paid)',
+          'CREATE INDEX IF NOT EXISTS idx_tenants_property_active ON tenants(property_id, is_active)',
+          'CREATE INDEX IF NOT EXISTS idx_business_expenses_user_month_category ON business_expenses(user_id, month, category)',
+          
+          // Partial indexes for active records only (more efficient)
+          'CREATE INDEX IF NOT EXISTS idx_tenants_active_only ON tenants(property_id, name) WHERE is_active = 1',
+          'CREATE INDEX IF NOT EXISTS idx_invoices_unpaid_only ON invoices(property_id, billing_month, due_date) WHERE is_paid = 0'
         ];
     
         for (const index of indexes) {
-          await database.db!.run(index);
+          try {
+            await database.db!.run(index);
+          } catch (error) {
+            // Index might already exist, continue
+            console.log('Index creation skipped:', error);
+          }
         }
+      }
+
+      // NEW: Initialize database optimizations
+      async initializeOptimizations(): Promise<void> {
+        if (!database.db) throw new Error('Database not initialized');
+
+        const optimizations = [
+          // WAL mode for better concurrency
+          'PRAGMA journal_mode = WAL',
+          
+          // Optimize for performance over safety
+          'PRAGMA synchronous = NORMAL',
+          
+          // Increase cache size (64MB cache)
+          'PRAGMA cache_size = -64000',
+          
+          // Enable query optimization
+          'PRAGMA optimize',
+          
+          // Set auto-vacuum for space reclamation
+          'PRAGMA auto_vacuum = INCREMENTAL',
+          
+          // Optimize page size
+          'PRAGMA page_size = 4096'
+        ];
+
+        for (const pragma of optimizations) {
+          try {
+            await database.db.run(pragma);
+          } catch (error) {
+            console.log('Optimization skipped:', error);
+          }
+        }
+
+        console.log('Database optimizations applied');
       }
     
       async createAgentSummaryTriggers(): Promise<void> {
@@ -469,9 +582,7 @@ export class Tables {
         }
       }
     
-    
-    
-        async migrateExistingData(): Promise<void> {
+      async migrateExistingData(): Promise<void> {
         try {
           // Add new columns to existing tables if they don't exist
           const migrations = [
@@ -482,7 +593,10 @@ export class Tables {
             `ALTER TABLE users ADD COLUMN selected_property_ids TEXT`,
             `ALTER TABLE users ADD COLUMN restricted_access INTEGER DEFAULT 0`,
             `ALTER TABLE properties ADD COLUMN is_restricted INTEGER DEFAULT 0`,
-            `ALTER TABLE tenants ADD COLUMN is_restricted INTEGER DEFAULT 0`
+            `ALTER TABLE tenants ADD COLUMN is_restricted INTEGER DEFAULT 0`,
+            // NEW: Add archival flags
+            `ALTER TABLE monthly_transcripts ADD COLUMN is_archived INTEGER DEFAULT 0`,
+            `ALTER TABLE rent_record_sheets ADD COLUMN is_archived INTEGER DEFAULT 0`
           ];
     
           for (const migration of migrations) {
@@ -497,6 +611,44 @@ export class Tables {
           console.error('Migration error:', error);
         }
       }
+
+      // NEW: Setup automatic maintenance
+      setupMaintenanceSchedule(): void {
+        const maintenance = new DatabaseMaintenance();
+        
+        // Clean stale cache every 6 hours
+        setInterval(async () => {
+          try {
+            await maintenance.cleanupStaleCache();
+          } catch (error) {
+            console.error('Stale cache cleanup failed:', error);
+          }
+        }, 6 * 60 * 60 * 1000); // 6 hours
+
+        // Full cleanup monthly (you can adjust this)
+        setInterval(async () => {
+          try {
+            await maintenance.cleanupOldData();
+          } catch (error) {
+            console.error('Monthly cleanup failed:', error);
+          }
+        }, 30 * 24 * 60 * 60 * 1000); // 30 days
+
+        console.log('Database maintenance schedule setup completed');
+      }
+
+      // NEW: Initialize everything with optimizations
+      async initializeDatabase(): Promise<void> {
+        await this.createTables();
+        await this.createIndexes();
+        await this.createAgentSummaryTriggers();
+        await this.migrateExistingData();
+        await this.initializeOptimizations();
+        this.setupMaintenanceSchedule();
+        
+        console.log('Database initialization with optimizations completed');
+      }
 }
 
 export const tables = new Tables();
+export const maintenance = new DatabaseMaintenance();
