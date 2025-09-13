@@ -541,13 +541,13 @@ export class ReportsDatabase {
   private async addTranscriptItemForMonth(item: TranscriptItemInput & { propertyId: number }): Promise<TranscriptItem> {
     const query = `
       INSERT INTO transcript_items (
-        transcript_id, property_id, billing_month, description, amount, type, category, 
+        property_id, billing_month, description, amount, type, category, 
         is_deductible, sort_order
       )
-      VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    const result = await database.db!.run(query, [
+    await database.db!.run(query, [
       item.propertyId,
       item.billingMonth,
       item.description,
@@ -558,7 +558,7 @@ export class ReportsDatabase {
       item.sortOrder || 0
     ]);
 
-    return await this.getTranscriptItemById(result.changes!.lastId!);
+    return await this.getTranscriptItemByMonth(item.billingMonth);
   }
 
   // NEW METHOD: Get items by month and property instead of transcript ID
@@ -579,13 +579,13 @@ export class ReportsDatabase {
     
     const query = `
       INSERT INTO transcript_items (
-        transcript_id, property_id, billing_month, description, amount, type, category, 
+        property_id, billing_month, description, amount, type, category, 
         is_deductible, sort_order
       )
-      VALUES (0, NULL, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    const result = await database.db!.run(query, [
+    await database.db!.run(query, [
       item.billingMonth,
       item.description,
       item.amount,
@@ -595,7 +595,7 @@ export class ReportsDatabase {
       item.sortOrder || 0
     ]);
 
-    return await this.getTranscriptItemById(result.changes!.lastId!);
+    return await this.getTranscriptItemByMonth(item.billingMonth);
   }
 
   private async getCurrentInvoiceData(propertyId: number, billingMonth: string) {
@@ -1605,9 +1605,9 @@ export class ReportsDatabase {
   //   return this.mapToTranscriptItems(result.values || []);
   // }
 
-  private async getTranscriptItemById(id: number): Promise<TranscriptItem> {
-    const query = 'SELECT * FROM transcript_items WHERE id = ?';
-    const result = await database.db!.query(query, [id]);
+  private async getTranscriptItemByMonth(billingMonth: string): Promise<TranscriptItem> {
+    const query = 'SELECT * FROM transcript_items WHERE billing_month = ?';
+    const result = await database.db!.query(query, [billingMonth]);
     
     if (result.values && result.values.length > 0) {
       return this.mapToTranscriptItem(result.values[0]);

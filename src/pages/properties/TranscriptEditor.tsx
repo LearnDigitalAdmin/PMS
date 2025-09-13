@@ -313,161 +313,39 @@ const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
     return Object.keys(newErrors).length === 0;
   };
 
-  // const handleSave = async () => {
-  //   if (!validateForm()) return;
-
-  //   try {
-  //     setSaving(true);
-
-  //     // Prepare utility items
-  //     const utilityItemsInput: TranscriptItemInput[] = utilityItems.map(item => ({
-  //       transcriptId: 0, // Will be set during creation
-  //       description: item.description,
-  //       amount: item.amount,
-  //       type: item.type,
-  //       category: item.type === 'water' ? 'Utilities' : 'Utilities',
-  //       isDeductible: !item.isRemittedToLandlord // If not remitted to landlord, it's a deduction
-  //     }));
-
-  //     // Prepare custom items
-  //     const customItemsInput: TranscriptItemInput[] = customItems.map(item => ({
-  //       transcriptId: 0, // Will be set during creation
-  //       description: item.description,
-  //       amount: item.amount,
-  //       type: item.type === 'deductible' ? 'deductible' : 'custom',
-  //       category: item.category,
-  //       isDeductible: item.isDeductible
-  //     }));
-
-  //     // Combine all custom items (utilities + custom)
-  //     const allCustomItems = [...utilityItemsInput, ...customItemsInput];
-
-  //     const transcriptInput: MonthlyTranscriptInput = {
-  //       propertyId,
-  //       billingMonth: currentMonth,
-  //       landlordName: formData.landlordName,
-  //       landlordContact: formData.landlordContact || undefined,
-  //       notes: formData.notes || undefined,
-  //       customItems: allCustomItems
-  //     };
-
-  //     if (transcript) {
-  //       // Update existing transcript
-  //       await reportsDatabase.updateTranscriptStatus(
-  //         transcript.id, 
-  //         transcript.status, 
-  //         formData.notes
-  //       );
-
-  //       // Handle utility items updates
-  //       for (const item of utilityItems) {
-  //         if (item.isNew) {
-  //           // Add new utility item
-  //           await reportsDatabase.addTranscriptItem({
-  //             transcriptId: transcript.id,
-  //             description: item.description,
-  //             amount: item.amount,
-  //             type: item.type,
-  //             category: 'Utilities',
-  //             isDeductible: !item.isRemittedToLandlord
-  //           });
-  //         } else {
-  //           // Update existing utility item
-  //           await reportsDatabase.updateTranscriptItem(parseInt(item.id), {
-  //             description: item.description,
-  //             amount: item.amount,
-  //             type: item.type,
-  //             category: 'Utilities',
-  //             isDeductible: !item.isRemittedToLandlord
-  //           });
-  //         }
-  //       }
-
-  //       // Handle custom items updates
-  //       for (const item of customItems) {
-  //         if (item.isNew) {
-  //           // Add new item
-  //           await reportsDatabase.addTranscriptItem({
-  //             transcriptId: transcript.id,
-  //             description: item.description,
-  //             amount: item.amount,
-  //             type: item.type === 'deductible' ? 'deductible' : 'custom',
-  //             category: item.category,
-  //             isDeductible: item.isDeductible
-  //           });
-  //         } else {
-  //           // Update existing item
-  //           await reportsDatabase.updateTranscriptItem(parseInt(item.id), {
-  //             description: item.description,
-  //             amount: item.amount,
-  //             type: item.type === 'deductible' ? 'deductible' : 'custom',
-  //             category: item.category,
-  //             isDeductible: item.isDeductible
-  //           });
-  //         }
-  //       }
-
-  //       // Remove deleted items
-  //       const originalItems = transcript.items.filter(item => 
-  //         !['rent'].includes(item.type) && 
-  //         !item.description.toLowerCase().includes('commission')
-  //       );
-        
-  //       for (const originalItem of originalItems) {
-  //         const stillExists = 
-  //           (originalItem.type === 'water' && utilityItems.some(item => !item.isNew && item.id === originalItem.id.toString())) ||
-  //           (originalItem.type === 'power' && utilityItems.some(item => !item.isNew && item.id === originalItem.id.toString())) ||
-  //           (originalItem.type !== 'water' && originalItem.type !== 'power' && 
-  //            customItems.some(item => !item.isNew && item.id === originalItem.id.toString()));
-          
-  //         if (!stillExists) {
-  //           await reportsDatabase.deleteTranscriptItem(originalItem.id);
-  //         }
-  //       }
-  //     } else {
-  //       // Create new transcript
-  //       await reportsDatabase.generateMonthlyTranscript(transcriptInput, userId);
-  //     }
-
-  //     onSaved();
-  //   } catch (error) {
-  //     console.error('Error saving transcript:', error);
-  //     setErrors({ general: 'Failed to save transcript. Please try again.' });
-  //   } finally {
-  //     setSaving(false);
-  //   }
-  // };
-  const handleSave = async () => {
+const handleSave = async () => {
   if (!validateForm()) return;
 
   try {
     setSaving(true);
 
-    // Prepare utility items - FIX THE LOGIC HERE
+    // Prepare utility items with corrected logic
     const utilityItemsInput: TranscriptItemInput[] = utilityItems.map(item => ({
-      transcriptId: 0, // Will be set during creation
       description: item.description,
       amount: item.amount,
       type: item.type,
-      category: item.type === 'water' ? 'Utilities' : 'Utilities',
-      // FIXED: When isRemittedToLandlord is FALSE (Agent Pays), it should be a deduction (TRUE)
-      // When isRemittedToLandlord is TRUE (Remit to Landlord), it should NOT be a deduction (FALSE)
-      isDeductible: !item.isRemittedToLandlord
+      category: 'Utilities',
+      // CORRECTED LOGIC: 
+      // - When isRemittedToLandlord is TRUE (Remit to Landlord): Not a deduction, it's income (isDeductible = false)
+      // - When isRemittedToLandlord is FALSE (Agent Pays): It's a deduction from landlord payment (isDeductible = true)
+      isDeductible: !item.isRemittedToLandlord,
+      billingMonth: currentMonth
     }));
 
     // Prepare custom items
     const customItemsInput: TranscriptItemInput[] = customItems.map(item => ({
-      transcriptId: 0, // Will be set during creation
       description: item.description,
       amount: item.amount,
       type: item.type === 'deductible' ? 'deductible' : 'custom',
       category: item.category,
-      isDeductible: item.isDeductible
+      isDeductible: item.isDeductible,
+      billingMonth: currentMonth
     }));
 
     // Combine all custom items (utilities + custom)
     const allCustomItems = [...utilityItemsInput, ...customItemsInput];
 
+    // Prepare the transcript input for the new dynamic system
     const transcriptInput: MonthlyTranscriptInput = {
       propertyId,
       billingMonth: currentMonth,
@@ -477,90 +355,51 @@ const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
       customItems: allCustomItems
     };
 
-    if (transcript) {
-      // Update existing transcript
+    if (transcript && transcript.id > 0) {
+      // UPDATING EXISTING TRANSCRIPT
+      console.log(`[TranscriptEditor] Updating existing transcript ${transcript.id}`);
+
+      // Update the summary transcript metadata
       await reportsDatabase.updateTranscriptStatus(
         transcript.id, 
         transcript.status, 
         formData.notes
       );
 
-      // Handle utility items updates
-      for (const item of utilityItems) {
-        if (item.isNew) {
-          // Add new utility item
-          await reportsDatabase.addTranscriptItem({
-            transcriptId: transcript.id,
-            description: item.description,
-            amount: item.amount,
-            type: item.type,
-            category: 'Utilities',
-            // FIXED: Same logic fix here
-            isDeductible: !item.isRemittedToLandlord
-          });
-        } else {
-          // Update existing utility item
-          await reportsDatabase.updateTranscriptItem(parseInt(item.id), {
-            description: item.description,
-            amount: item.amount,
-            type: item.type,
-            category: 'Utilities',
-            // FIXED: Same logic fix here
-            isDeductible: !item.isRemittedToLandlord
-          });
-        }
-      }
-
-      // Handle custom items updates
-      for (const item of customItems) {
-        if (item.isNew) {
-          // Add new item
-          await reportsDatabase.addTranscriptItem({
-            transcriptId: transcript.id,
-            description: item.description,
-            amount: item.amount,
-            type: item.type === 'deductible' ? 'deductible' : 'custom',
-            category: item.category,
-            isDeductible: item.isDeductible
-          });
-        } else {
-          // Update existing item
-          await reportsDatabase.updateTranscriptItem(parseInt(item.id), {
-            description: item.description,
-            amount: item.amount,
-            type: item.type === 'deductible' ? 'deductible' : 'custom',
-            category: item.category,
-            isDeductible: item.isDeductible
-          });
-        }
-      }
-
-      // Remove deleted items
-      const originalItems = transcript.items.filter(item => 
-        !['rent'].includes(item.type) && 
-        !item.description.toLowerCase().includes('commission')
-      );
-      
-      for (const originalItem of originalItems) {
-        const stillExists = 
-          (originalItem.type === 'water' && utilityItems.some(item => !item.isNew && item.id === originalItem.id.toString())) ||
-          (originalItem.type === 'power' && utilityItems.some(item => !item.isNew && item.id === originalItem.id.toString())) ||
-          (originalItem.type !== 'water' && originalItem.type !== 'power' && 
-           customItems.some(item => !item.isNew && item.id === originalItem.id.toString()));
-        
-        if (!stillExists) {
-          await reportsDatabase.deleteTranscriptItem(originalItem.id);
-        }
-      }
-    } else {
-      // Create new transcript
+      // Clear and rebuild all items for this month using the new dynamic system
+      // The ReportsDatabase will handle clearing existing items and rebuilding from fresh data + custom items
       await reportsDatabase.generateMonthlyTranscript(transcriptInput, userId);
+
+      console.log(`[TranscriptEditor] Successfully updated transcript ${transcript.id}`);
+    } else {
+      // CREATING NEW TRANSCRIPT
+      console.log(`[TranscriptEditor] Creating new transcript for ${currentMonth}`);
+
+      // Generate new dynamic transcript with custom items
+      await reportsDatabase.generateMonthlyTranscript(transcriptInput, userId);
+
+      console.log(`[TranscriptEditor] Successfully created new transcript for ${currentMonth}`);
     }
 
+    // Success - trigger refresh in parent component
     onSaved();
   } catch (error) {
-    console.error('Error saving transcript:', error);
-    setErrors({ general: 'Failed to save transcript. Please try again.' });
+    console.error('[TranscriptEditor] Error saving transcript:', error);
+    
+    // Show user-friendly error message
+    let errorMessage = 'Failed to save transcript. Please try again.';
+    
+    if (error instanceof Error) {
+      if (error.message.includes('Property not found')) {
+        errorMessage = 'Property not found. Please refresh and try again.';
+      } else if (error.message.includes('restricted')) {
+        errorMessage = 'Cannot save transcript for restricted property.';
+      } else if (error.message.includes('validation')) {
+        errorMessage = 'Please check all fields and try again.';
+      }
+    }
+    
+    setErrors({ general: errorMessage });
   } finally {
     setSaving(false);
   }
