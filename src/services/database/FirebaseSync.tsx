@@ -179,55 +179,775 @@ export class FirebaseSyncService {
   /**
    * SAFE UPLOAD - Merges data instead of overwriting, preserves server fields
    */
-  async performSafeUploadSync(userId: number, source: 'scheduled' | 'manual' = 'manual'): Promise<SyncStatus> {
-    const lockKey = `upload_${userId}`;
-    
-    if (this.isOperationLocked(lockKey)) {
-      throw new Error('Upload already in progress');
-    }
 
-    console.log(`🔼 Starting SAFE UPLOAD sync (${source}) for user: ${userId}`);
-    
+  // ==================== ENHANCED DOWNLOAD WITH SEQUENTIAL PROCESSING ====================
+
+
+  // ==================== ENHANCED DOWNLOAD WITH SEQUENTIAL PROCESSING ====================
+
+private async downloadAllDataWithConflictResolution(userId: number): Promise<void> {
+  console.log('📥 Starting SEQUENTIAL download with conflict resolution...');
+  
+  const errors: string[] = [];
+  
+  try {
+    // CRITICAL: Download in strict sequential order to prevent foreign key issues
+    console.log('🏢 Step 1/4: Downloading properties...');
     try {
-      await this.acquireOperationLock(lockKey);
+      await this.downloadPropertiesWithConflictResolution(userId);
       
-      const user = await database.getUserById(userId);
-      if (!user) {
-        throw new Error('User not found');
-      }
-
-      if (!this.canUserSync(user)) {
-        console.log('❌ User cannot upload - no storage permission');
-        return this.buildSyncStatus('No sync permission');
-      }
-
-      if (!navigator.onLine) {
-        throw new Error('No network connection available');
-      }
-
-      // Only upload if enough time has passed (unless manual)
-      if (source === 'scheduled' && !this.shouldPerformScheduledUpload()) {
-        console.log('⏰ Scheduled upload skipped - too soon');
-        return this.buildSyncStatus('Upload skipped - too soon');
-      }
-
-      // SAFE UPLOAD: Merge data preserving server fields
-      await this.safeUploadAllDataWithMerge(userId);
-
-      const now = new Date().toISOString();
-      localStorage.setItem(this.LAST_UPLOAD_KEY, now);
-      
-      console.log('✅ Safe upload sync completed successfully');
-      
-      return this.buildSyncStatus('Upload completed');
-      
-    } catch (error) {
-      console.error('❌ Safe upload sync failed:', error);
-      throw error;
-    } finally {
-      this.releaseOperationLock(lockKey);
+      // SAFETY: Wait for all property database writes to complete
+      await this.waitForDatabaseWrites('properties', 500);
+      console.log('✅ Properties downloaded and committed to database');
+    } catch (error: any) {
+      errors.push(`Properties: ${error.message}`);
+      console.error('❌ Properties download failed - STOPPING to prevent data corruption');
+      throw new Error(`Critical dependency failed: ${error.message}`);
     }
+    
+    console.log('👥 Step 2/4: Downloading tenants...');
+    try {
+      await this.downloadTenantsWithConflictResolution(userId);
+      
+      // SAFETY: Wait for all tenant database writes to complete before proceeding
+      await this.waitForDatabaseWrites('tenants', 800);
+      console.log('✅ Tenants downloaded and committed to database');
+    } catch (error: any) {
+      errors.push(`Tenants: ${error.message}`);
+      console.error('❌ Tenants download failed - STOPPING to prevent invoice corruption');
+      throw new Error(`Critical dependency failed: ${error.message}`);
+    }
+    
+    console.log('🧾 Step 3/4: Downloading invoices...');
+    try {
+      await this.downloadInvoicesWithConflictResolution(userId);
+      
+      // SAFETY: Wait for invoice writes before payments
+      await this.waitForDatabaseWrites('invoices', 600);
+      console.log('✅ Invoices downloaded and committed to database');
+    } catch (error: any) {
+      errors.push(`Invoices: ${error.message}`);
+      console.error('❌ Invoices download failed, continuing with payments');
+    }
+    
+    console.log('💰 Step 4/4: Downloading payments...');
+    try {
+      await this.downloadPaymentsWithConflictResolution(userId);
+      
+      // Final safety wait for all payments
+      await this.waitForDatabaseWrites('payments', 400);
+      console.log('✅ Payments downloaded and committed to database');
+    } catch (error: any) {
+      errors.push(`Payments: ${error.message}`);
+      console.error('❌ Payments download failed');
+    }
+    
+    if (errors.length > 0) {
+      console.warn('⚠️ Some data downloads had issues but sequence completed:', errors);
+    } else {
+      console.log('✅ All data downloaded successfully in proper sequence');
+    }
+    
+    // CRITICAL: Prevent immediate uploads after download
+    this.blockUploadsTemporarily(userId, 30000); // Block for 30 seconds
+    
+  } catch (error) {
+    console.error('❌ Sequential download failed:', error);
+    throw new Error(`Sequential download failed: ${errors.join(', ')}`);
   }
+}
+
+// ==================== UPDATED EXISTING DOWNLOAD METHODS ====================
+
+private async downloadPropertiesWithConflictResolution(userId: number): Promise<void> {
+  console.log('📥 Downloading properties with enhanced conflict resolution...');
+  
+  try {
+    const propertiesQuery = query(
+      collection(db, 'users', userId.toString(), 'properties'),
+      orderBy('lastSyncTime', 'desc')
+    );
+    
+    const snapshot = await getDocs(propertiesQuery);
+    console.log(`Found ${snapshot.docs.length} properties in Firestore`);
+    
+    // SEQUENTIAL processing instead of concurrent
+    for (const doc of snapshot.docs) {
+      try {
+        const propertyData = doc.data();
+        
+        if (!propertyData || !propertyData.localId) {
+          console.warn('⚠️ Skipping invalid property data:', propertyData);
+          continue;
+        }
+        
+        // USE the enhanced merge method
+        await this.mergePropertyWithConflictResolution(userId, propertyData);
+        
+        // Download units for this property AFTER property is confirmed
+        // if (propertyData.localId) {
+        //   await this.downloadUnitsForProperty(userId, doc.id, propertyData.localId);
+        //   // Small delay between properties to prevent overwhelming the database
+        //   await new Promise(resolve => setTimeout(resolve, 100));
+        // }
+      } catch (docError) {
+        console.error(`❌ Failed to process property document ${doc.id}:`, docError);
+        throw docError; // Re-throw for critical properties
+      }
+    }
+    
+    console.log('✅ Properties downloaded successfully with enhanced safety');
+  } catch (error: any) {
+    console.error('❌ Failed to download properties:', error);
+    throw new Error(`Properties download failed: ${error.message || 'Unknown error'}`);
+  }
+}
+
+private async downloadTenantsWithConflictResolution(userId: number): Promise<void> {
+  console.log('📥 Downloading tenants with enhanced conflict resolution...');
+  
+  try {
+    const tenantsQuery = query(
+      collection(db, 'users', userId.toString(), 'tenants'),
+      orderBy('lastSyncTime', 'desc')
+    );
+    
+    const snapshot = await getDocs(tenantsQuery);
+    console.log(`Found ${snapshot.docs.length} tenants in Firestore`);
+    
+    const validPropertyIds = await this.getValidPropertyIds(userId);
+    
+    // SEQUENTIAL processing instead of concurrent
+    for (const doc of snapshot.docs) {
+      try {
+        const tenantData = doc.data();
+        
+        if (!this.isValidTenantData(tenantData, validPropertyIds)) {
+          console.warn('⚠️ Skipping invalid tenant data:', tenantData);
+          continue;
+        }
+        
+        // USE the enhanced merge method
+        await this.mergeTenantWithConflictResolution(tenantData);
+        
+        // Small delay between tenants to prevent database conflicts
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (docError) {
+        console.error(`❌ Failed to process tenant document ${doc.id}:`, docError);
+        throw docError; // Re-throw for critical tenants
+      }
+    }
+    
+    console.log('✅ Tenants downloaded successfully with enhanced safety');
+  } catch (error) {
+    console.error('❌ Failed to download tenants:', error);
+    throw error;
+  }
+}
+
+private async downloadInvoicesWithConflictResolution(userId: number): Promise<void> {
+  console.log('📥 Downloading invoices with CRITICAL enhanced conflict resolution...');
+  
+  try {
+    const invoicesQuery = query(
+      collection(db, 'users', userId.toString(), 'invoices'),
+      orderBy('lastSyncTime', 'desc')
+    );
+    
+    const snapshot = await getDocs(invoicesQuery);
+    console.log(`Found ${snapshot.docs.length} invoices in Firestore`);
+    
+    const validTenantIds = await this.getValidTenantIds(userId);
+    
+    // SEQUENTIAL processing instead of concurrent
+    for (const doc of snapshot.docs) {
+      try {
+        const invoiceData = doc.data();
+        
+        if (!this.isValidInvoiceData(invoiceData, validTenantIds)) {
+          console.warn('⚠️ Skipping invalid invoice data:', invoiceData);
+          continue;
+        }
+        
+        // USE the enhanced merge method with critical safety
+        await this.mergeInvoiceWithCriticalConflictResolution(invoiceData);
+        
+        // Small delay between invoices to prevent database conflicts
+        await new Promise(resolve => setTimeout(resolve, 150));
+      } catch (docError) {
+        console.error(`❌ Failed to process invoice document ${doc.id}:`, docError);
+        // For invoices, continue with others even if one fails (less critical than dependencies)
+        continue;
+      }
+    }
+    
+    console.log('✅ Invoices downloaded successfully with payment data preserved');
+  } catch (error) {
+    console.error('❌ Failed to download invoices:', error);
+    throw error;
+  }
+}
+
+// ==================== DATABASE WRITE SAFETY METHODS ====================
+
+private async waitForDatabaseWrites(entityType: string, delayMs: number): Promise<void> {
+  console.log(`⏳ Waiting ${delayMs}ms for ${entityType} database writes to complete...`);
+  
+  // Use promise-based delay instead of setTimeout for better async handling
+  await new Promise(resolve => setTimeout(resolve, delayMs));
+  
+  // Additional safety: Verify database consistency
+  try {
+    await this.verifyDatabaseConsistency(entityType);
+  } catch (error) {
+    console.warn(`⚠️ Database consistency check failed for ${entityType}:`, error);
+    // Add extra delay if consistency issues detected
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+}
+
+private async verifyDatabaseConsistency(entityType: string): Promise<void> {
+  try {
+    switch (entityType) {
+      case 'properties':
+        // Quick count check to ensure writes completed
+        const propResult = await database.db!.query('SELECT COUNT(*) as count FROM properties WHERE user_id IS NOT NULL');
+        const propCount = propResult?.values?.[0]?.[0] ?? 0;
+        console.log(`✓ Properties consistency: ${propCount} records`);
+        break;
+        
+      case 'tenants':
+        // Verify tenant-property relationships
+        const tenantResult = await database.db!.query(`
+          SELECT COUNT(*) as count FROM tenants t 
+          INNER JOIN properties p ON t.property_id = p.id
+        `);
+        const tenantCount = tenantResult?.values?.[0]?.[0] ?? 0;
+        console.log(`✓ Tenants consistency: ${tenantCount} records with valid properties`);
+        break;
+        
+      case 'invoices':
+        // Verify invoice-tenant relationships
+        const invoiceResult = await database.db!.query(`
+          SELECT COUNT(*) as count FROM invoices i 
+          INNER JOIN tenants t ON i.tenant_id = t.id
+        `);
+        const invoiceCount = invoiceResult?.values?.[0]?.[0] ?? 0;
+        console.log(`✓ Invoices consistency: ${invoiceCount} records with valid tenants`);
+        break;
+    }
+  } catch (error) {
+    console.warn(`Database consistency check failed for ${entityType}:`, error);
+    throw error;
+  }
+}
+
+// ==================== UPLOAD BLOCKING MECHANISM ====================
+
+private uploadBlocks = new Map<number, number>(); // userId -> blockUntilTimestamp
+
+private blockUploadsTemporarily(userId: number, durationMs: number): void {
+  const blockUntil = Date.now() + durationMs;
+  this.uploadBlocks.set(userId, blockUntil);
+  console.log(`🚫 Uploads blocked for user ${userId} for ${durationMs}ms to prevent conflicts`);
+  
+  // Auto-clear the block
+  setTimeout(() => {
+    this.uploadBlocks.delete(userId);
+    console.log(`✅ Upload block cleared for user ${userId}`);
+  }, durationMs);
+}
+
+private isUploadBlocked(userId: number): boolean {
+  const blockUntil = this.uploadBlocks.get(userId);
+  if (!blockUntil) return false;
+  
+  const isBlocked = Date.now() < blockUntil;
+  if (!isBlocked) {
+    this.uploadBlocks.delete(userId);
+  }
+  return isBlocked;
+}
+
+// ==================== ENHANCED MERGE METHODS WITH TRANSACTION-LIKE SAFETY ====================
+
+private async mergePropertyWithConflictResolution(userId: number, propertyData: any): Promise<void> {
+  const startTime = Date.now();
+  try {
+    let localProperty = null;
+    try {
+      localProperty = await database.getPropertyById(propertyData.localId);
+    } catch (error) {
+      console.log(`Property ${propertyData.localId} not found locally, will create new one`);
+    }
+    
+    if (!localProperty) {
+      // Create new property from Firestore data
+      console.log(`📝 Creating property ${propertyData.localId} from Firestore backup`);
+      
+      const canCreate = await database.canCreateProperty?.(userId);
+      if (canCreate?.allowed !== false) {
+        // SAFETY: Use transaction-like approach with verification
+        await database.createProperty({
+          userId: propertyData.userId || userId,
+          companyId: propertyData.companyId || undefined,
+          name: propertyData.name || 'Restored Property',
+          address: propertyData.address || '',
+          description: propertyData.description || '',
+          image: propertyData.image || undefined,
+          agentCommissionRate: propertyData.agentCommissionRate || 0,
+          maxUnits: propertyData.maxUnits || 50
+        });
+        
+        // VERIFICATION: Ensure the property was actually created
+        const verification = await database.getPropertyById(propertyData.localId);
+        if (!verification) {
+          throw new Error(`Property creation verification failed for ID ${propertyData.localId}`);
+        }
+        
+        console.log(`✅ Created and verified property ${propertyData.localId} from Firestore`);
+      }
+    } else if (!localProperty.isRestricted) {
+      // Conflict resolution: Use most recent data based on lastModified
+      const serverLastModified = this.parseFirestoreTimestamp(propertyData.lastModified);
+      const localLastModified = new Date(localProperty.updatedAt);
+      
+      if (serverLastModified > localLastModified) {
+        console.log(`🔄 Updating property ${propertyData.localId} with newer Firestore data`);
+        
+        await database.updateProperty(propertyData.localId, {
+          name: propertyData.name || localProperty.name,
+          address: propertyData.address || localProperty.address,
+          description: propertyData.description || localProperty.description,
+          image: propertyData.image || localProperty.image,
+          agentCommissionRate: propertyData.agentCommissionRate !== undefined ? 
+            propertyData.agentCommissionRate : localProperty.agentCommissionRate,
+          maxUnits: propertyData.maxUnits || localProperty.maxUnits
+        });
+        
+        // VERIFICATION: Ensure update completed
+        const updated = await database.getPropertyById(propertyData.localId);
+        if (updated?.name !== (propertyData.name || localProperty.name)) {
+          console.warn(`⚠️ Property update verification failed for ID ${propertyData.localId}`);
+        }
+      } else {
+        console.log(`ℹ️ Local property ${propertyData.localId} is newer, keeping local data`);
+      }
+    }
+    
+    const duration = Date.now() - startTime;
+    console.log(`⏱️ Property merge completed in ${duration}ms for ID ${propertyData.localId}`);
+    
+  } catch (error) {
+    console.error(`❌ Failed to merge property ${propertyData.localId}:`, error);
+    throw error; // Re-throw to stop sequence if critical
+  }
+}
+
+private async mergeTenantWithConflictResolution(tenantData: any): Promise<void> {
+  const startTime = Date.now();
+  try {
+    let localTenant = null;
+    try {
+      localTenant = await database.getTenantById(tenantData.localId);
+    } catch (error) {
+      console.log(`Tenant ${tenantData.localId} not found locally, will create new one`);
+    }
+    
+    if (!localTenant) {
+      // SAFETY: Verify property exists before creating tenant
+      try {
+        const property = await database.getPropertyById(tenantData.propertyId);
+        if (!property) {
+          throw new Error(`Cannot create tenant ${tenantData.localId} - property ${tenantData.propertyId} not found`);
+        }
+      } catch (error) {
+        console.error(`❌ Property verification failed for tenant ${tenantData.localId}:`, error);
+        throw error; // Critical error - stop processing
+      }
+      
+      console.log(`📝 Creating tenant ${tenantData.localId} from Firestore backup`);
+      
+      await database.createTenant({
+        propertyId: tenantData.propertyId,
+        name: tenantData.name || 'Restored Tenant',
+        phone: tenantData.phone || '',
+        email: tenantData.email || '',
+        unitNumber: tenantData.unitNumber || '',
+        rentAmount: tenantData.rentAmount || 0,
+        standingFees: tenantData.standingFees || 0,
+        depositAmount: tenantData.depositAmount || 0,
+        leaseStart: tenantData.leaseStart || undefined,
+        leaseEnd: tenantData.leaseEnd || undefined
+      });
+      
+      // VERIFICATION: Ensure the tenant was actually created with correct property reference
+      const verification = await database.getTenantById(tenantData.localId);
+      if (!verification || verification.propertyId !== tenantData.propertyId) {
+        throw new Error(`Tenant creation verification failed for ID ${tenantData.localId}`);
+      }
+      
+      console.log(`✅ Created and verified tenant ${tenantData.localId} from Firestore`);
+    } else if (!localTenant.isRestricted) {
+      // Conflict resolution: Use most recent data
+      const serverLastModified = this.parseFirestoreTimestamp(tenantData.lastModified);
+      const localLastModified = new Date(localTenant.updatedAt);
+      
+      if (serverLastModified > localLastModified) {
+        console.log(`🔄 Updating tenant ${tenantData.localId} with newer Firestore data`);
+        
+        await database.updateTenant(tenantData.localId, {
+          name: tenantData.name || localTenant.name,
+          phone: tenantData.phone || localTenant.phone,
+          email: tenantData.email || localTenant.email,
+          unitNumber: tenantData.unitNumber || localTenant.unitNumber,
+          rentAmount: tenantData.rentAmount !== undefined ? tenantData.rentAmount : localTenant.rentAmount,
+          standingFees: tenantData.standingFees !== undefined ? tenantData.standingFees : localTenant.standingFees,
+          depositAmount: tenantData.depositAmount !== undefined ? tenantData.depositAmount : localTenant.depositAmount,
+          leaseStart: tenantData.leaseStart || localTenant.leaseStart,
+          leaseEnd: tenantData.leaseEnd || localTenant.leaseEnd
+        });
+        
+        // VERIFICATION: Ensure update completed
+        const updated = await database.getTenantById(tenantData.localId);
+        if (!updated) {
+          console.warn(`⚠️ Tenant update verification failed for ID ${tenantData.localId}`);
+        }
+      } else {
+        console.log(`ℹ️ Local tenant ${tenantData.localId} is newer, keeping local data`);
+      }
+    }
+    
+    const duration = Date.now() - startTime;
+    console.log(`⏱️ Tenant merge completed in ${duration}ms for ID ${tenantData.localId}`);
+    
+  } catch (error) {
+    console.error(`❌ Failed to merge tenant ${tenantData.localId}:`, error);
+    throw error; // Re-throw to stop sequence if critical
+  }
+}
+
+private async mergeInvoiceWithCriticalConflictResolution(invoiceData: any): Promise<void> {
+  const startTime = Date.now();
+  try {
+    let localInvoice = null;
+    try {
+      localInvoice = await database.getInvoiceById(invoiceData.localId);
+    } catch (error) {
+      console.log(`Invoice ${invoiceData.localId} not found locally, will create new one`);
+    }
+    
+    if (!localInvoice) {
+      // SAFETY: Verify tenant exists before creating invoice
+      try {
+        const tenant = await database.getTenantById(invoiceData.tenantId);
+        if (!tenant) {
+          throw new Error(`Cannot create invoice ${invoiceData.localId} - tenant ${invoiceData.tenantId} not found`);
+        }
+        if (tenant.propertyId !== invoiceData.propertyId) {
+          throw new Error(`Tenant-Property mismatch for invoice ${invoiceData.localId}`);
+        }
+      } catch (error) {
+        console.error(`❌ Tenant verification failed for invoice ${invoiceData.localId}:`, error);
+        throw error; // Critical error - stop processing
+      }
+      
+      console.log(`📝 Creating invoice ${invoiceData.localId} from Firestore backup with payment data`);
+      
+      await database.createInvoice({
+        id: invoiceData.localId,
+        tenantId: invoiceData.tenantId,
+        propertyId: invoiceData.propertyId,
+        billingMonth: invoiceData.billingMonth || new Date().toISOString().substring(0, 7),
+        rentAmount: invoiceData.rentAmount || 0,
+        waterCurrentReading: invoiceData.waterCurrentReading || 0,
+        waterPreviousReading: invoiceData.waterPreviousReading || 0,
+        waterStandingFee: invoiceData.waterStandingFee || 0,
+        waterUnitPrice: invoiceData.waterUnitPrice || 0,
+        powerCurrentReading: invoiceData.powerCurrentReading || 0,
+        powerPreviousReading: invoiceData.powerPreviousReading || 0,
+        powerUnitPrice: invoiceData.powerUnitPrice || 0,
+        otherCharges: invoiceData.otherCharges || 0,
+        otherChargesDescription: invoiceData.otherChargesDescription || '',
+        dueDate: invoiceData.dueDate || undefined,
+        isPaid: invoiceData.isPaid || false
+      });
+      
+      // CRITICAL: Update payment-related fields separately to preserve them
+      if (invoiceData.amountPaid !== undefined || invoiceData.arrears !== undefined || invoiceData.paidDate) {
+        console.log(`🔄 Restoring critical payment data for invoice ${invoiceData.localId}`);
+        const updateQuery = `
+          UPDATE invoices SET 
+            amount_paid = COALESCE(?, amount_paid),
+            arrears = COALESCE(?, arrears),
+            paid_date = COALESCE(?, paid_date),
+            is_paid = COALESCE(?, is_paid),
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `;
+        await database.db!.run(updateQuery, [
+          invoiceData.amountPaid,
+          invoiceData.arrears,
+          invoiceData.paidDate,
+          invoiceData.isPaid,
+          invoiceData.localId
+        ]);
+      }
+      
+      // VERIFICATION: Ensure the invoice was created with correct foreign keys
+      const verification = await database.getInvoiceById(invoiceData.localId);
+      if (!verification || verification.tenantId !== invoiceData.tenantId) {
+        throw new Error(`Invoice creation verification failed for ID ${invoiceData.localId}`);
+      }
+      
+      console.log(`✅ Created and verified invoice ${invoiceData.localId} from Firestore with payment data preserved`);
+    } else {
+      // CRITICAL CONFLICT RESOLUTION: For invoices, ALWAYS preserve payment data from server
+      console.log(`🚨 CRITICAL: Merging invoice ${invoiceData.localId} with payment data preservation`);
+      
+      const updateData: Partial<InvoiceInput> = {};
+      
+      // Determine which data is newer for invoice details
+      const serverLastModified = this.parseFirestoreTimestamp(invoiceData.lastModified);
+      const localLastModified = new Date(localInvoice.updatedAt);
+      
+      if (serverLastModified > localLastModified) {
+        // Server invoice data is newer - update invoice fields
+        updateData.billingMonth = invoiceData.billingMonth || localInvoice.billingMonth;
+        updateData.rentAmount = invoiceData.rentAmount !== undefined ? invoiceData.rentAmount : localInvoice.rentAmount;
+        updateData.waterCurrentReading = invoiceData.waterCurrentReading !== undefined ? invoiceData.waterCurrentReading : localInvoice.waterCurrentReading;
+        updateData.waterPreviousReading = invoiceData.waterPreviousReading !== undefined ? invoiceData.waterPreviousReading : localInvoice.waterPreviousReading;
+        updateData.waterStandingFee = invoiceData.waterStandingFee !== undefined ? invoiceData.waterStandingFee : localInvoice.waterStandingFee;
+        updateData.waterUnitPrice = invoiceData.waterUnitPrice !== undefined ? invoiceData.waterUnitPrice : localInvoice.waterUnitPrice;
+        updateData.powerCurrentReading = invoiceData.powerCurrentReading !== undefined ? invoiceData.powerCurrentReading : localInvoice.powerCurrentReading;
+        updateData.powerPreviousReading = invoiceData.powerPreviousReading !== undefined ? invoiceData.powerPreviousReading : localInvoice.powerPreviousReading;
+        updateData.powerUnitPrice = invoiceData.powerUnitPrice !== undefined ? invoiceData.powerUnitPrice : localInvoice.powerUnitPrice;
+        updateData.otherCharges = invoiceData.otherCharges !== undefined ? invoiceData.otherCharges : localInvoice.otherCharges;
+        updateData.otherChargesDescription = invoiceData.otherChargesDescription || localInvoice.otherChargesDescription;
+        updateData.dueDate = invoiceData.dueDate || localInvoice.dueDate;
+      }
+      
+      // CRITICAL: ALWAYS use server payment data if it exists (it's authoritative for payments)
+      const paymentDataChanged = (
+        invoiceData.amountPaid !== undefined && invoiceData.amountPaid !== localInvoice.amountPaid
+      ) || (
+        invoiceData.arrears !== undefined && invoiceData.arrears !== localInvoice.arrears
+      ) || (
+        invoiceData.isPaid !== undefined && invoiceData.isPaid !== localInvoice.isPaid
+      );
+      
+      if (paymentDataChanged) {
+        console.log(`🚨 CRITICAL: Server has different payment data - using server values`);
+        console.log(`Server: paid=${invoiceData.amountPaid}, arrears=${invoiceData.arrears}, isPaid=${invoiceData.isPaid}`);
+        console.log(`Local: paid=${localInvoice.amountPaid}, arrears=${localInvoice.arrears}, isPaid=${localInvoice.isPaid}`);
+      }
+      
+      // Update invoice with conflict resolution
+      if (Object.keys(updateData).length > 0) {
+        await database.updateInvoice(invoiceData.localId, updateData);
+      }
+      
+      // CRITICAL: Update payment fields directly if server has payment data
+      if (invoiceData.amountPaid !== undefined || invoiceData.arrears !== undefined || invoiceData.paidDate) {
+        const paymentUpdateQuery = `
+          UPDATE invoices SET 
+            amount_paid = COALESCE(?, amount_paid),
+            arrears = COALESCE(?, arrears),
+            paid_date = COALESCE(?, paid_date),
+            is_paid = COALESCE(?, is_paid),
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `;
+        await database.db!.run(paymentUpdateQuery, [
+          invoiceData.amountPaid,
+          invoiceData.arrears,
+          invoiceData.paidDate,
+          invoiceData.isPaid,
+          invoiceData.localId
+        ]);
+        console.log(`✅ Payment data synchronized for invoice ${invoiceData.localId}`);
+      }
+    }
+    
+    const duration = Date.now() - startTime;
+    console.log(`⏱️ Invoice merge completed in ${duration}ms for ID ${invoiceData.localId}`);
+    
+  } catch (error) {
+    console.error(`❌ CRITICAL: Failed to merge invoice ${invoiceData.localId}:`, error);
+    throw error; // Re-throw to stop sequence if critical
+  }
+}
+
+// ==================== ENHANCED UPLOAD METHODS WITH BLOCK CHECKING ====================
+
+async performSafeUploadSync(userId: number, source: 'scheduled' | 'manual' = 'manual'): Promise<SyncStatus> {
+  const lockKey = `upload_${userId}`;
+  
+  if (this.isOperationLocked(lockKey)) {
+    throw new Error('Upload already in progress');
+  }
+
+  // SAFETY: Check if uploads are temporarily blocked
+  if (this.isUploadBlocked(userId)) {
+    console.log('🚫 Upload blocked to prevent conflicts with recent download');
+    return this.buildSyncStatus('Upload blocked - waiting for download completion');
+  }
+
+  console.log(`🔼 Starting SAFE UPLOAD sync (${source}) for user: ${userId}`);
+  
+  try {
+    await this.acquireOperationLock(lockKey);
+    
+    const user = await database.getUserById(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    if (!this.canUserSync(user)) {
+      console.log('❌ User cannot upload - no storage permission');
+      return this.buildSyncStatus('No sync permission');
+    }
+
+    if (!navigator.onLine) {
+      throw new Error('No network connection available');
+    }
+
+    // Only upload if enough time has passed (unless manual)
+    if (source === 'scheduled' && !this.shouldPerformScheduledUpload()) {
+      console.log('⏰ Scheduled upload skipped - too soon');
+      return this.buildSyncStatus('Upload skipped - too soon');
+    }
+
+    // SAFETY: Additional verification before upload
+    await this.verifyLocalDataIntegrity(userId);
+
+    // SAFE UPLOAD: Merge data preserving server fields
+    await this.safeUploadAllDataWithMerge(userId);
+
+    const now = new Date().toISOString();
+    localStorage.setItem(this.LAST_UPLOAD_KEY, now);
+    
+    console.log('✅ Safe upload sync completed successfully');
+    
+    return this.buildSyncStatus('Upload completed');
+    
+  } catch (error) {
+    console.error('❌ Safe upload sync failed:', error);
+    throw error;
+  } finally {
+    this.releaseOperationLock(lockKey);
+  }
+}
+
+// ==================== DATA INTEGRITY VERIFICATION ====================
+
+private async verifyLocalDataIntegrity(userId: number): Promise<void> {
+  console.log('🔍 Verifying local data integrity before upload...');
+  
+  try {
+    // Check for orphaned tenants
+    const orphanedTenantsQuery = `
+      SELECT t.id, t.name, t.property_id 
+      FROM tenants t 
+      LEFT JOIN properties p ON t.property_id = p.id 
+      WHERE t.user_id = ? AND p.id IS NULL
+    `;
+    const orphanedResult = await database.db!.query(orphanedTenantsQuery, [userId]);
+    
+    if (orphanedResult?.values && orphanedResult.values.length > 0) {
+      console.warn('⚠️ Found orphaned tenants:', orphanedResult.values);
+      // Could mark them as restricted or skip upload
+      for (const orphan of orphanedResult.values) {
+        await database.updateTenant(orphan[0], { isRestricted: true });
+      }
+    }
+    
+    // Check for orphaned invoices
+    const orphanedInvoicesQuery = `
+      SELECT i.id, i.tenant_id 
+      FROM invoices i 
+      LEFT JOIN tenants t ON i.tenant_id = t.id 
+      WHERE t.id IS NULL
+    `;
+    const orphanedInvoicesResult = await database.db!.query(orphanedInvoicesQuery);
+    
+    if (orphanedInvoicesResult?.values && orphanedInvoicesResult.values.length > 0) {
+      console.warn('⚠️ Found orphaned invoices - marking as problematic');
+      // These shouldn't be uploaded
+    }
+    
+    console.log('✅ Local data integrity verified');
+    
+  } catch (error) {
+    console.error('❌ Data integrity check failed:', error);
+    throw new Error('Local data integrity issues detected');
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
 
   private async safeUploadAllDataWithMerge(userId: number): Promise<void> {
     console.log('📤 Uploading all data with SAFE MERGE strategy...');
@@ -650,165 +1370,84 @@ export class FirebaseSyncService {
     }
   }
 
-  private async downloadAllDataWithConflictResolution(userId: number): Promise<void> {
-    console.log('📥 Downloading all data with conflict resolution...');
-    
-    const errors: string[] = [];
-    
-    try {
-      // Download in dependency order with conflict resolution
-      try {
-        await this.downloadPropertiesWithConflictResolution(userId);
-      } catch (error: any) {
-        errors.push(`Properties: ${error.message}`);
-        console.error('❌ Properties download failed, continuing with other data');
-      }
-      
-      try {
-        await this.downloadTenantsWithConflictResolution(userId);
-      } catch (error: any) {
-        errors.push(`Tenants: ${error.message}`);
-        console.error('❌ Tenants download failed, continuing with other data');
-      }
-      
-      try {
-        await this.downloadInvoicesWithConflictResolution(userId);
-      } catch (error: any) {
-        errors.push(`Invoices: ${error.message}`);
-        console.error('❌ Invoices download failed, continuing with other data');
-      }
-      
-      try {
-        await this.downloadPaymentsWithConflictResolution(userId);
-      } catch (error: any) {
-        errors.push(`Payments: ${error.message}`);
-        console.error('❌ Payments download failed');
-      }
-      
-      if (errors.length > 0) {
-        console.warn('⚠️ Some data downloads had issues:', errors);
-      } else {
-        console.log('✅ All data downloaded successfully with conflict resolution');
-      }
-    } catch (error) {
-      console.error('❌ Failed to download all data:', error);
-      throw new Error(`Data download failed: ${errors.join(', ')}`);
-    }
-  }
+  
 
   // Enhanced download methods with conflict resolution
-  private async downloadPropertiesWithConflictResolution(userId: number): Promise<void> {
-    console.log('📥 Downloading properties with conflict resolution...');
-    
-    try {
-      const propertiesQuery = query(
-        collection(db, 'users', userId.toString(), 'properties'),
-        orderBy('lastSyncTime', 'desc')
-      );
-      
-      const snapshot = await getDocs(propertiesQuery);
-      console.log(`Found ${snapshot.docs.length} properties in Firestore`);
-      
-      for (const doc of snapshot.docs) {
-        try {
-          const propertyData = doc.data();
-          
-          if (!propertyData || !propertyData.localId) {
-            console.warn('⚠️ Skipping invalid property data:', propertyData);
-            continue;
-          }
-          
-          await this.mergePropertyWithConflictResolution(userId, propertyData);
-          
-          if (propertyData.localId) {
-            await this.downloadUnitsForProperty(userId, doc.id, propertyData.localId);
-          }
-        } catch (docError) {
-          console.error(`❌ Failed to process property document ${doc.id}:`, docError);
-          continue;
-        }
-      }
-      
-      console.log('✅ Properties downloaded successfully');
-    } catch (error: any) {
-      console.error('❌ Failed to download properties:', error);
-      throw new Error(`Properties download failed: ${error.message || 'Unknown error'}`);
-    }
-  }
+  
 
-  private async downloadTenantsWithConflictResolution(userId: number): Promise<void> {
-    console.log('📥 Downloading tenants with conflict resolution...');
+  // private async downloadTenantsWithConflictResolution(userId: number): Promise<void> {
+  //   console.log('📥 Downloading tenants with conflict resolution...');
     
-    try {
-      const tenantsQuery = query(
-        collection(db, 'users', userId.toString(), 'tenants'),
-        orderBy('lastSyncTime', 'desc')
-      );
+  //   try {
+  //     const tenantsQuery = query(
+  //       collection(db, 'users', userId.toString(), 'tenants'),
+  //       orderBy('lastSyncTime', 'desc')
+  //     );
       
-      const snapshot = await getDocs(tenantsQuery);
-      console.log(`Found ${snapshot.docs.length} tenants in Firestore`);
+  //     const snapshot = await getDocs(tenantsQuery);
+  //     console.log(`Found ${snapshot.docs.length} tenants in Firestore`);
       
-      const validPropertyIds = await this.getValidPropertyIds(userId);
+  //     const validPropertyIds = await this.getValidPropertyIds(userId);
       
-      for (const doc of snapshot.docs) {
-        try {
-          const tenantData = doc.data();
+  //     for (const doc of snapshot.docs) {
+  //       try {
+  //         const tenantData = doc.data();
           
-          if (!this.isValidTenantData(tenantData, validPropertyIds)) {
-            console.warn('⚠️ Skipping invalid tenant data:', tenantData);
-            continue;
-          }
+  //         if (!this.isValidTenantData(tenantData, validPropertyIds)) {
+  //           console.warn('⚠️ Skipping invalid tenant data:', tenantData);
+  //           continue;
+  //         }
           
-          await this.mergeTenantWithConflictResolution(tenantData);
-        } catch (docError) {
-          console.error(`❌ Failed to process tenant document ${doc.id}:`, docError);
-          continue;
-        }
-      }
+  //         await this.mergeTenantWithConflictResolution(tenantData);
+  //       } catch (docError) {
+  //         console.error(`❌ Failed to process tenant document ${doc.id}:`, docError);
+  //         continue;
+  //       }
+  //     }
       
-      console.log('✅ Tenants downloaded successfully');
-    } catch (error) {
-      console.error('❌ Failed to download tenants:', error);
-      throw error;
-    }
-  }
+  //     console.log('✅ Tenants downloaded successfully');
+  //   } catch (error) {
+  //     console.error('❌ Failed to download tenants:', error);
+  //     throw error;
+  //   }
+  // }
 
-  private async downloadInvoicesWithConflictResolution(userId: number): Promise<void> {
-    console.log('📥 Downloading invoices with CRITICAL conflict resolution...');
+  // private async downloadInvoicesWithConflictResolution(userId: number): Promise<void> {
+  //   console.log('📥 Downloading invoices with CRITICAL conflict resolution...');
     
-    try {
-      const invoicesQuery = query(
-        collection(db, 'users', userId.toString(), 'invoices'),
-        orderBy('lastSyncTime', 'desc')
-      );
+  //   try {
+  //     const invoicesQuery = query(
+  //       collection(db, 'users', userId.toString(), 'invoices'),
+  //       orderBy('lastSyncTime', 'desc')
+  //     );
       
-      const snapshot = await getDocs(invoicesQuery);
-      console.log(`Found ${snapshot.docs.length} invoices in Firestore`);
+  //     const snapshot = await getDocs(invoicesQuery);
+  //     console.log(`Found ${snapshot.docs.length} invoices in Firestore`);
       
-      const validTenantIds = await this.getValidTenantIds(userId);
+  //     const validTenantIds = await this.getValidTenantIds(userId);
       
-      for (const doc of snapshot.docs) {
-        try {
-          const invoiceData = doc.data();
+  //     for (const doc of snapshot.docs) {
+  //       try {
+  //         const invoiceData = doc.data();
           
-          if (!this.isValidInvoiceData(invoiceData, validTenantIds)) {
-            console.warn('⚠️ Skipping invalid invoice data:', invoiceData);
-            continue;
-          }
+  //         if (!this.isValidInvoiceData(invoiceData, validTenantIds)) {
+  //           console.warn('⚠️ Skipping invalid invoice data:', invoiceData);
+  //           continue;
+  //         }
           
-          await this.mergeInvoiceWithCriticalConflictResolution(invoiceData);
-        } catch (docError) {
-          console.error(`❌ Failed to process invoice document ${doc.id}:`, docError);
-          continue;
-        }
-      }
+  //         await this.mergeInvoiceWithCriticalConflictResolution(invoiceData);
+  //       } catch (docError) {
+  //         console.error(`❌ Failed to process invoice document ${doc.id}:`, docError);
+  //         continue;
+  //       }
+  //     }
       
-      console.log('✅ Invoices downloaded successfully with payment data preserved');
-    } catch (error) {
-      console.error('❌ Failed to download invoices:', error);
-      throw error;
-    }
-  }
+  //     console.log('✅ Invoices downloaded successfully with payment data preserved');
+  //   } catch (error) {
+  //     console.error('❌ Failed to download invoices:', error);
+  //     throw error;
+  //   }
+  // }
 
   private async downloadPaymentsWithConflictResolution(userId: number): Promise<void> {
     console.log('📥 Downloading payments with conflict resolution...');
@@ -874,236 +1513,7 @@ export class FirebaseSyncService {
 
   // ==================== ENHANCED MERGE METHODS WITH CONFLICT RESOLUTION ====================
 
-  private async mergePropertyWithConflictResolution(userId: number, propertyData: any): Promise<void> {
-    try {
-      let localProperty = null;
-      try {
-        localProperty = await database.getPropertyById(propertyData.localId);
-      } catch (error) {
-        console.log('Property not found locally, will create new one');
-      }
-      
-      if (!localProperty) {
-        // Create new property from Firestore data
-        console.log(`Creating property ${propertyData.localId} from Firestore backup`);
-        
-        const canCreate = await database.canCreateProperty?.(userId);
-        if (canCreate?.allowed !== false) {
-          await database.createProperty({
-            userId: propertyData.userId || userId,
-            companyId: propertyData.companyId || undefined,
-            name: propertyData.name || 'Restored Property',
-            address: propertyData.address || '',
-            description: propertyData.description || '',
-            image: propertyData.image || undefined,
-            agentCommissionRate: propertyData.agentCommissionRate || 0,
-            maxUnits: propertyData.maxUnits || 50
-          });
-          console.log(`✅ Created property ${propertyData.localId} from Firestore`);
-        }
-      } else if (!localProperty.isRestricted) {
-        // Conflict resolution: Use most recent data based on lastModified
-        const serverLastModified = this.parseFirestoreTimestamp(propertyData.lastModified);
-        const localLastModified = new Date(localProperty.updatedAt);
-        
-        if (serverLastModified > localLastModified) {
-          console.log(`🔄 Updating property ${propertyData.localId} with newer Firestore data`);
-          await database.updateProperty(propertyData.localId, {
-            name: propertyData.name || localProperty.name,
-            address: propertyData.address || localProperty.address,
-            description: propertyData.description || localProperty.description,
-            image: propertyData.image || localProperty.image,
-            agentCommissionRate: propertyData.agentCommissionRate !== undefined ? 
-              propertyData.agentCommissionRate : localProperty.agentCommissionRate,
-            maxUnits: propertyData.maxUnits || localProperty.maxUnits
-          });
-        } else {
-          console.log(`ℹ️ Local property ${propertyData.localId} is newer, keeping local data`);
-        }
-      }
-    } catch (error) {
-      console.error(`❌ Failed to merge property ${propertyData.localId}:`, error);
-    }
-  }
-
-  private async mergeTenantWithConflictResolution(tenantData: any): Promise<void> {
-    try {
-      let localTenant = null;
-      try {
-        localTenant = await database.getTenantById(tenantData.localId);
-      } catch (error) {
-        console.log('Tenant not found locally, will create new one');
-      }
-      
-      if (!localTenant) {
-        // Create new tenant from Firestore data
-        console.log(`Creating tenant ${tenantData.localId} from Firestore backup`);
-        
-        await database.createTenant({
-          propertyId: tenantData.propertyId,
-          name: tenantData.name || 'Restored Tenant',
-          phone: tenantData.phone || '',
-          email: tenantData.email || '',
-          unitNumber: tenantData.unitNumber || '',
-          rentAmount: tenantData.rentAmount || 0,
-          standingFees: tenantData.standingFees || 0,
-          depositAmount: tenantData.depositAmount || 0,
-          leaseStart: tenantData.leaseStart || undefined,
-          leaseEnd: tenantData.leaseEnd || undefined
-        });
-        console.log(`✅ Created tenant ${tenantData.localId} from Firestore`);
-      } else if (!localTenant.isRestricted) {
-        // Conflict resolution: Use most recent data
-        const serverLastModified = this.parseFirestoreTimestamp(tenantData.lastModified);
-        const localLastModified = new Date(localTenant.updatedAt);
-        
-        if (serverLastModified > localLastModified) {
-          console.log(`🔄 Updating tenant ${tenantData.localId} with newer Firestore data`);
-          await database.updateTenant(tenantData.localId, {
-            name: tenantData.name || localTenant.name,
-            phone: tenantData.phone || localTenant.phone,
-            email: tenantData.email || localTenant.email,
-            unitNumber: tenantData.unitNumber || localTenant.unitNumber,
-            rentAmount: tenantData.rentAmount !== undefined ? tenantData.rentAmount : localTenant.rentAmount,
-            standingFees: tenantData.standingFees !== undefined ? tenantData.standingFees : localTenant.standingFees,
-            depositAmount: tenantData.depositAmount !== undefined ? tenantData.depositAmount : localTenant.depositAmount,
-            leaseStart: tenantData.leaseStart || localTenant.leaseStart,
-            leaseEnd: tenantData.leaseEnd || localTenant.leaseEnd
-          });
-        } else {
-          console.log(`ℹ️ Local tenant ${tenantData.localId} is newer, keeping local data`);
-        }
-      }
-    } catch (error) {
-      console.error(`❌ Failed to merge tenant ${tenantData.localId}:`, error);
-    }
-  }
-
-  private async mergeInvoiceWithCriticalConflictResolution(invoiceData: any): Promise<void> {
-    try {
-      let localInvoice = null;
-      try {
-        localInvoice = await database.getInvoiceById(invoiceData.localId);
-      } catch (error) {
-        console.log('Invoice not found locally, will create new one');
-      }
-      
-      if (!localInvoice) {
-        // Create new invoice from Firestore data (CRITICAL: preserve payment data)
-        console.log(`Creating invoice ${invoiceData.localId} from Firestore backup with payment data`);
-        
-        await database.createInvoice({
-          id: invoiceData.localId,
-          tenantId: invoiceData.tenantId,
-          propertyId: invoiceData.propertyId,
-          billingMonth: invoiceData.billingMonth || new Date().toISOString().substring(0, 7),
-          rentAmount: invoiceData.rentAmount || 0,
-          waterCurrentReading: invoiceData.waterCurrentReading || 0,
-          waterPreviousReading: invoiceData.waterPreviousReading || 0,
-          waterStandingFee: invoiceData.waterStandingFee || 0,
-          waterUnitPrice: invoiceData.waterUnitPrice || 0,
-          powerCurrentReading: invoiceData.powerCurrentReading || 0,
-          powerPreviousReading: invoiceData.powerPreviousReading || 0,
-          powerUnitPrice: invoiceData.powerUnitPrice || 0,
-          otherCharges: invoiceData.otherCharges || 0,
-          otherChargesDescription: invoiceData.otherChargesDescription || '',
-          dueDate: invoiceData.dueDate || undefined,
-          isPaid: invoiceData.isPaid || false
-        });
-        
-        // CRITICAL: Update payment-related fields separately to preserve them
-        if (invoiceData.amountPaid !== undefined || invoiceData.arrears !== undefined || invoiceData.paidDate) {
-          console.log(`🔄 Restoring critical payment data for invoice ${invoiceData.localId}`);
-          const updateQuery = `
-            UPDATE invoices SET 
-              amount_paid = COALESCE(?, amount_paid),
-              arrears = COALESCE(?, arrears),
-              paid_date = COALESCE(?, paid_date),
-              is_paid = COALESCE(?, is_paid),
-              updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `;
-          await database.db!.run(updateQuery, [
-            invoiceData.amountPaid,
-            invoiceData.arrears,
-            invoiceData.paidDate,
-            invoiceData.isPaid,
-            invoiceData.localId
-          ]);
-        }
-        
-        console.log(`✅ Created invoice ${invoiceData.localId} from Firestore with payment data preserved`);
-      } else {
-        // CRITICAL CONFLICT RESOLUTION: For invoices, ALWAYS preserve payment data from server
-        console.log(`🚨 CRITICAL: Merging invoice ${invoiceData.localId} with payment data preservation`);
-        
-        const updateData: Partial<InvoiceInput> = {};
-        
-        // Determine which data is newer for invoice details
-        const serverLastModified = this.parseFirestoreTimestamp(invoiceData.lastModified);
-        const localLastModified = new Date(localInvoice.updatedAt);
-        
-        if (serverLastModified > localLastModified) {
-          // Server invoice data is newer - update invoice fields
-          updateData.billingMonth = invoiceData.billingMonth || localInvoice.billingMonth;
-          updateData.rentAmount = invoiceData.rentAmount !== undefined ? invoiceData.rentAmount : localInvoice.rentAmount;
-          updateData.waterCurrentReading = invoiceData.waterCurrentReading !== undefined ? invoiceData.waterCurrentReading : localInvoice.waterCurrentReading;
-          updateData.waterPreviousReading = invoiceData.waterPreviousReading !== undefined ? invoiceData.waterPreviousReading : localInvoice.waterPreviousReading;
-          updateData.waterStandingFee = invoiceData.waterStandingFee !== undefined ? invoiceData.waterStandingFee : localInvoice.waterStandingFee;
-          updateData.waterUnitPrice = invoiceData.waterUnitPrice !== undefined ? invoiceData.waterUnitPrice : localInvoice.waterUnitPrice;
-          updateData.powerCurrentReading = invoiceData.powerCurrentReading !== undefined ? invoiceData.powerCurrentReading : localInvoice.powerCurrentReading;
-          updateData.powerPreviousReading = invoiceData.powerPreviousReading !== undefined ? invoiceData.powerPreviousReading : localInvoice.powerPreviousReading;
-          updateData.powerUnitPrice = invoiceData.powerUnitPrice !== undefined ? invoiceData.powerUnitPrice : localInvoice.powerUnitPrice;
-          updateData.otherCharges = invoiceData.otherCharges !== undefined ? invoiceData.otherCharges : localInvoice.otherCharges;
-          updateData.otherChargesDescription = invoiceData.otherChargesDescription || localInvoice.otherChargesDescription;
-          updateData.dueDate = invoiceData.dueDate || localInvoice.dueDate;
-        }
-        
-        // CRITICAL: ALWAYS use server payment data if it exists (it's authoritative for payments)
-        const paymentDataChanged = (
-          invoiceData.amountPaid !== undefined && invoiceData.amountPaid !== localInvoice.amountPaid
-        ) || (
-          invoiceData.arrears !== undefined && invoiceData.arrears !== localInvoice.arrears
-        ) || (
-          invoiceData.isPaid !== undefined && invoiceData.isPaid !== localInvoice.isPaid
-        );
-        
-        if (paymentDataChanged) {
-          console.log(`🚨 CRITICAL: Server has different payment data - using server values`);
-          console.log(`Server: paid=${invoiceData.amountPaid}, arrears=${invoiceData.arrears}, isPaid=${invoiceData.isPaid}`);
-          console.log(`Local: paid=${localInvoice.amountPaid}, arrears=${localInvoice.arrears}, isPaid=${localInvoice.isPaid}`);
-        }
-        
-        // Update invoice with conflict resolution
-        if (Object.keys(updateData).length > 0) {
-          await database.updateInvoice(invoiceData.localId, updateData);
-        }
-        
-        // CRITICAL: Update payment fields directly if server has payment data
-        if (invoiceData.amountPaid !== undefined || invoiceData.arrears !== undefined || invoiceData.paidDate) {
-          const paymentUpdateQuery = `
-            UPDATE invoices SET 
-              amount_paid = COALESCE(?, amount_paid),
-              arrears = COALESCE(?, arrears),
-              paid_date = COALESCE(?, paid_date),
-              is_paid = COALESCE(?, is_paid),
-              updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `;
-          await database.db!.run(paymentUpdateQuery, [
-            invoiceData.amountPaid,
-            invoiceData.arrears,
-            invoiceData.paidDate,
-            invoiceData.isPaid,
-            invoiceData.localId
-          ]);
-          console.log(`✅ Payment data synchronized for invoice ${invoiceData.localId}`);
-        }
-      }
-    } catch (error) {
-      console.error(`❌ CRITICAL: Failed to merge invoice ${invoiceData.localId}:`, error);
-    }
-  }
+ 
 
   private async mergePaymentWithConflictResolution(invoiceId: number, paymentData: any): Promise<void> {
     try {
@@ -1247,63 +1657,9 @@ export class FirebaseSyncService {
     }
   }
 
-  private async downloadUnitsForProperty(userId: number, firestorePropertyId: string, localPropertyId: number): Promise<void> {
-    try {
-      const unitsQuery = query(
-        collection(db, 'users', userId.toString(), 'properties', firestorePropertyId, 'units'),
-        orderBy('lastSyncTime', 'desc')
-      );
-      
-      const snapshot = await getDocs(unitsQuery);
-      
-      for (const unitDoc of snapshot.docs) {
-        const unitData = unitDoc.data();
-        
-        if (!this.isValidUnitData(unitData)) {
-          console.warn('⚠️ Skipping invalid unit data:', unitData);
-          continue;
-        }
-        
-        await this.mergeUnitWithConflictResolution(localPropertyId, unitData);
-      }
-    } catch (error) {
-      console.error(`❌ Failed to download units for property ${localPropertyId}:`, error);
-    }
-  }
+  
 
-  private async mergeUnitWithConflictResolution(propertyId: number, unitData: any): Promise<void> {
-    try {
-      let localUnit = null;
-      try {
-        localUnit = await database.getUnitById(unitData.localId);
-      } catch (error) {
-        console.log('Unit not found locally, will create new one');
-      }
-      
-      if (!localUnit) {
-        await database.createUnit({
-          propertyId: propertyId,
-          unitNumber: unitData.unitNumber || 'Unknown',
-          rentAmount: unitData.rentAmount || 0
-        });
-        console.log(`✅ Created unit ${unitData.localId} from Firestore`);
-      } else {
-        // Conflict resolution for unit data
-        const serverLastModified = this.parseFirestoreTimestamp(unitData.lastModified);
-        const localLastModified = new Date(localUnit.updatedAt);
-        
-        if (serverLastModified > localLastModified) {
-          await database.updateUnit(unitData.localId, {
-            unitNumber: unitData.unitNumber || localUnit.unitNumber,
-            rentAmount: unitData.rentAmount !== undefined ? unitData.rentAmount : localUnit.rentAmount
-          });
-          console.log(`✅ Updated unit ${unitData.localId} from Firestore`);
-        }
-      }
-    } catch (error) {
-      console.error(`❌ Failed to merge unit ${unitData.localId}:`, error);
-    }
-  }
+  
 
   // ==================== EXISTING METHODS (Updated for safety) ====================
 
@@ -1501,12 +1857,12 @@ export class FirebaseSyncService {
 
   // ==================== VALIDATION METHODS ====================
 
-  private isValidUnitData(data: any): boolean {
-    return data && 
-           typeof data.localId !== 'undefined' && 
-           typeof data.unitNumber === 'string' && 
-           typeof data.rentAmount === 'number';
-  }
+  // private isValidUnitData(data: any): boolean {
+  //   return data && 
+  //          typeof data.localId !== 'undefined' && 
+  //          typeof data.unitNumber === 'string' && 
+  //          typeof data.rentAmount === 'number';
+  // }
 
   private isValidTenantData(data: any, validPropertyIds: Set<number>): boolean {
     if (!data || typeof data !== 'object') {

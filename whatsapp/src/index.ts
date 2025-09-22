@@ -16,8 +16,8 @@ const db = getFirestore();
 // Configuration - Replace with your actual values
 const WHATSAPP_CONFIG = {
     ACCESS_TOKEN: 'EAASC7YgLv0YBPRIdAASQas8IdC1vLwtsiKYcVvuC0MtZAEKQAnfaIM9Vgtnn1HNeH92ZBNlQ1kZA8Wgg7fxuoihZC6mH17frZBsAyQvk6igPZAJxK7kdI0dJ7ZAzxsKZCpUCiDZAxnnCYNgTc5zZCEeTQ3Xn8EeykvjfxxqBNZAcsxMwL6PLbQVZB7TFtLXxlFiVdgZDZD',
-    PHONE_NUMBER_ID: '813756918480708',
-    VERSION: 'v18.0',
+    PHONE_NUMBER_ID: '841629375692414',
+    VERSION: 'v22.0',
     BASE_URL: 'https://graph.facebook.com'
 };
 
@@ -26,6 +26,7 @@ const TEMPLATES = {
     NEW_INVOICE: 'invoice',
     OVERDUE: 'payment_overdue_1',
     PAYMENT_SUCCESS: 'payment_confirmation_2',
+    APP_CONSENT: 'app_consent', // New template for consent
 };
 
 // Rate limiting configuration
@@ -71,6 +72,173 @@ function checkRateLimit(identifier: string): boolean {
     current.count++;
     rateLimitStore.set(key, current);
     return true;
+}
+
+// NEW: Function to check tenant consent
+async function checkTenantConsent(tenantPhone: string): Promise<{ hasConsent: boolean; status?: string }> {
+    try {
+        const normalizedPhone = tenantPhone.replace(/\D/g, '');
+        const consentDoc = await db.collection('allowed').doc(normalizedPhone).get();
+        
+        if (!consentDoc.exists) {
+            console.log(`No consent document found for phone: ${normalizedPhone}`);
+            return { hasConsent: false };
+        }
+        
+        const consentData = consentDoc.data();
+        const status = consentData?.status;
+        
+        console.log(`Consent status for phone ${normalizedPhone}: ${status}`);
+        
+        if (status === 'allowed') {
+            return { hasConsent: true, status: 'allowed' };
+        } else {
+            return { hasConsent: false, status: status || 'unknown' };
+        }
+    } catch (error) {
+        console.error('Error checking tenant consent:', error);
+        return { hasConsent: false };
+    }
+}
+
+// NEW: Function to send consent request
+// CORRECTED: Function to send consent request with dynamic button URLs
+async function sendConsentRequest(tenant: any, property: any, company: any, user: any): Promise<boolean> {
+    try {
+        const normalizedPhone = tenant.phone.replace(/\D/g, '');
+        const tenantName = tenant.name || 'Tenant';
+        const agentName = company?.name || user.name || 'Property Manager';
+        const propertyDetails = `${property.name}${tenant.unitNumber ? ' / ' + tenant.unitNumber : ''}`;
+        
+        const templateParams = [
+            tenantName,
+            agentName,
+            propertyDetails
+        ];
+        
+        // Create ONLY the query parameters (base URL is in template)
+        const allowParams = `handleConsent?phone=${encodeURIComponent(normalizedPhone)}&name=${encodeURIComponent(tenantName)}&agent=${encodeURIComponent(agentName)}&property=${encodeURIComponent(propertyDetails)}&status=allow&date=${encodeURIComponent(new Date().toISOString())}`;
+        const stopParams = `handleConsent?phone=${encodeURIComponent(normalizedPhone)}&name=${encodeURIComponent(tenantName)}&agent=${encodeURIComponent(agentName)}&property=${encodeURIComponent(propertyDetails)}&status=stop&date=${encodeURIComponent(new Date().toISOString())}`;
+        
+        console.log(`Sending consent request to: ${tenant.phone}`);
+        console.log(`Template params:`, templateParams);
+        console.log(`Allow button parameter: ${allowParams}`);
+        console.log(`Stop button parameter: ${stopParams}`);
+        
+        // Send consent message with dynamic button parameters
+        const success = await sendWhatsAppMessageWithButtons(
+            tenant.phone, 
+            TEMPLATES.APP_CONSENT, 
+            templateParams,
+            [
+                { type: 'url', text: 'Allow Invoices', url: allowParams },
+                { type: 'url', text: 'Stop', url: stopParams }
+            ]
+        );
+        
+        if (success) {
+            console.log(`Consent request sent successfully to ${tenant.phone}`);
+        } else {
+            console.log(`Failed to send consent request to ${tenant.phone}`);
+        }
+        
+        return success;
+    } catch (error) {
+        console.error('Error sending consent request:', error);
+        return false;
+    }
+}
+
+// CORRECTED: WhatsApp message with buttons for consent
+async function sendWhatsAppMessageWithButtons(
+    to: string,
+    templateName: string,
+    templateParams: string[],
+    buttons: Array<{ type: string; text: string; url: string }>,
+    retryCount: number = 0
+): Promise<boolean> {
+    try {
+        if (!checkRateLimit('whatsapp_api')) {
+            console.log('Rate limit exceeded, queuing message');
+            if (retryCount < RATE_LIMITS.MAX_RETRIES) {
+                await new Promise(resolve => setTimeout(resolve, RATE_LIMITS.RETRY_DELAY_MS));
+                return sendWhatsAppMessageWithButtons(to, templateName, templateParams, buttons, retryCount + 1);
+            }
+            throw new Error('Rate limit exceeded after retries');
+        }
+
+        const cleanPhone = to.replace(/\D/g, '');
+        const formattedPhone = cleanPhone.startsWith('254') ? cleanPhone :
+            cleanPhone.startsWith('0') ? '254' + cleanPhone.substring(1) :
+            cleanPhone.startsWith('7') ? '254' + cleanPhone : cleanPhone;
+
+        console.log(`Attempting to send WhatsApp consent message to: ${formattedPhone}`);
+
+        const messagePayload: any = {
+            messaging_product: 'whatsapp',
+            to: formattedPhone,
+            type: 'template',
+            template: {
+                name: templateName,
+                language: { code: 'en' },
+                components: [
+                    {
+                        type: 'body',
+                        parameters: templateParams.map(param => ({
+                            type: 'text',
+                            text: param
+                        }))
+                    }
+                ]
+            }
+        };
+
+        // FIXED: Add buttons as parameters to button components
+        // Each button in your template needs its own component with the correct index
+        buttons.forEach((button, index) => {
+            messagePayload.template.components.push({
+                type: 'button',
+                sub_type: 'url',
+                index: index.toString(),
+                parameters: [{
+                    type: 'text',
+                    text: button.url  // This should be the full URL
+                }]
+            });
+        });
+
+        console.log('WhatsApp consent payload:', JSON.stringify(messagePayload, null, 2));
+
+        const response = await axios.post(
+            `${WHATSAPP_CONFIG.BASE_URL}/${WHATSAPP_CONFIG.VERSION}/${WHATSAPP_CONFIG.PHONE_NUMBER_ID}/messages`,
+            messagePayload,
+            {
+                headers: {
+                    'Authorization': `Bearer ${WHATSAPP_CONFIG.ACCESS_TOKEN}`,
+                    'Content-Type': 'application/json'
+                },
+                timeout: 10000
+            }
+        );
+
+        if (response.status === 200) {
+            console.log(`WhatsApp consent message sent successfully to ${formattedPhone}`);
+            return true;
+        } else {
+            throw new Error(`WhatsApp API returned status ${response.status}`);
+        }
+    } catch (error: any) {
+        console.error(`Error sending WhatsApp consent message (attempt ${retryCount + 1}):`, error.message);
+        
+        if (retryCount < RATE_LIMITS.MAX_RETRIES) {
+            console.log(`Retrying in ${RATE_LIMITS.RETRY_DELAY_MS}ms...`);
+            await new Promise(resolve => setTimeout(resolve, RATE_LIMITS.RETRY_DELAY_MS));
+            return sendWhatsAppMessageWithButtons(to, templateName, templateParams, buttons, retryCount + 1);
+        }
+        
+        console.error('All retry attempts exhausted');
+        return false;
+    }
 }
 
 // NEW: Function to process Firebase URL for WhatsApp template
@@ -255,7 +423,7 @@ const handleSubscriptionEvent = async (event: RevenueCatEvent): Promise<void> =>
     }
 };
 
-// UPDATED: New invoice notification function with URL processing
+// UPDATED: New invoice notification function with consent check
 async function sendNewInvoiceNotification(invoice: any, fallbackInvoiceId: string | null = null): Promise<boolean> {
     try {
         const invoiceLocalId = invoice.localId || fallbackInvoiceId || 'unknown';
@@ -265,6 +433,13 @@ async function sendNewInvoiceNotification(invoice: any, fallbackInvoiceId: strin
         if (!canSendNotification(user, 'invoice')) {
             console.log(`User ${user.localId} cannot receive invoice notifications`);
             return false;
+        }
+
+        // CHECK CONSENT FIRST
+        const consentCheck = await checkTenantConsent(tenant.phone);
+        if (!consentCheck.hasConsent) {
+            console.log(`No consent for tenant ${tenant.name} (${tenant.phone}), sending consent request`);
+            return await sendConsentRequest(tenant, property, company, user);
         }
 
         const shouldSendNewNotification = !invoice.hasOwnProperty('isNew') || invoice.isNew === true;
@@ -293,7 +468,7 @@ async function sendNewInvoiceNotification(invoice: any, fallbackInvoiceId: strin
             company?.email || user.email
         ];
 
-        // UPDATED: Process the PDF URL for WhatsApp template
+        // Process the PDF URL for WhatsApp template
         const processedUrl = processFirebaseUrlForWhatsApp(invoice.pdfUrl);
 
         console.log(`Sending NEW INVOICE to phone: ${tenant.phone}, template: ${TEMPLATES.NEW_INVOICE}`);
@@ -315,16 +490,23 @@ async function sendNewInvoiceNotification(invoice: any, fallbackInvoiceId: strin
     }
 }
 
-// UPDATED: Payment success notification function with URL processing
+// UPDATED: Payment success notification function with consent check
 async function sendPaymentSuccessNotification(invoice: any, fallbackInvoiceId: string | null = null): Promise<boolean> {
     try {
         const invoiceLocalId = invoice.localId || fallbackInvoiceId || 'unknown';
         console.log(`Sending payment success notification for invoice ${invoiceLocalId}`);
-        const { tenant, property, user } = await getInvoiceContext(invoice, fallbackInvoiceId);
+        const { tenant, property, user, company } = await getInvoiceContext(invoice, fallbackInvoiceId);
         
         if (!canSendNotification(user, 'payment')) {
             console.log(`User ${user.localId} cannot receive payment notifications`);
             return false;
+        }
+
+        // CHECK CONSENT FIRST
+        const consentCheck = await checkTenantConsent(tenant.phone);
+        if (!consentCheck.hasConsent) {
+            console.log(`No consent for tenant ${tenant.name} (${tenant.phone}), sending consent request`);
+            return await sendConsentRequest(tenant, property, company, user);
         }
 
         const isInvoicePaid = invoice.pdfStatus === 'paid' || invoice.isPaid;
@@ -351,7 +533,7 @@ async function sendPaymentSuccessNotification(invoice: any, fallbackInvoiceId: s
             `${property.name} ${tenant.unitNumber || ''}`
         ];
 
-        // UPDATED: Process the PDF URL for WhatsApp template
+        // Process the PDF URL for WhatsApp template
         const processedUrl = processFirebaseUrlForWhatsApp(invoice.pdfUrl);
 
         console.log(`Sending PAYMENT SUCCESS to phone: ${tenant.phone}, template: ${TEMPLATES.PAYMENT_SUCCESS}`);
@@ -405,7 +587,7 @@ async function sendWhatsAppMessage(
             type: 'template',
             template: {
                 name: templateName,
-                language: { code: 'en_US' },
+                language: { code: 'en' },
                 components: [
                     {
                         type: 'body',
@@ -418,7 +600,7 @@ async function sendWhatsAppMessage(
             }
         };
 
-        // UPDATED: Use processed URL directly (already cut from Firebase base)
+        // Use processed URL directly (already cut from Firebase base)
         if (buttonUrl && buttonUrl.trim() !== '') {
             messagePayload.template.components.push({
                 type: 'button',
@@ -639,16 +821,23 @@ function getDaysOverdue(dueDate: string): number {
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 }
 
-// UPDATED: Send overdue notification with URL processing
+// UPDATED: Send overdue notification with consent check
 async function sendOverdueNotification(invoice: any, fallbackInvoiceId: string | null = null): Promise<boolean> {
     try {
         const invoiceLocalId = invoice.localId || fallbackInvoiceId || 'unknown';
         console.log(`Checking overdue notification for invoice ${invoiceLocalId}`);
-        const { tenant, user } = await getInvoiceContext(invoice, fallbackInvoiceId);
+        const { tenant, user, property, company } = await getInvoiceContext(invoice, fallbackInvoiceId);
         
         if (!shouldSendOverdueMessage(invoice, user)) {
             console.log(`Should not send overdue message for invoice ${invoiceLocalId}`);
             return false;
+        }
+
+        // CHECK CONSENT FIRST
+        const consentCheck = await checkTenantConsent(tenant.phone);
+        if (!consentCheck.hasConsent) {
+            console.log(`No consent for tenant ${tenant.name} (${tenant.phone}), sending consent request`);
+            return await sendConsentRequest(tenant, property, company, user);
         }
 
         if (!tenant.phone) {
@@ -666,7 +855,7 @@ async function sendOverdueNotification(invoice: any, fallbackInvoiceId: string |
             'late fees'
         ];
 
-        // UPDATED: Process the PDF URL for WhatsApp template
+        // Process the PDF URL for WhatsApp template
         const processedUrl = processFirebaseUrlForWhatsApp(invoice.pdfUrl);
 
         console.log(`Sending overdue to phone: ${tenant.phone}, days overdue: ${daysOverdue}`);
@@ -705,6 +894,93 @@ async function updateInvoiceFlags(userId: string, invoiceLocalId: string, flags:
         throw error;
     }
 }
+
+// NEW: Consent handler function
+export const handleConsent = onRequest({
+    timeoutSeconds: 30,
+    memory: '256MiB',
+    region: 'africa-south1'
+}, async (req, res) => {
+    try {
+        const { phone, name, agent, company, property, status, date } = req.query;
+        
+        if (!phone || !status) {
+            res.status(400).send("Missing required parameters: phone, status.");
+            return;
+        }
+        
+        const normalizedPhone = phone.toString().replace(/\D/g, ''); // digits only
+        const allowedRef = db.collection("allowed").doc(normalizedPhone);
+        
+        if (status.toString().toLowerCase() === "allow") {
+            await allowedRef.set(
+                {
+                    phone: normalizedPhone,
+                    name: name?.toString() || null,
+                    agent: agent?.toString() || null,
+                    company: company?.toString() || null,
+                    property: property?.toString() || null,
+                    status: "allowed",
+                    updatedAt: FieldValue.serverTimestamp(),
+                    date: date?.toString() || null,
+                },
+                { merge: true }
+            );
+            console.log(`Consent allowed for phone: ${normalizedPhone}`);
+        } else if (status.toString().toLowerCase() === "stop") {
+            await allowedRef.set(
+                {
+                    phone: normalizedPhone,
+                    status: "stopped",
+                    updatedAt: FieldValue.serverTimestamp(),
+                    date: date?.toString() || null,
+                },
+                { merge: true }
+            );
+            console.log(`Consent stopped for phone: ${normalizedPhone}`);
+        } else {
+            res.status(400).send("Invalid status. Use 'allow' or 'stop'.");
+            return;
+        }
+        
+        // Simple branded response
+        res.set("Content-Type", "text/html");
+        res.status(200).send(`
+            <!DOCTYPE html>
+            <html>
+                <head>
+                    <title>Consent Updated</title>
+                    <style>
+                        body {
+                            font-family: Arial, sans-serif;
+                            background: #f9f9f9;
+                            padding: 40px;
+                            text-align: center;
+                        }
+                        .box {
+                            display: inline-block;
+                            background: #fff;
+                            border-radius: 8px;
+                            padding: 30px;
+                            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+                        }
+                        h1 { color: #4CAF50; margin-bottom: 20px; }
+                        p { font-size: 16px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="box">
+                        <h1>✅ Success</h1>
+                        <p>Consent status for <strong>${normalizedPhone}</strong> updated to <strong>${status}</strong>.</p>
+                    </div>
+                </body>
+            </html>
+        `);
+    } catch (error) {
+        console.error("Error handling consent:", error);
+        res.status(500).send("Internal server error.");
+    }
+});
 
 // RevenueCat Webhook Handler - Deployed to South Africa region
 export const plotWebhook = onRequest({
