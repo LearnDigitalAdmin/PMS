@@ -232,6 +232,34 @@ const PricingModal: React.FC<PricingModalProps> = ({
   // Plan structure mapped to RevenueCat offerings
   const planStructure = [
     {
+      id: 'solo',
+      name: 'Solo Property Enterprise',
+      popular: true,
+      color: 'bg-yellow-50 border-yellow-300',
+      headerColor: 'bg-yellow-100',
+      buttonColor: 'bg-yellow-600 hover:bg-yellow-700',
+      offeringId: 'solo', // Maps to RevenueCat offering ID
+      limits: {
+        properties: 1,
+        tenants: 20,
+        sync: true,
+        branding: 'PlotYangu branding',
+        support: 'WhatsApp'
+      },
+      features: [
+        { name: '1 Property', included: true },
+        { name: 'Up to 20 Tenants', included: true },
+        { name: 'Invoice Generation', included: true },
+        { name: 'Automated WhatsApp Notifications', included: true },
+        { name: 'Multi-device Cloud Sync', included: true },
+        { name: 'Custom Logo/Branding', included: false },
+        { name: 'Advanced Reports', included: false },
+        { name: 'Excel/PDF Export', included: false },
+        { name: 'Priority Support', included: false },
+        { name: 'Arrears Tracking', included: false }
+      ]
+    },
+    {
       id: 'free',
       name: 'Free Forever',
       popular: false,
@@ -241,14 +269,14 @@ const PricingModal: React.FC<PricingModalProps> = ({
       offeringId: null, // Free plan has no offering
       limits: {
         properties: 1,
-        tenants: 12,
+        tenants: 5,
         sync: false,
         branding: 'Heavy PlotYangu branding',
         support: 'Community'
       },
       features: [
-        { name: '2 Properties', included: true },
-        { name: 'Up to 24 Tenants', included: true },
+        { name: '1 Properties', included: true },
+        { name: 'Up to 5 Tenants', included: true },
         { name: 'Invoice Generation', included: true },
         { name: 'Local Storage Only', included: true },
         { name: 'WhatsApp/Email Sharing', included: true },
@@ -267,15 +295,15 @@ const PricingModal: React.FC<PricingModalProps> = ({
       buttonColor: 'bg-blue-600 hover:bg-blue-700',
       offeringId: 'starter', // Maps to RevenueCat offering ID
       limits: {
-        properties: 4,
-        tenants: 60,
+        properties: 3,
+        tenants: 30,
         sync: false,
         branding: 'Light footer branding',
         support: 'Email'
       },
       features: [
-        { name: 'Up to 4 Properties', included: true },
-        { name: 'Up to 60 Tenants', included: true },
+        { name: 'Up to 3 Properties', included: true },
+        { name: 'Up to 30 Tenants', included: true },
         { name: 'Invoice Generation', included: true },
         { name: 'Local Storage', included: true },
         { name: 'WhatsApp/Email Sharing', included: true },
@@ -294,19 +322,19 @@ const PricingModal: React.FC<PricingModalProps> = ({
       buttonColor: 'bg-green-600 hover:bg-green-700',
       offeringId: 'business', // Maps to RevenueCat offering ID
       limits: {
-        properties: 10,
-        tenants: 200,
+        properties: 9,
+        tenants: 126,
         sync: true,
         branding: 'Your logo, no PlotYangu branding',
         support: 'Priority email'
       },
       features: [
-        { name: 'Up to 10 Properties', included: true },
-        { name: 'Up to 200 Tenants', included: true },
+        { name: 'Up to 9 Properties', included: true },
+        { name: 'Up to 126 Tenants', included: true },
         { name: 'Invoice Generation', included: true },
         { name: 'Multi-device Cloud Sync', included: true },
         { name: 'Custom Logo/Branding', included: true },
-        { name: 'Advanced Reports', included: true },
+        { name: 'Advanced Reports', included: false },
         { name: 'Excel/PDF Export', included: true },
         { name: 'Priority Support', included: true },
         { name: 'Arrears Tracking', included: true }
@@ -321,15 +349,15 @@ const PricingModal: React.FC<PricingModalProps> = ({
       buttonColor: 'bg-orange-600 hover:bg-orange-700',
       offeringId: 'pro', // Maps to RevenueCat offering ID
       limits: {
-        properties: 20,
-        tenants: 500,
+        properties: 16,
+        tenants: 300,
         sync: true,
         branding: 'Your logo, no PlotYangu branding',
         support: 'Priority email, Priority WhatsApp'
       },
       features: [
-        { name: 'Up to 20 Properties', included: true },
-        { name: 'Up to 500 Tenants', included: true },
+        { name: 'Up to 16 Properties', included: true },
+        { name: 'Up to 300 Tenants', included: true },
         { name: 'Invoice Generation', included: true },
         { name: 'Automated WhatsApp Notifications', included: true },
         { name: 'Multi-device Cloud Sync', included: true },
@@ -908,11 +936,11 @@ const PricingModal: React.FC<PricingModalProps> = ({
                         <span>WhatsApp: +254791286165</span>
                       </button>
                       <button
-                        onClick={() => window.open('mailto:info@smbkenya.com', '_blank')}
+                        onClick={() => window.open('mailto:info@cogvana.co.ke', '_blank')}
                         className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center space-x-2 transition-all hover:shadow-lg"
                       >
                         <Mail className="w-4 h-4" />
-                        <span>info@smbkenya.com</span>
+                        <span>info@cogvana.co.ke</span>
                       </button>
                     </div>
                   </div>

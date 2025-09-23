@@ -58,13 +58,13 @@ const Invoices: React.FC<InvoicesProps> = ({ user, userCompany }) => {
         address: userCompany.address || '',
         phone: userCompany.phone || '',
         email: userCompany.email || '',
-        website: 'www.cogvana.com'
+        website: 'www.cogvana.co.ke'
       } : {
         name: 'SMB KENYA LTD: PLOT YANGU',
         address: 'Naivasha, Nakuru, Kenya',
         phone: '+254 791 286 165',
-        email: 'info@smbkenya.com',
-        website: 'www.cogvana.com'
+        email: 'info@cogvana.co.ke',
+        website: 'www.cogvana.co.ke'
       };
     }
     
@@ -73,8 +73,8 @@ const Invoices: React.FC<InvoicesProps> = ({ user, userCompany }) => {
       name: 'SMB KENYA LTD: PLOT YANGU',
       address: 'Naivasha, Nakuru, Kenya',
       phone: '+254 791 286 165',
-      email: 'info@smbkenya.com',
-      website: 'www.cogvana.com'
+      email: 'info@cogvana.co.ke',
+      website: 'www.cogvana.co.ke'
     };
   }, [user?.tier, userCompany]);
 
@@ -83,8 +83,8 @@ const Invoices: React.FC<InvoicesProps> = ({ user, userCompany }) => {
   //   name: 'SMB KENYA LTD: PLOT YANGU',
   //   address: 'Naivasha, Nakuru, Kenya',
   //   phone: '+254 791 286 165',
-  //   email: 'info@smbkenya.com',
-  //   website: 'www.cogvana.com'
+  //   email: 'info@cogvana.co.ke',
+  //   website: 'www.cogvana.co.ke'
   // });
 
   useEffect(() => {

@@ -61,6 +61,7 @@ const getTierFromProductId = (productId: string): string => {
   if (productId.startsWith('low_')) return 'low';
   if (productId.startsWith('business_')) return 'business';
   if (productId.startsWith('enterprise_')) return 'enterprise';
+  if (productId.startsWith('solo_')) return 'solo';
   return 'free';
 };
 

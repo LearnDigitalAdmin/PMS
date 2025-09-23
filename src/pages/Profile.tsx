@@ -55,7 +55,8 @@ const Profile: React.FC = () => {
       starter: { name: 'Starter', color: 'text-blue-600', bgColor: 'bg-blue-100' },
       business: { name: 'Business', color: 'text-green-600', bgColor: 'bg-green-100' },
       professional: { name: 'Professional', color: 'text-black-600', bgColor: 'bg-black-100' },
-      enterprise: { name: 'Enterprise', color: 'text-purple-600', bgColor: 'bg-purple-100' }
+      enterprise: { name: 'Enterprise', color: 'text-purple-600', bgColor: 'bg-purple-100' },
+      solo: { name: 'Solo', color: 'text-yellow-600', bgColor: 'bg-yellow-100' }
     };
     return plans[tier as keyof typeof plans] || plans.free;
   };
@@ -224,7 +225,7 @@ const Profile: React.FC = () => {
               className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 px-4 rounded-xl transition-all duration-200 font-medium flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
             >
               <Mail className="w-5 h-5" />
-              <span>info@smbkenya.com</span>
+              <span>info@cogvana.co.ke</span>
             </button>
           </div>
 

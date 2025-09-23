@@ -26,6 +26,7 @@ import { database } from '../database/Database';
 import { generateInvoicePDF } from '../pdf/PDFService';
 import type { User, Property, Tenant, InvoiceInput, Invoice } from '../database/Database';
 
+
 // Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyD1hg7YLv08vyR2kSWi2ymxSu2pYCRwPq8",
@@ -99,26 +100,32 @@ const storage = getStorage(app);
 export const USER_LIMITS = {
   free: { 
     properties: 1, 
-    tenantsPerProperty: 12, 
-    totalTenants: 12,
+    tenantsPerProperty: 5, 
+    totalTenants: 5,
     storage: false 
   },
   low: { 
-    properties: 4, 
-    tenantsPerProperty: 18, 
-    totalTenants: 75,
+    properties: 3, 
+    tenantsPerProperty: 10, 
+    totalTenants: 30,
     storage: false 
   },
   business: { 
-    properties: 10, 
-    tenantsPerProperty: 23, 
-    totalTenants: 230,
+    properties: 9, 
+    tenantsPerProperty: 14, 
+    totalTenants: 126,
     storage: true 
   },
+  solo: {
+    properties: 1,
+    tenantsPerProperty: 20,
+    totalTenants: 20,
+    storage: true
+  },
   pro: { 
-    properties: 20, 
-    tenantsPerProperty: 26, 
-    totalTenants: 500,
+    properties: 16, 
+    tenantsPerProperty: 20, 
+    totalTenants: 300,
     storage: true 
   },
   enterprise: { 
@@ -130,7 +137,7 @@ export const USER_LIMITS = {
 } as const;
 
 export type UserType = 'free' | 'paid';
-export type UserTier = 'free' | 'low' | 'business' | 'pro' | 'enterprise';
+export type UserTier = 'free' | 'low' | 'business' | 'solo' | 'pro' | 'enterprise';
 
 export interface SyncStatus {
   lastDownloadTime: string;
@@ -841,18 +848,18 @@ async performSafeUploadSync(userId: number, source: 'scheduled' | 'manual' = 'ma
 
 // ==================== DATA INTEGRITY VERIFICATION ====================
 
-private async verifyLocalDataIntegrity(userId: number): Promise<void> {
+private async verifyLocalDataIntegrity(_userId: number): Promise<void> {
   console.log('🔍 Verifying local data integrity before upload...');
   
   try {
-    // Check for orphaned tenants
+    // Check for orphaned tenants, [userId]
     const orphanedTenantsQuery = `
       SELECT t.id, t.name, t.property_id 
       FROM tenants t 
       LEFT JOIN properties p ON t.property_id = p.id 
-      WHERE t.user_id = ? AND p.id IS NULL
+      WHERE p.id IS NULL
     `;
-    const orphanedResult = await database.db!.query(orphanedTenantsQuery, [userId]);
+    const orphanedResult = await database.db!.query(orphanedTenantsQuery);
     
     if (orphanedResult?.values && orphanedResult.values.length > 0) {
       console.warn('⚠️ Found orphaned tenants:', orphanedResult.values);
@@ -1847,7 +1854,7 @@ private async verifyLocalDataIntegrity(userId: number): Promise<void> {
 
   canUserSync(user: any): boolean {
     // Business, pro and enterprise users always have sync
-    if (user.tier === 'business' || user.tier === 'pro' || user.tier === 'enterprise') {
+    if (user.tier === 'business' || user.tier === 'solo' || user.tier === 'pro' || user.tier === 'enterprise') {
       return true;
     }
     
@@ -2081,19 +2088,19 @@ private async verifyLocalDataIntegrity(userId: number): Promise<void> {
   // ==================== PDF OPERATIONS ====================
 
   private getCompanyInfoForPDF(user: User, userCompany: any): any {
-    if (user.tier === 'business' || user.tier === 'enterprise') {
+    if (user.tier === 'pro' || user.tier === 'business' || user.tier === 'enterprise') {
       return userCompany ? {
         name: userCompany.name,
         address: userCompany.address || '',
         phone: userCompany.phone || '',
         email: userCompany.email || '',
-        website: 'www.cogvana.com'
+        website: 'www.cogvana.co.ke'
       } : {
         name: 'SMB KENYA LTD: PLOT YANGU',
         address: 'Naivasha, Nakuru, Kenya',
         phone: '+254 791 286 165',
-        email: 'info@smbkenya.com',
-        website: 'www.cogvana.com'
+        email: 'info@cogvana.co.ke',
+        website: 'www.cogvana.co.ke'
       };
     }
     
@@ -2101,8 +2108,8 @@ private async verifyLocalDataIntegrity(userId: number): Promise<void> {
       name: 'SMB KENYA LTD: PLOT YANGU',
       address: 'Naivasha, Nakuru, Kenya',
       phone: '+254 791 286 165',
-      email: 'info@smbkenya.com',
-      website: 'www.cogvana.com'
+      email: 'info@cogvana.co.ke',
+      website: 'www.cogvana.co.ke'
     };
   }
 

@@ -16,8 +16,8 @@ const db = getFirestore();
 // Configuration - Replace with your actual values
 const WHATSAPP_CONFIG = {
     ACCESS_TOKEN: 'EAASC7YgLv0YBPRIdAASQas8IdC1vLwtsiKYcVvuC0MtZAEKQAnfaIM9Vgtnn1HNeH92ZBNlQ1kZA8Wgg7fxuoihZC6mH17frZBsAyQvk6igPZAJxK7kdI0dJ7ZAzxsKZCpUCiDZAxnnCYNgTc5zZCEeTQ3Xn8EeykvjfxxqBNZAcsxMwL6PLbQVZB7TFtLXxlFiVdgZDZD',
-    PHONE_NUMBER_ID: '841629375692414',
-    VERSION: 'v22.0',
+    PHONE_NUMBER_ID: '740740482466935',
+    VERSION: 'v23.0',
     BASE_URL: 'https://graph.facebook.com'
 };
 
@@ -41,6 +41,7 @@ const RATE_LIMITS = {
 const TIER_PERMISSIONS: Record<string, string[]> = {
     free: ['invoice'],
     low: ['invoice'],
+    solo: ['invoice', 'overdue'],
     business: ['invoice', 'overdue'],
     pro: ['invoice', 'overdue', 'payment'],
     enterprise: ['invoice', 'overdue', 'payment']
@@ -281,6 +282,7 @@ const getTierFromProductId = (productId: string): string => {
     if (productId.startsWith('business_')) return 'business';
     if (productId.startsWith('pro_')) return 'pro';
     if (productId.startsWith('enterprise_')) return 'enterprise';
+    if (productId.startsWith('solo_')) return 'solo';
     return 'free';
 };
 

@@ -106,7 +106,7 @@ _${cogvanaMsg.message}_
 
  ${cogvanaMsg.cta}
 ${cogvanaMsg.category === 'tutors' || cogvanaMsg.category === 'creators' 
-  ? ' tutors@cogvana.com' 
+  ? ' sales@cogvana.co.ke' 
   : ' Available on Play Store'}
 ━━━━━━━━━━━━━━━━━━━━━
 
@@ -236,8 +236,8 @@ ${cogvanaMsg.icon} ${cogvanaMsg.title}
 ${cogvanaMsg.message}
 
 ${cogvanaMsg.cta} - ${cogvanaMsg.category === 'tutors' || cogvanaMsg.category === 'creators' 
-  ? 'Contact: tutors@cogvana.com | cogvana.com/tutors' 
-  : 'Download on Play Store | cogvana.com'}
+  ? 'Contact: sales@cogvana.co.ke | cogvana.co.ke/cogni' 
+  : 'Download on Play Store | cogvana.co.ke'}
 
 Empowering Education Across East Africa
 ═══════════════════════════════════════════════`;
@@ -327,7 +327,7 @@ Empowering Education Across East Africa
 // ${cogvanaMsg.message}
 
 // 💡 ${cogvanaMsg.cta}
-// ${cogvanaMsg.category === 'tutors' ? 'Contact: tutors@cogvana.com' : 'Available on Play Store'}
+// ${cogvanaMsg.category === 'tutors' ? 'Contact: sales@cogvana.co.ke' : 'Available on Play Store'}
 // ━━━━━━━━━━━━━━━━━━━━━
 
 // Powered by Cogvana Education Platform`;
@@ -348,10 +348,10 @@ ${cogvanaMsg.message}
  ${cogvanaMsg.cta}
 
 ${cogvanaMsg.category === 'tutors' || cogvanaMsg.category === 'creators' 
-  ? ` Contact us: tutors@cogvana.com
- Visit: cogvana.com/tutors` 
+  ? ` Contact us: sales@cogvana.co.ke
+ Visit: cogvana.co.ke/cogni` 
   : ` Download: Play Store
- Visit: cogvana.com`}
+ Visit: cogvana.co.ke`}
 
 #CogvanaEA #EducationEastAfrica #DigitalSkills #OnlineLearning`;
     
@@ -374,16 +374,16 @@ export function getCogvanaContactInfo(category?: string): {
 } {
   if (category === 'tutors' || category === 'creators' || category === 'support') {
     return {
-      primary: 'tutors@cogvana.com',
+      primary: 'sales@cogvana.co.ke',
       secondary: '+254-XXX-XXXX',
-      website: 'cogvana.com/tutors'
+      website: 'cogvana.co.ke/cogni'
     };
   }
   
   return {
     primary: 'Available on Play Store',
-    secondary: 'cogvana.com',
-    website: 'cogvana.com'
+    secondary: 'cogvana.co.ke',
+    website: 'cogvana.co.ke'
   };
 }
 

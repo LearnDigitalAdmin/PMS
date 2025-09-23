@@ -42,44 +42,44 @@ export class ReportsPDFService {
 
   // ==================== TRANSCRIPT PDF GENERATION ====================
 
-  async generateTranscriptPDF(
-    transcript: TranscriptWithDetails,
-    options: PDFGenerationOptions = {}
-  ): Promise<{ filename: string; pdfBytes: Uint8Array }> {
-    const pdfDoc = await PDFDocument.create();
-    const timesRomanFont = await pdfDoc.embedFont(StandardFonts.TimesRoman);
-    const timesRomanBoldFont = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
-    const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  // async generateTranscriptPDF(
+  //   transcript: TranscriptWithDetails,
+  //   options: PDFGenerationOptions = {}
+  // ): Promise<{ filename: string; pdfBytes: Uint8Array }> {
+  //   const pdfDoc = await PDFDocument.create();
+  //   const timesRomanFont = await pdfDoc.embedFont(StandardFonts.TimesRoman);
+  //   const timesRomanBoldFont = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
+  //   const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  //   const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    const page = pdfDoc.addPage([612, 792]); // US Letter size
-    let yPosition = 750;
+  //   const page = pdfDoc.addPage([612, 792]); // US Letter size
+  //   let yPosition = 750;
 
-    // Header Section
-    yPosition = this.drawTranscriptHeader(page, transcript, helveticaBoldFont, helveticaFont, yPosition);
+  //   // Header Section
+  //   yPosition = this.drawTranscriptHeader(page, transcript, helveticaBoldFont, helveticaFont, yPosition);
     
-    // Property and Landlord Information
-    yPosition = this.drawPropertyLandlordInfo(page, transcript, timesRomanBoldFont, timesRomanFont, yPosition - 20);
+  //   // Property and Landlord Information
+  //   yPosition = this.drawPropertyLandlordInfo(page, transcript, timesRomanBoldFont, timesRomanFont, yPosition - 20);
     
-    // Financial Summary Section
-    yPosition = this.drawFinancialSummary(page, transcript, timesRomanBoldFont, timesRomanFont, yPosition - 25);
+  //   // Financial Summary Section
+  //   yPosition = this.drawFinancialSummary(page, transcript, timesRomanBoldFont, timesRomanFont, yPosition - 25);
     
-    // Tenant Summary
-    yPosition = this.drawTenantSummary(page, transcript, timesRomanBoldFont, timesRomanFont, yPosition - 20);
+  //   // Tenant Summary
+  //   yPosition = this.drawTenantSummary(page, transcript, timesRomanBoldFont, timesRomanFont, yPosition - 20);
     
-    // Notes section (if exists)
-    if (transcript.notes && transcript.notes.trim()) {
-      yPosition = this.drawNotes(page, transcript.notes, timesRomanBoldFont, timesRomanFont, yPosition - 15);
-    }
+  //   // Notes section (if exists)
+  //   if (transcript.notes && transcript.notes.trim()) {
+  //     yPosition = this.drawNotes(page, transcript.notes, timesRomanBoldFont, timesRomanFont, yPosition - 15);
+  //   }
     
-    // Footer
-    this.drawPDFFooter(page, helveticaFont, { ...this.defaultBranding, ...options.customBranding });
+  //   // Footer
+  //   this.drawPDFFooter(page, helveticaFont, { ...this.defaultBranding, ...options.customBranding });
 
-    const pdfBytes = await pdfDoc.save();
-    const filename = `transcript_${transcript.property.name.replace(/[^a-zA-Z0-9]/g, '_')}_${transcript.billingMonth}.pdf`;
+  //   const pdfBytes = await pdfDoc.save();
+  //   const filename = `transcript_${transcript.property.name.replace(/[^a-zA-Z0-9]/g, '_')}_${transcript.billingMonth}.pdf`;
 
-    return { filename, pdfBytes };
-  }
+  //   return { filename, pdfBytes };
+  // }
 
   private drawTranscriptHeader(
     page: PDFPage,
@@ -273,160 +273,160 @@ export class ReportsPDFService {
     return yPos - 90;
   }
 
-  private drawFinancialSummary(
-    page: PDFPage,
-    transcript: TranscriptWithDetails,
-    boldFont: PDFFont,
-    regularFont: PDFFont,
-    yPos: number
-  ): number {
-    const { width } = page.getSize();
-    let y = yPos;
+  // private drawFinancialSummary(
+  //   page: PDFPage,
+  //   transcript: TranscriptWithDetails,
+  //   boldFont: PDFFont,
+  //   regularFont: PDFFont,
+  //   yPos: number
+  // ): number {
+  //   const { width } = page.getSize();
+  //   let y = yPos;
 
-    // Section Title
-    page.drawText('FINANCIAL SUMMARY', {
-      x: 50,
-      y: y,
-      size: 14,
-      font: boldFont,
-      color: rgb(...this.colors.primary),
-    });
+  //   // Section Title
+  //   page.drawText('FINANCIAL SUMMARY', {
+  //     x: 50,
+  //     y: y,
+  //     size: 14,
+  //     font: boldFont,
+  //     color: rgb(...this.colors.primary),
+  //   });
 
-    y -= 25;
+  //   y -= 25;
 
-    // Table headers
-    const tableTop = y;
-    const tableHeight = (transcript.items.length + 4) * 20 + 30;
+  //   // Table headers
+  //   const tableTop = y;
+  //   const tableHeight = (transcript.items.length + 4) * 20 + 30;
     
-    // Table background
-    page.drawRectangle({
-      x: 50,
-      y: tableTop - tableHeight,
-      width: width - 100,
-      height: tableHeight,
-      color: rgb(1, 1, 1),
-      borderColor: rgb(0.8, 0.8, 0.8),
-      borderWidth: 1,
-    });
+  //   // Table background
+  //   page.drawRectangle({
+  //     x: 50,
+  //     y: tableTop - tableHeight,
+  //     width: width - 100,
+  //     height: tableHeight,
+  //     color: rgb(1, 1, 1),
+  //     borderColor: rgb(0.8, 0.8, 0.8),
+  //     borderWidth: 1,
+  //   });
 
-    // Table headers
-    const headers = ['Description', 'Category', 'Amount'];
-    const columnWidths = [250, 150, 112];
-    let x = 70;
+  //   // Table headers
+  //   const headers = ['Description', 'Category', 'Amount'];
+  //   const columnWidths = [250, 150, 112];
+  //   let x = 70;
 
-    page.drawRectangle({
-      x: 50,
-      y: y - 20,
-      width: width - 100,
-      height: 20,
-      color: rgb(...this.colors.primary),
-    });
+  //   page.drawRectangle({
+  //     x: 50,
+  //     y: y - 20,
+  //     width: width - 100,
+  //     height: 20,
+  //     color: rgb(...this.colors.primary),
+  //   });
 
-    for (let i = 0; i < headers.length; i++) {
-      page.drawText(headers[i], {
-        x: x,
-        y: y - 15,
-        size: 11,
-        font: boldFont,
-        color: rgb(1, 1, 1),
-      });
-      x += columnWidths[i];
-    }
+  //   for (let i = 0; i < headers.length; i++) {
+  //     page.drawText(headers[i], {
+  //       x: x,
+  //       y: y - 15,
+  //       size: 11,
+  //       font: boldFont,
+  //       color: rgb(1, 1, 1),
+  //     });
+  //     x += columnWidths[i];
+  //   }
 
-    y -= 30;
+  //   y -= 30;
 
-    // Items rows
-    const sortedItems = transcript.items.sort((a: { sortOrder: number; }, b: { sortOrder: number; }) => a.sortOrder - b.sortOrder);
-    for (const item of sortedItems) {
-      x = 70;
+  //   // Items rows
+  //   const sortedItems = transcript.items.sort((a: { sortOrder: number; }, b: { sortOrder: number; }) => a.sortOrder - b.sortOrder);
+  //   for (const item of sortedItems) {
+  //     x = 70;
 
-      // Alternate row background
-      if (sortedItems.indexOf(item) % 2 === 1) {
-        page.drawRectangle({
-          x: 50,
-          y: y - 15,
-          width: width - 100,
-          height: 20,
-          color: rgb(0.98, 0.98, 0.98),
-        });
-      }
+  //     // Alternate row background
+  //     if (sortedItems.indexOf(item) % 2 === 1) {
+  //       page.drawRectangle({
+  //         x: 50,
+  //         y: y - 15,
+  //         width: width - 100,
+  //         height: 20,
+  //         color: rgb(0.98, 0.98, 0.98),
+  //       });
+  //     }
 
-      page.drawText(item.description, {
-        x: x,
-        y: y,
-        size: 10,
-        font: regularFont,
-        color: rgb(...this.colors.text),
-      });
-      x += columnWidths[0];
+  //     page.drawText(item.description, {
+  //       x: x,
+  //       y: y,
+  //       size: 10,
+  //       font: regularFont,
+  //       color: rgb(...this.colors.text),
+  //     });
+  //     x += columnWidths[0];
 
-      page.drawText(item.category || item.type, {
-        x: x,
-        y: y,
-        size: 10,
-        font: regularFont,
-        color: rgb(...this.colors.text),
-      });
-      x += columnWidths[1];
+  //     page.drawText(item.category || item.type, {
+  //       x: x,
+  //       y: y,
+  //       size: 10,
+  //       font: regularFont,
+  //       color: rgb(...this.colors.text),
+  //     });
+  //     x += columnWidths[1];
 
-      const amountColor = item.isDeductible ? this.colors.danger : this.colors.success;
-      const amountText = `${item.isDeductible ? '-' : '+'}KSh ${item.amount.toLocaleString()}`;
+  //     const amountColor = item.isDeductible ? this.colors.danger : this.colors.success;
+  //     const amountText = `${item.isDeductible ? '-' : '+'}KSh ${item.amount.toLocaleString()}`;
       
-      page.drawText(amountText, {
-        x: x,
-        y: y,
-        size: 10,
-        font: regularFont,
-        color: rgb(...amountColor),
-      });
+  //     page.drawText(amountText, {
+  //       x: x,
+  //       y: y,
+  //       size: 10,
+  //       font: regularFont,
+  //       color: rgb(...amountColor),
+  //     });
 
-      y -= 20;
-    }
+  //     y -= 20;
+  //   }
 
-    // Summary totals
-    y -= 10;
-    page.drawRectangle({
-      x: 50,
-      y: y - 60,
-      width: width - 100,
-      height: 60,
-      color: rgb(...this.colors.primary),
-    });
+  //   // Summary totals
+  //   y -= 10;
+  //   page.drawRectangle({
+  //     x: 50,
+  //     y: y - 60,
+  //     width: width - 100,
+  //     height: 60,
+  //     color: rgb(...this.colors.primary),
+  //   });
 
-    const grossIncome = transcript.grossRentCollected + transcript.totalWaterCharges + 
-                      transcript.totalPowerCharges + transcript.totalOtherCharges;
+  //   const grossIncome = transcript.grossRentCollected + transcript.totalWaterCharges + 
+  //                     transcript.totalPowerCharges + transcript.totalOtherCharges;
 
-    const summaryItems: Array<[string, string, [number, number, number]]> = [
-      ['Gross Income:', `KSh ${grossIncome.toLocaleString()}`, this.colors.lightGray],
-      ['Total Deductions:', `- KSh ${transcript.totalDeductibles.toLocaleString()}`, this.colors.warning],
-      ['NET AMOUNT TO LANDLORD:', `KSh ${transcript.netAmountToLandlord.toLocaleString()}`, [1, 1, 1]],
-    ];
+  //   const summaryItems: Array<[string, string, [number, number, number]]> = [
+  //     ['Gross Income:', `KSh ${grossIncome.toLocaleString()}`, this.colors.lightGray],
+  //     ['Total Deductions:', `- KSh ${transcript.totalDeductibles.toLocaleString()}`, this.colors.warning],
+  //     ['NET AMOUNT TO LANDLORD:', `KSh ${transcript.netAmountToLandlord.toLocaleString()}`, [1, 1, 1]],
+  //   ];
 
-    y -= 15;
-    for (const [label, amount, color] of summaryItems) {
-      const isMainTotal = label.includes('NET AMOUNT');
+  //   y -= 15;
+  //   for (const [label, amount, color] of summaryItems) {
+  //     const isMainTotal = label.includes('NET AMOUNT');
       
-      page.drawText(label, {
-        x: 70,
-        y: y,
-        size: isMainTotal ? 14 : 11,
-        font: isMainTotal ? boldFont : regularFont,
-        color: rgb(...color),
-      });
+  //     page.drawText(label, {
+  //       x: 70,
+  //       y: y,
+  //       size: isMainTotal ? 14 : 11,
+  //       font: isMainTotal ? boldFont : regularFont,
+  //       color: rgb(...color),
+  //     });
 
-      page.drawText(amount, {
-        x: width - 150,
-        y: y,
-        size: isMainTotal ? 14 : 11,
-        font: boldFont,
-        color: rgb(...color),
-      });
+  //     page.drawText(amount, {
+  //       x: width - 150,
+  //       y: y,
+  //       size: isMainTotal ? 14 : 11,
+  //       font: boldFont,
+  //       color: rgb(...color),
+  //     });
 
-      y -= isMainTotal ? 20 : 15;
-    }
+  //     y -= isMainTotal ? 20 : 15;
+  //   }
 
-    return tableTop - tableHeight - 10;
-  }
+  //   return tableTop - tableHeight - 10;
+  // }
 
   private drawTenantSummary(
     page: PDFPage,
@@ -495,46 +495,46 @@ export class ReportsPDFService {
 
   // ==================== RENT RECORD SHEET PDF GENERATION ====================
 
-  async generateRentRecordPDF(
-    recordSheet: RentRecordWithDetails,
-    options: PDFGenerationOptions = {}
-  ): Promise<{ filename: string; pdfBytes: Uint8Array }> {
-    const pdfDoc = await PDFDocument.create();
-    const timesRomanFont = await pdfDoc.embedFont(StandardFonts.TimesRoman);
-    const timesRomanBoldFont = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
-    const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  // async generateRentRecordPDF(
+  //   recordSheet: RentRecordWithDetails,
+  //   options: PDFGenerationOptions = {}
+  // ): Promise<{ filename: string; pdfBytes: Uint8Array }> {
+  //   const pdfDoc = await PDFDocument.create();
+  //   const timesRomanFont = await pdfDoc.embedFont(StandardFonts.TimesRoman);
+  //   const timesRomanBoldFont = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
+  //   const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  //   const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    // Use landscape orientation for rent record sheet
-    const page = pdfDoc.addPage([792, 612]); // Landscape US Letter
-    let yPosition = 570;
-    let currentPage = page;
+  //   // Use landscape orientation for rent record sheet
+  //   const page = pdfDoc.addPage([792, 612]); // Landscape US Letter
+  //   let yPosition = 570;
+  //   let currentPage = page;
 
-    // Header Section
-    yPosition = this.drawRentRecordHeader(currentPage, recordSheet, helveticaBoldFont, helveticaFont, yPosition);
+  //   // Header Section
+  //   yPosition = this.drawRentRecordHeader(currentPage, recordSheet, helveticaBoldFont, helveticaFont, yPosition);
     
-    // Property Information and Summary Stats
-    yPosition = this.drawRentRecordSummary(currentPage, recordSheet, timesRomanBoldFont, timesRomanFont, yPosition - 20);
+  //   // Property Information and Summary Stats
+  //   yPosition = this.drawRentRecordSummary(currentPage, recordSheet, timesRomanBoldFont, timesRomanFont, yPosition - 20);
     
-    // Tenant Records Table
-    const result = this.drawTenantRecordsTable(pdfDoc, currentPage, recordSheet, timesRomanBoldFont, timesRomanFont, yPosition - 25);
-    currentPage = result.lastPage;
-    yPosition = result.yPosition;
+  //   // Tenant Records Table
+  //   const result = this.drawTenantRecordsTable(pdfDoc, currentPage, recordSheet, timesRomanBoldFont, timesRomanFont, yPosition - 25);
+  //   currentPage = result.lastPage;
+  //   yPosition = result.yPosition;
     
-    // Performance Summary
-    yPosition = this.drawPerformanceSummary(currentPage, recordSheet, timesRomanBoldFont, timesRomanFont, yPosition - 20);
+  //   // Performance Summary
+  //   yPosition = this.drawPerformanceSummary(currentPage, recordSheet, timesRomanBoldFont, timesRomanFont, yPosition - 20);
     
-    // Footer on all pages
-    const pages = pdfDoc.getPages();
-    for (const pdfPage of pages) {
-      this.drawPDFFooter(pdfPage, helveticaFont, { ...this.defaultBranding, ...options.customBranding });
-    }
+  //   // Footer on all pages
+  //   const pages = pdfDoc.getPages();
+  //   for (const pdfPage of pages) {
+  //     this.drawPDFFooter(pdfPage, helveticaFont, { ...this.defaultBranding, ...options.customBranding });
+  //   }
 
-    const pdfBytes = await pdfDoc.save();
-    const filename = `rent_record_${recordSheet.property.name.replace(/[^a-zA-Z0-9]/g, '_')}_${recordSheet.billingMonth}.pdf`;
+  //   const pdfBytes = await pdfDoc.save();
+  //   const filename = `rent_record_${recordSheet.property.name.replace(/[^a-zA-Z0-9]/g, '_')}_${recordSheet.billingMonth}.pdf`;
 
-    return { filename, pdfBytes };
-  }
+  //   return { filename, pdfBytes };
+  // }
 
   private drawRentRecordHeader(
     page: PDFPage,
@@ -705,155 +705,155 @@ export class ReportsPDFService {
     return yPos - 20;
   }
 
-  private drawTenantRecordsTable(
-    pdfDoc: PDFDocument,
-    startPage: PDFPage,
-    recordSheet: RentRecordWithDetails,
-    boldFont: PDFFont,
-    regularFont: PDFFont,
-    yPos: number
-  ): { lastPage: PDFPage; yPosition: number } {
-    const { width } = startPage.getSize();
-    let y = yPos;
-    let currentPage = startPage;
+  // private drawTenantRecordsTable(
+  //   pdfDoc: PDFDocument,
+  //   startPage: PDFPage,
+  //   recordSheet: RentRecordWithDetails,
+  //   boldFont: PDFFont,
+  //   regularFont: PDFFont,
+  //   yPos: number
+  // ): { lastPage: PDFPage; yPosition: number } {
+  //   const { width } = startPage.getSize();
+  //   let y = yPos;
+  //   let currentPage = startPage;
 
-    // Table title
-    currentPage.drawText('TENANT RECORDS', {
-      x: 50,
-      y: y,
-      size: 14,
-      font: boldFont,
-      color: rgb(...this.colors.primary),
-    });
+  //   // Table title
+  //   currentPage.drawText('TENANT RECORDS', {
+  //     x: 50,
+  //     y: y,
+  //     size: 14,
+  //     font: boldFont,
+  //     color: rgb(...this.colors.primary),
+  //   });
 
-    y -= 25;
+  //   y -= 25;
 
-    // Table headers
-    const headers = ['Tenant', 'Unit', 'Rent', 'Water', 'Power', 'Other', 'Total Due', 'Paid', 'Balance', 'Status'];
-    const columnWidths = [80, 40, 55, 45, 45, 45, 65, 60, 60, 50];
+  //   // Table headers
+  //   const headers = ['Tenant', 'Unit', 'Rent', 'Water', 'Power', 'Other', 'Total Due', 'Paid', 'Balance', 'Status'];
+  //   const columnWidths = [80, 40, 55, 45, 45, 45, 65, 60, 60, 50];
     
-    // Draw initial headers
-    y = this.drawTableHeaders(currentPage, headers, columnWidths, boldFont, y);
+  //   // Draw initial headers
+  //   y = this.drawTableHeaders(currentPage, headers, columnWidths, boldFont, y);
 
-    // Data rows
-    const rowHeight = 12;
-    const minBottomMargin = 100;
+  //   // Data rows
+  //   const rowHeight = 12;
+  //   const minBottomMargin = 100;
     
-    for (let i = 0; i < recordSheet.entries.length; i++) {
-      // Check if we need a new page
-      if (y < minBottomMargin) {
-        currentPage = pdfDoc.addPage([792, 612]); // Landscape
-        y = 570;
+  //   for (let i = 0; i < recordSheet.entries.length; i++) {
+  //     // Check if we need a new page
+  //     if (y < minBottomMargin) {
+  //       currentPage = pdfDoc.addPage([792, 612]); // Landscape
+  //       y = 570;
         
-        // Re-draw table title and headers on new page
-        currentPage.drawText('TENANT RECORDS (Continued)', {
-          x: 50,
-          y: y,
-          size: 14,
-          font: boldFont,
-          color: rgb(...this.colors.primary),
-        });
-        y -= 25;
-        y = this.drawTableHeaders(currentPage, headers, columnWidths, boldFont, y);
-      }
+  //       // Re-draw table title and headers on new page
+  //       currentPage.drawText('TENANT RECORDS (Continued)', {
+  //         x: 50,
+  //         y: y,
+  //         size: 14,
+  //         font: boldFont,
+  //         color: rgb(...this.colors.primary),
+  //       });
+  //       y -= 25;
+  //       y = this.drawTableHeaders(currentPage, headers, columnWidths, boldFont, y);
+  //     }
 
-      const entry = recordSheet.entries[i];
-      let x = 50;
+  //     const entry = recordSheet.entries[i];
+  //     let x = 50;
 
-      // Alternate row background
-      if (i % 2 === 1) {
-        currentPage.drawRectangle({
-          x: 50,
-          y: y - rowHeight + 2,
-          width: width - 100,
-          height: rowHeight,
-          color: rgb(0.98, 0.98, 0.98),
-        });
-      }
+  //     // Alternate row background
+  //     if (i % 2 === 1) {
+  //       currentPage.drawRectangle({
+  //         x: 50,
+  //         y: y - rowHeight + 2,
+  //         width: width - 100,
+  //         height: rowHeight,
+  //         color: rgb(0.98, 0.98, 0.98),
+  //       });
+  //     }
 
-      // Data cells
-      const cellData = [
-        entry.tenantName.length > 12 ? entry.tenantName.substring(0, 12) + '...' : entry.tenantName,
-        entry.unitNumber,
-        entry.rentAmount.toLocaleString(),
-        entry.waterCharges.toLocaleString(),
-        entry.powerCharges.toLocaleString(),
-        entry.otherCharges.toLocaleString(),
-        entry.totalDue.toLocaleString(),
-        entry.amountPaid.toLocaleString(),
-        Math.abs(entry.balance).toLocaleString(),
-        entry.paymentStatus.charAt(0).toUpperCase() + entry.paymentStatus.slice(1),
-      ];
+  //     // Data cells
+  //     const cellData = [
+  //       entry.tenantName.length > 12 ? entry.tenantName.substring(0, 12) + '...' : entry.tenantName,
+  //       entry.unitNumber,
+  //       entry.rentAmount.toLocaleString(),
+  //       entry.waterCharges.toLocaleString(),
+  //       entry.powerCharges.toLocaleString(),
+  //       entry.otherCharges.toLocaleString(),
+  //       entry.totalDue.toLocaleString(),
+  //       entry.amountPaid.toLocaleString(),
+  //       Math.abs(entry.balance).toLocaleString(),
+  //       entry.paymentStatus.charAt(0).toUpperCase() + entry.paymentStatus.slice(1),
+  //     ];
 
-      for (let j = 0; j < cellData.length; j++) {
-        let textColor = rgb(...this.colors.text);
+  //     for (let j = 0; j < cellData.length; j++) {
+  //       let textColor = rgb(...this.colors.text);
         
-        // Special coloring for balance and status
-        if (j === 8) { // Balance column
-          textColor = entry.balance > 0 ? rgb(...this.colors.danger) : 
-                     entry.balance < 0 ? rgb(...this.colors.secondary) : 
-                     rgb(...this.colors.success);
-        } else if (j === 9) { // Status column
-          textColor = entry.paymentStatus === 'paid' ? rgb(...this.colors.success) :
-                     entry.paymentStatus === 'partial' ? rgb(...this.colors.warning) :
-                     rgb(...this.colors.danger);
-        }
+  //       // Special coloring for balance and status
+  //       if (j === 8) { // Balance column
+  //         textColor = entry.balance > 0 ? rgb(...this.colors.danger) : 
+  //                    entry.balance < 0 ? rgb(...this.colors.secondary) : 
+  //                    rgb(...this.colors.success);
+  //       } else if (j === 9) { // Status column
+  //         textColor = entry.paymentStatus === 'paid' ? rgb(...this.colors.success) :
+  //                    entry.paymentStatus === 'partial' ? rgb(...this.colors.warning) :
+  //                    rgb(...this.colors.danger);
+  //       }
 
-        currentPage.drawText(cellData[j], {
-          x: x + 2,
-          y: y - 8,
-          size: 8,
-          font: regularFont,
-          color: textColor,
-        });
-        x += columnWidths[j];
-      }
+  //       currentPage.drawText(cellData[j], {
+  //         x: x + 2,
+  //         y: y - 8,
+  //         size: 8,
+  //         font: regularFont,
+  //         color: textColor,
+  //       });
+  //       x += columnWidths[j];
+  //     }
 
-      y -= rowHeight;
-    }
+  //     y -= rowHeight;
+  //   }
 
-    // Table footer with totals
-    if (y < minBottomMargin) {
-      currentPage = pdfDoc.addPage([792, 612]); // Landscape
-      y = 570;
-    }
+  //   // Table footer with totals
+  //   if (y < minBottomMargin) {
+  //     currentPage = pdfDoc.addPage([792, 612]); // Landscape
+  //     y = 570;
+  //   }
 
-    y -= 10;
-    currentPage.drawRectangle({
-      x: 50,
-      y: y - 15,
-      width: width - 100,
-      height: 15,
-      color: rgb(...this.colors.text),
-    });
+  //   y -= 10;
+  //   currentPage.drawRectangle({
+  //     x: 50,
+  //     y: y - 15,
+  //     width: width - 100,
+  //     height: 15,
+  //     color: rgb(...this.colors.text),
+  //   });
 
-    const totalLabels = [
-      'TOTALS',
-      '', 
-      recordSheet.entries.reduce((sum: number, e: any) => sum + e.rentAmount, 0).toLocaleString(),
-      recordSheet.entries.reduce((sum: number, e: any) => sum + e.waterCharges, 0).toLocaleString(),
-      recordSheet.entries.reduce((sum: number, e: any) => sum + e.powerCharges, 0).toLocaleString(),
-      recordSheet.entries.reduce((sum: number, e: any) => sum + e.otherCharges, 0).toLocaleString(),
-      recordSheet.totalRentExpected.toLocaleString(),
-      recordSheet.totalRentCollected.toLocaleString(),
-      recordSheet.totalArrears.toLocaleString(),
-      ''
-    ];
+  //   const totalLabels = [
+  //     'TOTALS',
+  //     '', 
+  //     recordSheet.entries.reduce((sum: number, e: any) => sum + e.rentAmount, 0).toLocaleString(),
+  //     recordSheet.entries.reduce((sum: number, e: any) => sum + e.waterCharges, 0).toLocaleString(),
+  //     recordSheet.entries.reduce((sum: number, e: any) => sum + e.powerCharges, 0).toLocaleString(),
+  //     recordSheet.entries.reduce((sum: number, e: any) => sum + e.otherCharges, 0).toLocaleString(),
+  //     recordSheet.totalRentExpected.toLocaleString(),
+  //     recordSheet.totalRentCollected.toLocaleString(),
+  //     recordSheet.totalArrears.toLocaleString(),
+  //     ''
+  //   ];
 
-    let x = 50;
-    for (let i = 0; i < totalLabels.length; i++) {
-      currentPage.drawText(totalLabels[i], {
-        x: x + 2,
-        y: y - 12,
-        size: 9,
-        font: boldFont,
-        color: rgb(1, 1, 1),
-      });
-      x += columnWidths[i];
-    }
+  //   let x = 50;
+  //   for (let i = 0; i < totalLabels.length; i++) {
+  //     currentPage.drawText(totalLabels[i], {
+  //       x: x + 2,
+  //       y: y - 12,
+  //       size: 9,
+  //       font: boldFont,
+  //       color: rgb(1, 1, 1),
+  //     });
+  //     x += columnWidths[i];
+  //   }
 
-    return { lastPage: currentPage, yPosition: y - 20 };
-  }
+  //   return { lastPage: currentPage, yPosition: y - 20 };
+  // }
 
   private drawPerformanceSummary(
     page: PDFPage,
@@ -918,64 +918,785 @@ export class ReportsPDFService {
     return y - 50;
   }
 
-  private drawNotes(
-    page: PDFPage,
-    notes: string,
-    boldFont: PDFFont,
-    regularFont: PDFFont,
-    yPos: number
-  ): number {
-    const { width } = page.getSize();
-    let y = yPos;
+  // private drawNotes(
+  //   page: PDFPage,
+  //   notes: string,
+  //   boldFont: PDFFont,
+  //   regularFont: PDFFont,
+  //   yPos: number
+  // ): number {
+  //   const { width } = page.getSize();
+  //   let y = yPos;
 
-    page.drawText('ADDITIONAL NOTES', {
+  //   page.drawText('ADDITIONAL NOTES', {
+  //     x: 50,
+  //     y: y,
+  //     size: 12,
+  //     font: boldFont,
+  //     color: rgb(...this.colors.primary),
+  //   });
+
+  //   y -= 20;
+
+  //   // Notes box
+  //   const notesHeight = Math.max(40, Math.ceil(notes.length / 80) * 12 + 20);
+  //   page.drawRectangle({
+  //     x: 50,
+  //     y: y - notesHeight,
+  //     width: width - 100,
+  //     height: notesHeight,
+  //     color: rgb(0.99, 0.99, 0.99),
+  //     borderColor: rgb(0.9, 0.9, 0.9),
+  //     borderWidth: 1,
+  //   });
+
+  //   // Wrap text for notes
+  //   const maxWidth = width - 120;
+  //   const words = notes.split(' ');
+  //   let currentLine = '';
+  //   let lineY = y - 15;
+
+  //   for (const word of words) {
+  //     const testLine = currentLine + (currentLine ? ' ' : '') + word;
+  //     const lineWidth = regularFont.widthOfTextAtSize(testLine, 10);
+
+  //     if (lineWidth > maxWidth && currentLine) {
+  //       page.drawText(currentLine, {
+  //         x: 60,
+  //         y: lineY,
+  //         size: 10,
+  //         font: regularFont,
+  //         color: rgb(...this.colors.text),
+  //       });
+  //       currentLine = word;
+  //       lineY -= 12;
+  //     } else {
+  //       currentLine = testLine;
+  //     }
+  //   }
+
+  //   if (currentLine) {
+  //     page.drawText(currentLine, {
+  //       x: 60,
+  //       y: lineY,
+  //       size: 10,
+  //       font: regularFont,
+  //       color: rgb(...this.colors.text),
+  //     });
+  //   }
+
+  //   return y - notesHeight - 10;
+  // }
+
+  // private drawPDFFooter(
+  //   page: PDFPage,
+  //   font: PDFFont,
+  //   branding: { companyName: string; contactInfo: string; website?: string },
+  //   _isLandscape: boolean = false
+  // ): void {
+  //   const { width } = page.getSize();
+  //   const y = 30;
+
+  //   // Footer line
+  //   page.drawLine({
+  //     start: { x: 50, y: y + 15 },
+  //     end: { x: width - 50, y: y + 15 },
+  //     thickness: 0.5,
+  //     color: rgb(0.8, 0.8, 0.8),
+  //   });
+
+  //   // Branding text
+  //   let footerText = `Generated by ${branding.companyName} | ${branding.contactInfo}`;
+  //   if (branding.website) {
+  //     footerText += ` | ${branding.website}`;
+  //   }
+
+  //   page.drawText(footerText, {
+  //     x: 50,
+  //     y: y,
+  //     size: 8,
+  //     font: font,
+  //     color: rgb(0.5, 0.5, 0.5),
+  //   });
+
+  //   // Generation timestamp
+  //   const timestamp = `Generated on ${new Date().toLocaleString('en-US', {
+  //     year: 'numeric',
+  //     month: 'short',
+  //     day: 'numeric',
+  //     hour: '2-digit',
+  //     minute: '2-digit'
+  //   })}`;
+
+  //   const timestampWidth = font.widthOfTextAtSize(timestamp, 8);
+  //   page.drawText(timestamp, {
+  //     x: width - timestampWidth - 50,
+  //     y: y,
+  //     size: 8,
+  //     font: font,
+  //     color: rgb(0.5, 0.5, 0.5),
+  //   });
+  // }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  // Enhanced pagination helper for reports
+private calculateRemainingSpace(currentY: number, requiredSpace: number, footerSpace: number = 60): boolean {
+  return (currentY - requiredSpace - footerSpace) < 50; // 50px minimum margin from bottom
+}
+
+// Enhanced page break handler for reports
+private addNewPageIfNeeded(
+  pdfDoc: PDFDocument, 
+  currentPage: PDFPage, 
+  currentY: number, 
+  requiredSpace: number, 
+  footerSpace: number = 60,
+  isLandscape: boolean = false
+): { page: PDFPage, yPosition: number, isNewPage: boolean } {
+  if (this.calculateRemainingSpace(currentY, requiredSpace, footerSpace)) {
+    const newPage = isLandscape ? 
+      pdfDoc.addPage([792, 612]) : // Landscape
+      pdfDoc.addPage([612, 792]);   // Portrait
+    
+    const startY = isLandscape ? 570 : 750;
+    return { 
+      page: newPage, 
+      yPosition: startY, 
+      isNewPage: true 
+    };
+  }
+  return { 
+    page: currentPage, 
+    yPosition: currentY, 
+    isNewPage: false 
+  };
+}
+
+// Updated transcript PDF generation with proper pagination
+async generateTranscriptPDF(
+  transcript: TranscriptWithDetails,
+  options: PDFGenerationOptions = {}
+): Promise<{ filename: string; pdfBytes: Uint8Array }> {
+  const pdfDoc = await PDFDocument.create();
+  const timesRomanFont = await pdfDoc.embedFont(StandardFonts.TimesRoman);
+  const timesRomanBoldFont = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
+  const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  let currentPage = pdfDoc.addPage([612, 792]); // US Letter size
+  let yPosition = 750;
+
+  // Track all pages for footer application
+  const pages: Array<{ page: PDFPage, hasFooter: boolean }> = [{ page: currentPage, hasFooter: false }];
+
+  // Header Section
+  yPosition = this.drawTranscriptHeader(currentPage, transcript, helveticaBoldFont, helveticaFont, yPosition);
+  
+  // Check if we need new page for property/landlord info (requires ~110px)
+  let pageInfo = this.addNewPageIfNeeded(pdfDoc, currentPage, yPosition, 110, 80);
+  if (pageInfo.isNewPage) {
+    currentPage = pageInfo.page;
+    yPosition = pageInfo.yPosition;
+    pages.push({ page: currentPage, hasFooter: false });
+  }
+  
+  // Property and Landlord Information
+  yPosition = this.drawPropertyLandlordInfo(currentPage, transcript, timesRomanBoldFont, timesRomanFont, yPosition - 20);
+  
+  // Calculate financial summary height dynamically
+  const itemsCount = transcript.items ? transcript.items.length : 0;
+  const financialSummaryHeight = 100 + (itemsCount * 20) + 80; // Header + items + summary totals
+  
+  // Check if we need new page for financial summary
+  pageInfo = this.addNewPageIfNeeded(pdfDoc, currentPage, yPosition, financialSummaryHeight, 80);
+  if (pageInfo.isNewPage) {
+    currentPage = pageInfo.page;
+    yPosition = pageInfo.yPosition;
+    pages.push({ page: currentPage, hasFooter: false });
+  }
+  
+  // Financial Summary Section
+  yPosition = this.drawFinancialSummary(currentPage, transcript, timesRomanBoldFont, timesRomanFont, yPosition - 25);
+  
+  // Check if we need new page for tenant summary (requires ~80px)
+  pageInfo = this.addNewPageIfNeeded(pdfDoc, currentPage, yPosition, 80, 80);
+  if (pageInfo.isNewPage) {
+    currentPage = pageInfo.page;
+    yPosition = pageInfo.yPosition;
+    pages.push({ page: currentPage, hasFooter: false });
+  }
+  
+  // Tenant Summary
+  yPosition = this.drawTenantSummary(currentPage, transcript, timesRomanBoldFont, timesRomanFont, yPosition - 20);
+  
+  // Notes section (if exists)
+  if (transcript.notes && transcript.notes.trim()) {
+    const notesHeight = Math.max(60, Math.ceil(transcript.notes.length / 80) * 12 + 40);
+    
+    pageInfo = this.addNewPageIfNeeded(pdfDoc, currentPage, yPosition, notesHeight, 80);
+    if (pageInfo.isNewPage) {
+      currentPage = pageInfo.page;
+      yPosition = pageInfo.yPosition;
+      pages.push({ page: currentPage, hasFooter: false });
+    }
+    
+    yPosition = this.drawNotes(currentPage, transcript.notes, timesRomanBoldFont, timesRomanFont, yPosition - 15);
+  }
+  
+  // Apply footer only to the last page
+  const lastPageInfo = pages[pages.length - 1];
+  this.drawPDFFooter(lastPageInfo.page, helveticaFont, { ...this.defaultBranding, ...options.customBranding });
+  lastPageInfo.hasFooter = true;
+
+  // Add page numbers if multiple pages
+  if (pages.length > 1) {
+    pages.forEach(({ page }, index) => {
+      page.drawText(`Page ${index + 1} of ${pages.length}`, {
+        x: 550,
+        y: 30,
+        size: 8,
+        font: helveticaFont,
+        color: rgb(0.5, 0.5, 0.5)
+      });
+    });
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  const filename = `transcript_${transcript.property.name.replace(/[^a-zA-Z0-9]/g, '_')}_${transcript.billingMonth}.pdf`;
+
+  return { filename, pdfBytes };
+}
+
+// Updated rent record PDF generation with proper pagination
+async generateRentRecordPDF(
+  recordSheet: RentRecordWithDetails,
+  options: PDFGenerationOptions = {}
+): Promise<{ filename: string; pdfBytes: Uint8Array }> {
+  const pdfDoc = await PDFDocument.create();
+  const timesRomanFont = await pdfDoc.embedFont(StandardFonts.TimesRoman);
+  const timesRomanBoldFont = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
+  const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  // Use landscape orientation for rent record sheet
+  let currentPage = pdfDoc.addPage([792, 612]); // Landscape US Letter
+  let yPosition = 570;
+
+  // Track all pages for footer application
+  const pages: Array<{ page: PDFPage, hasFooter: boolean }> = [{ page: currentPage, hasFooter: false }];
+
+  // Header Section
+  yPosition = this.drawRentRecordHeader(currentPage, recordSheet, helveticaBoldFont, helveticaFont, yPosition);
+  
+  // Check if we need new page for summary (requires ~90px)
+  let pageInfo = this.addNewPageIfNeeded(pdfDoc, currentPage, yPosition, 90, 60, true);
+  if (pageInfo.isNewPage) {
+    currentPage = pageInfo.page;
+    yPosition = pageInfo.yPosition;
+    pages.push({ page: currentPage, hasFooter: false });
+  }
+  
+  // Property Information and Summary Stats
+  yPosition = this.drawRentRecordSummary(currentPage, recordSheet, timesRomanBoldFont, timesRomanFont, yPosition - 20);
+  
+  // Tenant Records Table with proper pagination
+  const result = this.drawTenantRecordsTableWithPagination(pdfDoc, currentPage, recordSheet, timesRomanBoldFont, timesRomanFont, yPosition - 25, pages);
+  currentPage = result.lastPage;
+  yPosition = result.yPosition;
+  
+  // Check if we need new page for performance summary (requires ~70px)
+  pageInfo = this.addNewPageIfNeeded(pdfDoc, currentPage, yPosition, 70, 60, true);
+  if (pageInfo.isNewPage) {
+    currentPage = pageInfo.page;
+    yPosition = pageInfo.yPosition;
+    pages.push({ page: currentPage, hasFooter: false });
+  }
+  
+  // Performance Summary
+  yPosition = this.drawPerformanceSummary(currentPage, recordSheet, timesRomanBoldFont, timesRomanFont, yPosition - 20);
+  
+  // Footer on the last page only
+  const lastPageInfo = pages[pages.length - 1];
+  this.drawPDFFooter(lastPageInfo.page, helveticaFont, { ...this.defaultBranding, ...options.customBranding }, true);
+  lastPageInfo.hasFooter = true;
+
+  // Add page numbers if multiple pages
+  if (pages.length > 1) {
+    pages.forEach(({ page }, index) => {
+      page.drawText(`Page ${index + 1} of ${pages.length}`, {
+        x: 730,
+        y: 30,
+        size: 8,
+        font: helveticaFont,
+        color: rgb(0.5, 0.5, 0.5)
+      });
+    });
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  const filename = `rent_record_${recordSheet.property.name.replace(/[^a-zA-Z0-9]/g, '_')}_${recordSheet.billingMonth}.pdf`;
+
+  return { filename, pdfBytes };
+}
+
+// Updated tenant records table with proper pagination support
+private drawTenantRecordsTableWithPagination(
+  pdfDoc: PDFDocument,
+  startPage: PDFPage,
+  recordSheet: RentRecordWithDetails,
+  boldFont: PDFFont,
+  regularFont: PDFFont,
+  yPos: number,
+  pages: Array<{ page: PDFPage, hasFooter: boolean }>
+): { lastPage: PDFPage; yPosition: number } {
+  const { width } = startPage.getSize();
+  let y = yPos;
+  let currentPage = startPage;
+
+  // Table title
+  currentPage.drawText('TENANT RECORDS', {
+    x: 50,
+    y: y,
+    size: 14,
+    font: boldFont,
+    color: rgb(...this.colors.primary),
+  });
+
+  y -= 25;
+
+  // Table headers
+  const headers = ['Tenant', 'Unit', 'Rent', 'Water', 'Power', 'Other', 'Total Due', 'Paid', 'Balance', 'Status'];
+  const columnWidths = [80, 40, 55, 45, 45, 45, 65, 60, 60, 50];
+  
+  // Draw initial headers
+  y = this.drawTableHeaders(currentPage, headers, columnWidths, boldFont, y);
+
+  // Data rows
+  const rowHeight = 12;
+  const minBottomMargin = 120; // Increased to account for footer space
+  
+  for (let i = 0; i < recordSheet.entries.length; i++) {
+    // Check if we need a new page
+    if (y < minBottomMargin) {
+      currentPage = pdfDoc.addPage([792, 612]); // Landscape
+      pages.push({ page: currentPage, hasFooter: false });
+      y = 570;
+      
+      // Re-draw table title and headers on new page
+      currentPage.drawText('TENANT RECORDS (Continued)', {
+        x: 50,
+        y: y,
+        size: 14,
+        font: boldFont,
+        color: rgb(...this.colors.primary),
+      });
+      y -= 25;
+      y = this.drawTableHeaders(currentPage, headers, columnWidths, boldFont, y);
+    }
+
+    const entry = recordSheet.entries[i];
+    let x = 50;
+
+    // Alternate row background
+    if (i % 2 === 1) {
+      currentPage.drawRectangle({
+        x: 50,
+        y: y - rowHeight + 2,
+        width: width - 100,
+        height: rowHeight,
+        color: rgb(0.98, 0.98, 0.98),
+      });
+    }
+
+    // Data cells
+    const cellData = [
+      entry.tenantName.length > 12 ? entry.tenantName.substring(0, 12) + '...' : entry.tenantName,
+      entry.unitNumber,
+      entry.rentAmount.toLocaleString(),
+      entry.waterCharges.toLocaleString(),
+      entry.powerCharges.toLocaleString(),
+      entry.otherCharges.toLocaleString(),
+      entry.totalDue.toLocaleString(),
+      entry.amountPaid.toLocaleString(),
+      Math.abs(entry.balance).toLocaleString(),
+      entry.paymentStatus.charAt(0).toUpperCase() + entry.paymentStatus.slice(1),
+    ];
+
+    for (let j = 0; j < cellData.length; j++) {
+      let textColor = rgb(...this.colors.text);
+      
+      // Special coloring for balance and status
+      if (j === 8) { // Balance column
+        textColor = entry.balance > 0 ? rgb(...this.colors.danger) : 
+                   entry.balance < 0 ? rgb(...this.colors.secondary) : 
+                   rgb(...this.colors.success);
+      } else if (j === 9) { // Status column
+        textColor = entry.paymentStatus === 'paid' ? rgb(...this.colors.success) :
+                   entry.paymentStatus === 'partial' ? rgb(...this.colors.warning) :
+                   rgb(...this.colors.danger);
+      }
+
+      currentPage.drawText(cellData[j], {
+        x: x + 2,
+        y: y - 8,
+        size: 8,
+        font: regularFont,
+        color: textColor,
+      });
+      x += columnWidths[j];
+    }
+
+    y -= rowHeight;
+  }
+
+  // Table footer with totals - ensure it has space
+  if (y < minBottomMargin) {
+    currentPage = pdfDoc.addPage([792, 612]); // Landscape
+    pages.push({ page: currentPage, hasFooter: false });
+    y = 570;
+    
+    // Add a title for the totals page
+    currentPage.drawText('TENANT RECORDS - TOTALS', {
       x: 50,
       y: y,
-      size: 12,
+      size: 14,
       font: boldFont,
       color: rgb(...this.colors.primary),
     });
+    y -= 25;
+    
+    // Re-draw headers for context
+    y = this.drawTableHeaders(currentPage, headers, columnWidths, boldFont, y);
+  }
 
-    y -= 20;
+  y -= 10;
+  currentPage.drawRectangle({
+    x: 50,
+    y: y - 15,
+    width: width - 100,
+    height: 15,
+    color: rgb(...this.colors.text),
+  });
 
-    // Notes box
-    const notesHeight = Math.max(40, Math.ceil(notes.length / 80) * 12 + 20);
-    page.drawRectangle({
-      x: 50,
-      y: y - notesHeight,
-      width: width - 100,
-      height: notesHeight,
-      color: rgb(0.99, 0.99, 0.99),
-      borderColor: rgb(0.9, 0.9, 0.9),
-      borderWidth: 1,
+  const totalLabels = [
+    'TOTALS',
+    '', 
+    recordSheet.entries.reduce((sum: number, e: any) => sum + e.rentAmount, 0).toLocaleString(),
+    recordSheet.entries.reduce((sum: number, e: any) => sum + e.waterCharges, 0).toLocaleString(),
+    recordSheet.entries.reduce((sum: number, e: any) => sum + e.powerCharges, 0).toLocaleString(),
+    recordSheet.entries.reduce((sum: number, e: any) => sum + e.otherCharges, 0).toLocaleString(),
+    recordSheet.totalRentExpected.toLocaleString(),
+    recordSheet.totalRentCollected.toLocaleString(),
+    recordSheet.totalArrears.toLocaleString(),
+    ''
+  ];
+
+  let x = 50;
+  for (let i = 0; i < totalLabels.length; i++) {
+    currentPage.drawText(totalLabels[i], {
+      x: x + 2,
+      y: y - 12,
+      size: 9,
+      font: boldFont,
+      color: rgb(1, 1, 1),
+    });
+    x += columnWidths[i];
+  }
+
+  return { lastPage: currentPage, yPosition: y - 20 };
+}
+
+// Enhanced financial summary with better space management
+private drawFinancialSummary(
+  page: PDFPage,
+  transcript: TranscriptWithDetails,
+  boldFont: PDFFont,
+  regularFont: PDFFont,
+  yPos: number
+): number {
+  const { width } = page.getSize();
+  let y = yPos;
+
+  // Section Title
+  page.drawText('FINANCIAL SUMMARY', {
+    x: 50,
+    y: y,
+    size: 14,
+    font: boldFont,
+    color: rgb(...this.colors.primary),
+  });
+
+  y -= 25;
+
+  // Calculate table height dynamically
+  const itemsCount = transcript.items ? transcript.items.length : 0;
+  const tableHeaderHeight = 20;
+  const itemRowHeight = 20;
+  const summaryRowsHeight = 60;
+  const totalTableHeight = tableHeaderHeight + (itemsCount * itemRowHeight) + summaryRowsHeight + 20;
+
+  // Table background
+  page.drawRectangle({
+    x: 50,
+    y: y - totalTableHeight,
+    width: width - 100,
+    height: totalTableHeight,
+    color: rgb(1, 1, 1),
+    borderColor: rgb(0.8, 0.8, 0.8),
+    borderWidth: 1,
+  });
+
+  // Table headers
+  const headers = ['Description', 'Category', 'Amount'];
+  const columnWidths = [250, 150, 112];
+  let x = 70;
+
+  page.drawRectangle({
+    x: 50,
+    y: y - tableHeaderHeight,
+    width: width - 100,
+    height: tableHeaderHeight,
+    color: rgb(...this.colors.primary),
+  });
+
+  for (let i = 0; i < headers.length; i++) {
+    page.drawText(headers[i], {
+      x: x,
+      y: y - 15,
+      size: 11,
+      font: boldFont,
+      color: rgb(1, 1, 1),
+    });
+    x += columnWidths[i];
+  }
+
+  y -= tableHeaderHeight + 10;
+
+  // Items rows
+  if (transcript.items && transcript.items.length > 0) {
+    const sortedItems = transcript.items.sort((a: { sortOrder: number; }, b: { sortOrder: number; }) => a.sortOrder - b.sortOrder);
+    for (const item of sortedItems) {
+      x = 70;
+
+      // Alternate row background
+      if (sortedItems.indexOf(item) % 2 === 1) {
+        page.drawRectangle({
+          x: 50,
+          y: y - itemRowHeight + 5,
+          width: width - 100,
+          height: itemRowHeight,
+          color: rgb(0.98, 0.98, 0.98),
+        });
+      }
+
+      // Truncate description if too long
+      let description = item.description;
+      if (description.length > 35) {
+        description = description.substring(0, 32) + '...';
+      }
+
+      page.drawText(description, {
+        x: x,
+        y: y,
+        size: 10,
+        font: regularFont,
+        color: rgb(...this.colors.text),
+      });
+      x += columnWidths[0];
+
+      const category = (item.category || item.type || '').length > 20 ? 
+        (item.category || item.type || '').substring(0, 17) + '...' : 
+        (item.category || item.type || '');
+      
+      page.drawText(category, {
+        x: x,
+        y: y,
+        size: 10,
+        font: regularFont,
+        color: rgb(...this.colors.text),
+      });
+      x += columnWidths[1];
+
+      const amountColor = item.isDeductible ? this.colors.danger : this.colors.success;
+      const amountText = `${item.isDeductible ? '-' : '+'}KSh ${item.amount.toLocaleString()}`;
+      
+      page.drawText(amountText, {
+        x: x,
+        y: y,
+        size: 10,
+        font: regularFont,
+        color: rgb(...amountColor),
+      });
+
+      y -= itemRowHeight;
+    }
+  }
+
+  // Summary totals
+  y -= 10;
+  page.drawRectangle({
+    x: 50,
+    y: y - summaryRowsHeight,
+    width: width - 100,
+    height: summaryRowsHeight,
+    color: rgb(...this.colors.primary),
+  });
+
+  const grossIncome = transcript.grossRentCollected + transcript.totalWaterCharges + 
+                    transcript.totalPowerCharges + transcript.totalOtherCharges;
+
+  const summaryItems: Array<[string, string, [number, number, number]]> = [
+    ['Gross Income:', `KSh ${grossIncome.toLocaleString()}`, this.colors.lightGray],
+    ['Total Deductions:', `- KSh ${transcript.totalDeductibles.toLocaleString()}`, this.colors.warning],
+    ['NET AMOUNT TO LANDLORD:', `KSh ${transcript.netAmountToLandlord.toLocaleString()}`, [1, 1, 1]],
+  ];
+
+  y -= 15;
+  for (const [label, amount, color] of summaryItems) {
+    const isMainTotal = label.includes('NET AMOUNT');
+    
+    page.drawText(label, {
+      x: 70,
+      y: y,
+      size: isMainTotal ? 14 : 11,
+      font: isMainTotal ? boldFont : regularFont,
+      color: rgb(...color),
     });
 
-    // Wrap text for notes
-    const maxWidth = width - 120;
-    const words = notes.split(' ');
-    let currentLine = '';
-    let lineY = y - 15;
+    page.drawText(amount, {
+      x: width - 150,
+      y: y,
+      size: isMainTotal ? 14 : 11,
+      font: boldFont,
+      color: rgb(...color),
+    });
 
-    for (const word of words) {
-      const testLine = currentLine + (currentLine ? ' ' : '') + word;
-      const lineWidth = regularFont.widthOfTextAtSize(testLine, 10);
+    y -= isMainTotal ? 20 : 15;
+  }
 
-      if (lineWidth > maxWidth && currentLine) {
-        page.drawText(currentLine, {
-          x: 60,
-          y: lineY,
-          size: 10,
-          font: regularFont,
-          color: rgb(...this.colors.text),
-        });
-        currentLine = word;
-        lineY -= 12;
-      } else {
-        currentLine = testLine;
-      }
-    }
+  return y - 10;
+}
 
-    if (currentLine) {
+// Enhanced PDF footer with better positioning for both orientations
+private drawPDFFooter(
+  page: PDFPage,
+  font: PDFFont,
+  branding: { companyName: string; contactInfo: string; website?: string },
+  isLandscape: boolean = false
+): void {
+  const { width } = page.getSize();
+  const footerY = 30;
+
+  // Footer line
+  page.drawLine({
+    start: { x: 50, y: footerY + 15 },
+    end: { x: width - 50, y: footerY + 15 },
+    thickness: 0.5,
+    color: rgb(0.8, 0.8, 0.8),
+  });
+
+  // Branding text
+  let footerText = `Generated by ${branding.companyName} | ${branding.contactInfo}`;
+  if (branding.website) {
+    footerText += ` | ${branding.website}`;
+  }
+
+  // Adjust text size for landscape orientation
+  const fontSize = isLandscape ? 9 : 8;
+  
+  page.drawText(footerText, {
+    x: 50,
+    y: footerY,
+    size: fontSize,
+    font: font,
+    color: rgb(0.5, 0.5, 0.5),
+  });
+
+  // Generation timestamp
+  const timestamp = `Generated on ${new Date().toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })}`;
+
+  const timestampWidth = font.widthOfTextAtSize(timestamp, fontSize);
+  page.drawText(timestamp, {
+    x: width - timestampWidth - 50,
+    y: footerY,
+    size: fontSize,
+    font: font,
+    color: rgb(0.5, 0.5, 0.5),
+  });
+}
+
+// Enhanced notes drawing with proper space management
+private drawNotes(
+  page: PDFPage,
+  notes: string,
+  boldFont: PDFFont,
+  regularFont: PDFFont,
+  yPos: number
+): number {
+  const { width } = page.getSize();
+  let y = yPos;
+
+  page.drawText('ADDITIONAL NOTES', {
+    x: 50,
+    y: y,
+    size: 12,
+    font: boldFont,
+    color: rgb(...this.colors.primary),
+  });
+
+  y -= 20;
+
+  // Calculate notes box height more accurately
+  const maxLineWidth = width - 120;
+  const approxCharsPerLine = Math.floor(maxLineWidth / 5); // Approximate character width
+  const estimatedLines = Math.ceil(notes.length / approxCharsPerLine);
+  const notesHeight = Math.max(40, estimatedLines * 12 + 20);
+  
+  // Notes box
+  page.drawRectangle({
+    x: 50,
+    y: y - notesHeight,
+    width: width - 100,
+    height: notesHeight,
+    color: rgb(0.99, 0.99, 0.99),
+    borderColor: rgb(0.9, 0.9, 0.9),
+    borderWidth: 1,
+  });
+
+  // Wrap text for notes with proper line breaking
+  const words = notes.split(' ');
+  let currentLine = '';
+  let lineY = y - 15;
+  const lineSpacing = 12;
+
+  for (const word of words) {
+    const testLine = currentLine + (currentLine ? ' ' : '') + word;
+    const lineWidth = regularFont.widthOfTextAtSize(testLine, 10);
+
+    if (lineWidth > maxLineWidth && currentLine) {
+      // Draw current line
       page.drawText(currentLine, {
         x: 60,
         y: lineY,
@@ -983,100 +1704,71 @@ export class ReportsPDFService {
         font: regularFont,
         color: rgb(...this.colors.text),
       });
+      
+      // Start new line
+      currentLine = word;
+      lineY -= lineSpacing;
+      
+      // Check if we're running out of space in the notes box
+      if (lineY < (y - notesHeight + 10)) {
+        currentLine += ' ...';
+        break;
+      }
+    } else {
+      currentLine = testLine;
     }
-
-    return y - notesHeight - 10;
   }
 
-  private drawPDFFooter(
-    page: PDFPage,
-    font: PDFFont,
-    branding: { companyName: string; contactInfo: string; website?: string },
-    _isLandscape: boolean = false
-  ): void {
-    const { width } = page.getSize();
-    const y = 30;
-
-    // Footer line
-    page.drawLine({
-      start: { x: 50, y: y + 15 },
-      end: { x: width - 50, y: y + 15 },
-      thickness: 0.5,
-      color: rgb(0.8, 0.8, 0.8),
-    });
-
-    // Branding text
-    let footerText = `Generated by ${branding.companyName} | ${branding.contactInfo}`;
-    if (branding.website) {
-      footerText += ` | ${branding.website}`;
-    }
-
-    page.drawText(footerText, {
-      x: 50,
-      y: y,
-      size: 8,
-      font: font,
-      color: rgb(0.5, 0.5, 0.5),
-    });
-
-    // Generation timestamp
-    const timestamp = `Generated on ${new Date().toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })}`;
-
-    const timestampWidth = font.widthOfTextAtSize(timestamp, 8);
-    page.drawText(timestamp, {
-      x: width - timestampWidth - 50,
-      y: y,
-      size: 8,
-      font: font,
-      color: rgb(0.5, 0.5, 0.5),
+  // Draw the final line
+  if (currentLine && lineY >= (y - notesHeight + 10)) {
+    page.drawText(currentLine, {
+      x: 60,
+      y: lineY,
+      size: 10,
+      font: regularFont,
+      color: rgb(...this.colors.text),
     });
   }
 
-  // ==================== FILE MANAGEMENT METHODS ====================
+  return y - notesHeight - 10;
+}
 
-//   async saveToDevice(filename: string, pdfBytes: Uint8Array): Promise<{ path: string; uri: string }> {
-//     try {
-//       if (Capacitor.isNativePlatform()) {
-//         // Convert to base64 for mobile platforms
-//         const base64Data = this.uint8ArrayToBase64(pdfBytes);
-        
-//         const result = await Filesystem.writeFile({
-//           path: filename,
-//           data: base64Data,
-//           directory: Directory.External,
-//         });
 
-//         return { path: result.uri, uri: result.uri };
-//       } else {
-//         // For web, trigger download
-//         const arrayBuffer = new ArrayBuffer(pdfBytes.buffer.byteLength);
-//         const uint8Array = new Uint8Array(arrayBuffer);
-//         uint8Array.set(new Uint8Array(pdfBytes.buffer));
-//         const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
-//         const url = URL.createObjectURL(blob);
-        
-//         const link = document.createElement('a');
-//         link.href = url;
-//         link.download = filename;
-//         document.body.appendChild(link);
-//         link.click();
-//         document.body.removeChild(link);
-        
-//         URL.revokeObjectURL(url);
-        
-//         return { path: filename, uri: url };
-//       }
-//     } catch (error) {
-//       console.error('Error saving PDF:', error);
-//       throw new Error('Failed to save PDF to device');
-//     }
-//   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 async saveToDevice(filename: string, pdfBytes: Uint8Array): Promise<{ path: string; uri: string }> {
   try {

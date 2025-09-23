@@ -432,7 +432,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Helper function to check if user can sync
   const canUserSync = (user: User): boolean => {
-    return user.tier === 'business' || user.tier === 'pro' || user.tier === 'enterprise' || user.storage === true;
+    return user.tier === 'business' || user.tier === 'pro' || user.tier === 'solo' || user.tier === 'enterprise' || user.storage === true;
   };
 
   // Initialize sync for eligible users - UPDATED for new flattened structure

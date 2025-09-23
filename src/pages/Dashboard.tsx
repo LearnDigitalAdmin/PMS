@@ -698,7 +698,7 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
     }
   };
 
-  const canSync = userData.storage;
+  // const canSync = userData.storage;
 
   const handleSave = async () => {
     if (userData.storage) {
@@ -967,7 +967,7 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
       <RecentActivity recentInvoices={recentInvoices} loading={loading} />
 
       {/* Quick Actions */}
-      {canSync && (
+      {userData.storage && (
         <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-6 shadow-lg border border-gray-200/50 dark:border-gray-700/50">
         <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
           <div className="p-2 rounded-xl bg-gradient-to-r from-indigo-500 to-blue-600 mr-3">

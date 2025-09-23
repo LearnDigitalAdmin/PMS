@@ -48,8 +48,8 @@ const AnInvoice: React.FC<AnInvoiceProps> = ({ invoiceId, onBack, isModal = fals
     name: 'SMB KENYA LTD',
     address: 'Naivasha, Nakuru, Kenya',
     phone: '+254 791 286 165',
-    email: 'info@smbkenya.com',
-    website: 'www.cogvana.com'
+    email: 'info@cogvana.co.ke',
+    website: 'www.cogvana.co.ke'
   });
 
   useEffect(() => {

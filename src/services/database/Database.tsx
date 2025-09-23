@@ -2278,7 +2278,7 @@ async checkUserLimits(userId: number): Promise<{
 
   private canUserSync(user: User): boolean {
     // Business and enterprise users always have sync
-    if (user.tier === 'business' || user.tier === 'pro' || user.tier === 'enterprise') {
+    if (user.tier === 'business' || user.tier === 'pro' || user.tier === 'solo' || user.tier === 'enterprise') {
       return true;
     }
     
