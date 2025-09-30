@@ -237,6 +237,7 @@ export interface Payment {
 // }
 
 export interface TenantInput {
+  id?: number; // Optional for creation
   propertyId: number;
   name: string;
   phone?: string;
@@ -2059,7 +2060,7 @@ async checkUserLimits(userId: number): Promise<{
     `;
     
     const result = await this.db!.run(query, [
-      newTenantId,
+      tenant.id || newTenantId,
       tenant.propertyId,
       tenant.name,
       tenant.phone || '',
@@ -2288,20 +2289,76 @@ async checkUserLimits(userId: number): Promise<{
 
   // ==================== ENHANCED USER RETRIEVAL ====================
 
-  async getUserById(id: number): Promise<User | null> {
-    try {
-      const query = 'SELECT * FROM users WHERE id = ?';
-      const result = await this.db!.query(query, [id]);
+  // async getUserById(id: number): Promise<User | null> {
+  //   try {
+  //     const query = 'SELECT * FROM users WHERE id = ?';
+  //     const result = await this.db!.query(query, [id]);
       
-      if (result.values && result.values.length > 0) {
-        return this.mapToEnhancedUser(result.values[0]);
-      }
-      return null;
-    } catch (error) {
-      console.error('Error getting user by ID:', error);
-      return null;
+  //     if (result.values && result.values.length > 0) {
+  //       return this.mapToEnhancedUser(result.values[0]);
+  //     }
+  //     return null;
+  //   } catch (error) {
+  //     console.error('Error getting user by ID:', error);
+  //     return null;
+  //   }
+  // }
+
+  async getUserById(id: number): Promise<User | null> {
+  console.log('getUserById called for ID:', id);
+  
+  // Try to get from localStorage first
+  try {
+    const cachedUser = localStorage.getItem('currentUser');
+    if (cachedUser) {
+      const user = JSON.parse(cachedUser);
+      console.log('Returning user from localStorage:', user);
+      return user;
     }
+  } catch (error) {
+    console.log('Error reading from localStorage:', error);
   }
+  
+  // If not in localStorage or failed, fetch from database
+  console.log('Fetching user from database for ID:', id);
+  
+  try {
+    
+    const query = 'SELECT * FROM users WHERE id = ?';
+    const result = await this.db!.query(query, [id]);
+    console.log('Raw result:', result);
+    
+    if (result.values && result.values.length > 0) {
+      const user = this.mapToEnhancedUser(result.values[0]);
+      
+      // Store in localStorage for future calls
+      try {
+        localStorage.setItem('currentUser', JSON.stringify(user));
+        console.log('User stored in localStorage');
+      } catch (storageError) {
+        console.log('Error storing to localStorage:', storageError);
+      }
+      
+      return user;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Database error for ID:', id, error);
+    return null;
+  }
+}
+
+// Optional: Method to clear localStorage when user logs out
+clearCurrentUser(): void {
+  localStorage.removeItem('currentUser');
+}
+
+// Optional: Method to refresh user data (clears cache and refetches)
+async refreshCurrentUser(id: number): Promise<User | null> {
+  this.clearCurrentUser();
+  return this.getUserById(id);
+}
 
   async getUserByEmail(email: string): Promise<User | null> {
     try {

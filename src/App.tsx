@@ -1,5 +1,5 @@
-// App.tsx - Updated with Enhanced User State Management and Sync Integration
-import React, { useState, useEffect, Suspense } from 'react';
+// App.tsx - Updated with Enhanced User State Management, Sync Integration, and Exit Confirmation
+import React, { useState, useEffect, Suspense, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, NavLink } from 'react-router-dom';
 import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle } from 'lucide-react';
 import { database } from './services/database/Database';
@@ -10,6 +10,10 @@ import Invoices from './pages/invoices/Invoices';
 import Properties from './pages/properties/PropertyList';
 import Profile from './pages/Profile';
 import type { User } from './services/database/Database';
+
+// Capacitor imports for platform detection and app handling
+import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
 
 // Loading component with skeleton animation
 const LoadingSpinner = () => (
@@ -22,6 +26,47 @@ const LoadingSpinner = () => (
     </div>
   </div>
 );
+
+// Exit Confirmation Dialog Component
+const ExitConfirmationDialog = ({ isOpen, onConfirm, onCancel }: {
+  isOpen: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-sm w-full mx-4 animate-in fade-in duration-200">
+        <div className="p-6">
+          <div className="flex items-center justify-center w-12 h-12 mx-auto mb-4 bg-red-100 dark:bg-red-900 rounded-full">
+            <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white text-center mb-2">
+            Exit Application?
+          </h3>
+          <p className="text-gray-600 dark:text-gray-400 text-center mb-6">
+            Are you sure you want to close the application? Any unsaved changes may be lost.
+          </p>
+          <div className="flex space-x-3">
+            <button
+              onClick={onCancel}
+              className="flex-1 px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors duration-200"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onConfirm}
+              className="flex-1 px-4 py-2 text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors duration-200"
+            >
+              Exit
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // Enhanced Status Bar Component
 const StatusBar = () => {
@@ -253,8 +298,154 @@ class AppErrorBoundary extends React.Component<
   }
 }
 
-// Main Layout Component with Status Bar
+// Main Layout Component with Status Bar and Exit Handling
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [showExitDialog, setShowExitDialog] = useState(false);
+  const [exitMethod, setExitMethod] = useState<'dialog' | 'doubleclick'>('dialog');
+  const lastBackPressRef = useRef<number>(0);
+  const backPressTimeoutRef = useRef<NodeJS.Timeout>(null);
+  const platform = Capacitor.getPlatform();
+
+  // Handle exit confirmation
+  const handleExitConfirm = useCallback(() => {
+    setShowExitDialog(false);
+    if (platform === 'android' || platform === 'ios') {
+      CapacitorApp.exitApp();
+    } else if (platform === 'electron') {
+      // For Electron, we can use window.close() or send a message to the main process
+      if ((window as any).electronAPI?.closeApp) {
+        (window as any).electronAPI.closeApp();
+      } else {
+        window.close();
+      }
+    } else {
+      // For web, we can't actually close the tab, but we can navigate away or show a message
+      window.location.href = 'about:blank';
+    }
+  }, [platform]);
+
+  const handleExitCancel = useCallback(() => {
+    setShowExitDialog(false);
+  }, []);
+
+  // Show toast message for double-click exit
+  const showDoubleClickToast = useCallback(() => {
+    // Create a temporary toast notification
+    const toast = document.createElement('div');
+    toast.className = 'fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg z-[9998] text-sm';
+    toast.textContent = 'Press back again to exit';
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+      if (document.body.contains(toast)) {
+        document.body.removeChild(toast);
+      }
+    }, 2000);
+  }, []);
+
+  // Handle back button press with different strategies
+  const handleBackButton = useCallback(() => {
+    const now = Date.now();
+    
+    if (exitMethod === 'dialog') {
+      setShowExitDialog(true);
+    } else if (exitMethod === 'doubleclick') {
+      if (now - lastBackPressRef.current < 2000) {
+        // Double click detected within 2 seconds
+        if (backPressTimeoutRef.current) {
+          clearTimeout(backPressTimeoutRef.current);
+        }
+        handleExitConfirm();
+      } else {
+        // First click
+        lastBackPressRef.current = now;
+        showDoubleClickToast();
+        
+        // Reset the double-click timer after 2 seconds
+        if (backPressTimeoutRef.current) {
+          clearTimeout(backPressTimeoutRef.current);
+        }
+        backPressTimeoutRef.current = setTimeout(() => {
+          lastBackPressRef.current = 0;
+        }, 2000);
+      }
+    }
+  }, [exitMethod, handleExitConfirm, showDoubleClickToast]);
+
+  // Set up platform-specific exit handling
+  useEffect(() => {
+    let backButtonListener: any;
+
+    // Determine exit method based on platform and user preference
+    const storedMethod = localStorage.getItem('exitMethod') as 'dialog' | 'doubleclick' | null;
+    if (storedMethod) {
+      setExitMethod(storedMethod);
+    } else {
+      // Default: dialog for desktop/electron, double-click for mobile
+      const defaultMethod = (platform === 'android' || platform === 'ios') ? 'doubleclick' : 'dialog';
+      setExitMethod(defaultMethod);
+      localStorage.setItem('exitMethod', defaultMethod);
+    }
+
+    if (platform === 'android' || platform === 'ios') {
+      // Handle hardware back button on mobile
+      backButtonListener = CapacitorApp.addListener('backButton', (data) => {
+        if (data.canGoBack) {
+          // If we can go back in the web history, do that
+          window.history.back();
+        } else {
+          // Otherwise, handle app exit
+          handleBackButton();
+        }
+      });
+    } else if (platform === 'electron') {
+      // Handle window close attempt on Electron
+      const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+        e.preventDefault();
+        handleBackButton();
+        return false;
+      };
+
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      
+      // Also listen for custom electron events if available
+      if ((window as any).electronAPI?.onAppClose) {
+        (window as any).electronAPI.onAppClose(() => {
+          handleBackButton();
+        });
+      }
+
+      return () => {
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+      };
+    } else {
+      // For web, handle the beforeunload event
+      const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+        if (showExitDialog) return; // Don't show browser dialog if our dialog is already showing
+        
+        e.preventDefault();
+        e.returnValue = ''; // This will show the browser's default confirmation dialog
+        return '';
+      };
+
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      
+      return () => {
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+      };
+    }
+
+    // Cleanup function for mobile listeners
+    return () => {
+      if (backButtonListener) {
+        backButtonListener.remove();
+      }
+      if (backPressTimeoutRef.current) {
+        clearTimeout(backPressTimeoutRef.current);
+      }
+    };
+  }, [platform, handleBackButton, showExitDialog]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900 transition-colors duration-300">
       {/* Enhanced Status bar */}
@@ -262,13 +453,20 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       
       {/* Main content with top padding for status bar */}
       <main className="pt-8 pb-20 min-h-screen">
-        <div className="container mx-auto px-4 py-6 max-w-md">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
           {children}
         </div>
       </main>
 
       {/* Bottom Navigation */}
       <BottomNavigation />
+
+      {/* Exit Confirmation Dialog */}
+      <ExitConfirmationDialog
+        isOpen={showExitDialog}
+        onConfirm={handleExitConfirm}
+        onCancel={handleExitCancel}
+      />
     </div>
   );
 };
@@ -343,7 +541,6 @@ const InvoicesWrapper = () => {
 
 const DashboardWrapper = () => {
   const { user } = useAuth();
-
 
   return <Dashboard userData = {user} />;
 };
@@ -464,9 +661,9 @@ const App: React.FC = () => {
                   });
 
                   // Update saved user data
-                  if (dbUser) {
-                    localStorage.setItem('currentUser', JSON.stringify(dbUser));
-                  }
+                  //if (dbUser) {
+                    localStorage.setItem('currentUser', JSON.stringify(firestoreUser));
+                  //}
                 }
               } catch (firestoreError) {
                 console.log('Could not check Firestore (offline mode):', firestoreError);

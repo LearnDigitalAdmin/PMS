@@ -701,19 +701,19 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
   // const canSync = userData.storage;
 
   const handleSave = async () => {
-    if (userData.storage) {
+    //if (userData.storage) {
       setLoading(true);
       await firebaseSyncService.forceUpload(userData.id);
       setLoading(false);
-    }
+    //}
   };
 
   const handleDownload = async () => {
-    if (userData.storage) {
+    //if (userData.storage) {
       setLoading(true);
       await firebaseSyncService.forceDownload(userData.id);
       setLoading(false);
-    }
+    //}
   };
 
   // Calculate enhanced metrics
@@ -967,7 +967,7 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
       <RecentActivity recentInvoices={recentInvoices} loading={loading} />
 
       {/* Quick Actions */}
-      {userData.storage && (
+      {/* {userData.storage && ( */}
         <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-6 shadow-lg border border-gray-200/50 dark:border-gray-700/50">
         <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
           <div className="p-2 rounded-xl bg-gradient-to-r from-indigo-500 to-blue-600 mr-3">
@@ -994,7 +994,7 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
           </button>
         </div>
       </div>
-      )};
+      {/* )}; */}
     </div>
   );
 };

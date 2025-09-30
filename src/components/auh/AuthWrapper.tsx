@@ -116,19 +116,39 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, [user, updateUserState]);
 
   // Password verification helper
+
   const verifyPassword = async (password: string, hash: string): Promise<boolean> => {
-    try {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(password + 'propertyflow_salt_2024');
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const passwordHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-      return passwordHash === hash;
-    } catch (error) {
-      console.error('Error verifying password:', error);
-      return false;
-    }
-  };
+  try {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password + 'propertyflow_salt_2024');
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const passwordHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    console.log('🔍 Password being verified:', password);
+    console.log('🔍 Generated hash:', passwordHash);
+    console.log('🔍 Expected hash:', hash);
+    console.log('🔍 Match:', passwordHash === hash);
+    
+    return passwordHash === hash;
+  } catch (error) {
+    console.error('Error verifying password:', error);
+    return false;
+  }
+};
+  // const verifyPassword = async (password: string, hash: string): Promise<boolean> => {
+  //   try {
+  //     const encoder = new TextEncoder();
+  //     const data = encoder.encode(password + 'propertyflow_salt_2024');
+  //     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  //     const hashArray = Array.from(new Uint8Array(hashBuffer));
+  //     const passwordHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  //     return passwordHash === hash;
+  //   } catch (error) {
+  //     console.error('Error verifying password:', error);
+  //     return false;
+  //   }
+  // };
 
   // Multi-device login helper - check Firestore for user account
   const loginFromFirestore = async (email: string, password: string): Promise<{ success: boolean; user?: any; error?: string }> => {

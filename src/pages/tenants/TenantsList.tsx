@@ -15,7 +15,7 @@ import {
   DollarSign} from 'lucide-react';
 import { database } from '../../services/database/Database';
 import type { TenantWithInvoices } from '../../services/database/Database';
-//import AddTenant from './AddTenant';
+import AddTenant from './AddTenant';
 
 interface TenantsListProps {
   propertyId: number;
@@ -30,8 +30,11 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedTenant, setExpandedTenant] = useState<number | null>(null);
-  //const [showAddTenant, setShowAddTenant] = useState(false);
   const [deletingTenant, setDeletingTenant] = useState<number | null>(null);
+  
+  // Edit tenant state
+  const [showEditTenant, setShowEditTenant] = useState(false);
+  const [editingTenant, setEditingTenant] = useState<TenantWithInvoices | null>(null);
 
   // Get current billing month
   const getCurrentBillingMonth = () => {
@@ -91,7 +94,17 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
     }
   };
 
-  //const canAddTenant = property ? property.tenants.length < property.maxUnits : false;
+  const handleEditTenant = (tenant: TenantWithInvoices) => {
+    setEditingTenant(tenant);
+    setShowEditTenant(true);
+  };
+
+  const handleEditComplete = () => {
+    setShowEditTenant(false);
+    setEditingTenant(null);
+    loadTenants();
+    onTenantAdded?.(); // Refresh parent component data
+  };
 
   const handleContactAction = (type: 'call' | 'whatsapp', phone: string) => {
     if (!phone) return;
@@ -177,13 +190,6 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
           <h3 className="text-lg sm:text-xl font-bold text-gray-900">
             Tenants ({filteredTenants.length})
           </h3>
-          {/* <button
-            onClick={() => setShowAddTenant(true)}
-            className="flex items-center justify-center gap-2 px-3 py-2 sm:px-4 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm sm:text-base"
-          >
-            <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
-            Add Tenant
-          </button> */}
         </div>
 
         {/* Search */}
@@ -215,15 +221,6 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
                 : 'Add your first tenant to get started with billing and management'
               }
             </p>
-            {/* {!searchTerm && (
-              <button
-                onClick={() => setShowAddTenant(true)}
-                className="inline-flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm sm:text-base"
-              >
-                <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
-                Add First Tenant
-              </button>
-            )} */}
           </div>
         ) : (
           <div className="space-y-3 sm:space-y-4">
@@ -383,6 +380,7 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
                     {/* Action Buttons */}
                     <div className="flex flex-wrap gap-2 mt-4 sm:mt-6 pt-3 sm:pt-4 border-t border-gray-200">
                       <button
+                        onClick={() => handleEditTenant(tenant)}
                         className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-1.5 text-xs sm:text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
                         title="Edit Tenant"
                       >
@@ -418,18 +416,18 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
         )}
       </div>
 
-      {/* Add Tenant Modal */}
-      {/* {showAddTenant && (
+      {/* Edit Tenant Modal */}
+      {showEditTenant && editingTenant && (
         <AddTenant
           propertyId={propertyId}
-          onClose={() => setShowAddTenant(false)}
-          onTenantAdded={() => {
-            setShowAddTenant(false);
-            loadTenants();
-            onTenantAdded?.(); // Refresh parent component data
+          tenant={editingTenant}
+          onClose={() => {
+            setShowEditTenant(false);
+            setEditingTenant(null);
           }}
+          onTenantAdded={handleEditComplete}
         />
-      )} */}
+      )}
     </div>
   );
 };

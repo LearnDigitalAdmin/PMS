@@ -1,16 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, User, Phone, Mail, MapPin, DollarSign, Calendar, Save, AlertCircle } from 'lucide-react';
 import { database } from '../../services/database/Database';
-import type { TenantInput } from '../../services/database/Database';
+import type { TenantInput, TenantWithInvoices } from '../../services/database/Database';
 
 interface AddTenantProps {
   propertyId: number;
+  tenant?: TenantWithInvoices; // Optional tenant for editing
   onClose: () => void;
   onTenantAdded: () => void;
 }
 
 interface FormData {
   name: string;
+  id: string;
   phone: string;
   email: string;
   unitNumber: string;
@@ -23,6 +25,8 @@ interface FormData {
 
 interface FormErrors {
   name?: string;
+  id?: string;
+  unitNumber?: string;
   rentAmount?: string;
   phone?: string;
   email?: string;
@@ -30,9 +34,12 @@ interface FormErrors {
   leaseEnd?: string;
 }
 
-const AddTenant: React.FC<AddTenantProps> = ({ propertyId, onClose, onTenantAdded }) => {
+const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTenantAdded }) => {
+  const isEditMode = !!tenant;
+  
   const [formData, setFormData] = useState<FormData>({
     name: '',
+    id: '',
     phone: '',
     email: '',
     unitNumber: '',
@@ -47,14 +54,55 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, onClose, onTenantAdde
   const [loading, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
+  // Initialize form data when tenant prop changes (for edit mode)
+  useEffect(() => {
+    if (tenant) {
+      setFormData({
+        name: tenant.name || '',
+        id: tenant.id?.toString() || '',
+        phone: tenant.phone || '',
+        email: tenant.email || '',
+        unitNumber: tenant.unitNumber || '',
+        rentAmount: tenant.rentAmount?.toString() || '',
+        standingFees: tenant.standingFees?.toString() || '',
+        depositAmount: tenant.depositAmount?.toString() || '',
+        leaseStart: tenant.leaseStart ? tenant.leaseStart.split('T')[0] : '',
+        leaseEnd: tenant.leaseEnd ? tenant.leaseEnd.split('T')[0] : ''
+      });
+    }
+  }, [tenant]);
+
   const validateForm = (): FormErrors => {
     const newErrors: FormErrors = {};
 
     // Required fields
     if (!formData.name.trim()) {
       newErrors.name = 'Tenant name is required';
-    } else if (formData.name.trim().length < 2) {
-      newErrors.name = 'Name must be at least 2 characters';
+    } else if (formData.name.trim().length < 3) {
+      newErrors.name = 'Name must be at least 3 characters';
+    }
+
+    if (!formData.id.trim()) {
+      newErrors.id = 'Tenant id is required';
+    } else if (formData.id.trim().length < 7 || formData.id.trim().length > 10) {
+      newErrors.id = 'Name must be between 7 and 10 characters';
+    }
+
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Phone number is required';
+    } else if (formData.phone.trim().length < 10 || formData.phone.trim().length > 12) {
+      newErrors.phone = 'Phone number must be between 10 and 12 characters';
+    } else {
+      const phoneRegex = parseFloat(formData.phone);
+      if (isNaN(phoneRegex)) {
+        newErrors.phone = 'Please enter a valid phone number';
+      }
+    }
+
+    if (!formData.unitNumber.trim()) {
+      newErrors.unitNumber = 'Unit number is required';
+    } else if (formData.unitNumber.trim().length < 1) {
+      newErrors.unitNumber = 'Unit number must be at least 1 character';
     }
 
     if (!formData.rentAmount.trim()) {
@@ -113,6 +161,7 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, onClose, onTenantAdde
       const tenantData: TenantInput = {
         propertyId,
         name: formData.name.trim(),
+        id: parseFloat(formData.id) || undefined,
         phone: formData.phone.trim() || undefined,
         email: formData.email.trim() || undefined,
         unitNumber: formData.unitNumber.trim() || undefined,
@@ -123,12 +172,19 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, onClose, onTenantAdde
         leaseEnd: formData.leaseEnd || undefined
       };
 
-      await database.createTenant(tenantData);
+      if (isEditMode && tenant) {
+        // Update existing tenant
+        await database.updateTenant(tenant.id, tenantData);
+      } else {
+        // Create new tenant
+        await database.createTenant(tenantData);
+      }
+      
       setHasUnsavedChanges(false);
       onTenantAdded();
     } catch (error) {
-      console.error('Error creating tenant:', error);
-      alert('Failed to create tenant. Please try again.');
+      console.error('Error saving tenant:', error);
+      alert(`Failed to ${isEditMode ? 'update' : 'create'} tenant. Please try again.`);
     } finally {
       setSaving(false);
     }
@@ -155,11 +211,13 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, onClose, onTenantAdde
   };
 
   return (
-    <div className="fixed bottom-22 inset-0 bg-white z-50 flex flex-col pb-1">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">Add New Tenant</h2>
+          <h2 className="text-xl font-semibold text-gray-900">
+            {isEditMode ? 'Edit Tenant' : 'Add New Tenant'}
+          </h2>
           <button
             onClick={handleClose}
             className="p-2 hover:bg-gray-100 rounded-full transition-colors"
@@ -196,6 +254,29 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, onClose, onTenantAdde
                     <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
                       {errors.name}
+                    </p>
+                  )}
+                </div>
+
+                {/* ID Number */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">ID/Passport Number</label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input
+                      type="number"
+                      value={formData.id}
+                      onChange={(e) => handleInputChange('id', e.target.value)}
+                      placeholder="e.g., 12345678"
+                      className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                        errors.id ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                    />
+                  </div>
+                  {errors.id && (
+                    <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.id}
                     </p>
                   )}
                 </div>
@@ -455,12 +536,12 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, onClose, onTenantAdde
             {loading ? (
               <>
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                Saving...
+                {isEditMode ? 'Updating...' : 'Saving...'}
               </>
             ) : (
               <>
                 <Save className="h-4 w-4" />
-                Add Tenant
+                {isEditMode ? 'Update Tenant' : 'Add Tenant'}
               </>
             )}
           </button>

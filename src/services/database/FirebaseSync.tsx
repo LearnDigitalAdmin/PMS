@@ -25,6 +25,7 @@ import {
 import { database } from '../database/Database';
 import { generateInvoicePDF } from '../pdf/PDFService';
 import type { User, Property, Tenant, InvoiceInput, Invoice } from '../database/Database';
+import { integrateWithFirebaseSync } from '../screening/TenantScreeningService';
 
 
 // Firebase config
@@ -181,13 +182,32 @@ export class FirebaseSyncService {
     return this.instance;
   }
 
-  // ==================== SAFE UPLOAD OPERATIONS WITH MERGE ====================
-
-  /**
-   * SAFE UPLOAD - Merges data instead of overwriting, preserves server fields
-   */
-
-  // ==================== ENHANCED DOWNLOAD WITH SEQUENTIAL PROCESSING ====================
+  async initializeForUser(userId: number): Promise<SyncStatus> {
+  console.log(`🚀 Initializing sync service for user: ${userId}`);
+  
+  try {
+    // Setup user listener for tier/permission changes
+    this.setupUserListener(userId, (user) => {
+      console.log('👤 User data updated via listener:', user.tier);
+    });
+    
+    // Start safe upload scheduling
+    this.startUploadScheduling(userId);
+    
+    // 🔍 INTEGRATE SCREENING SERVICE - ADD THIS LINE
+    integrateWithFirebaseSync(userId);
+    
+    // Perform full sync with conflict resolution and safe upload
+    const syncResult = await this.performFullSync(userId);
+    
+    console.log('✅ Sync service initialized successfully with safe sync and screening');
+    return syncResult;
+    
+  } catch (error) {
+    console.error('❌ Failed to initialize sync service:', error);
+    throw error;
+  }
+}
 
 
   // ==================== ENHANCED DOWNLOAD WITH SEQUENTIAL PROCESSING ====================
@@ -2283,29 +2303,29 @@ private async verifyLocalDataIntegrity(_userId: number): Promise<void> {
     return this.performSafeUploadSync(userId, 'manual');
   }
 
-  async initializeForUser(userId: number): Promise<SyncStatus> {
-    console.log(`🚀 Initializing sync service for user: ${userId}`);
+  // async initializeForUser(userId: number): Promise<SyncStatus> {
+  //   console.log(`🚀 Initializing sync service for user: ${userId}`);
     
-    try {
-      // Setup user listener for tier/permission changes
-      this.setupUserListener(userId, (user) => {
-        console.log('👤 User data updated via listener:', user.tier);
-      });
+  //   try {
+  //     // Setup user listener for tier/permission changes
+  //     this.setupUserListener(userId, (user) => {
+  //       console.log('👤 User data updated via listener:', user.tier);
+  //     });
       
-      // Start safe upload scheduling
-      this.startUploadScheduling(userId);
+  //     // Start safe upload scheduling
+  //     this.startUploadScheduling(userId);
       
-      // Perform full sync with conflict resolution and safe upload
-      const syncResult = await this.performFullSync(userId);
+  //     // Perform full sync with conflict resolution and safe upload
+  //     const syncResult = await this.performFullSync(userId);
       
-      console.log('✅ Sync service initialized successfully with safe sync');
-      return syncResult;
+  //     console.log('✅ Sync service initialized successfully with safe sync');
+  //     return syncResult;
       
-    } catch (error) {
-      console.error('❌ Failed to initialize sync service:', error);
-      throw error;
-    }
-  }
+  //   } catch (error) {
+  //     console.error('❌ Failed to initialize sync service:', error);
+  //     throw error;
+  //   }
+  // }
 
   cleanup(userId?: number): void {
     console.log('🧹 Cleaning up sync service');
