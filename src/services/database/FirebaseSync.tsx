@@ -182,33 +182,6 @@ export class FirebaseSyncService {
     return this.instance;
   }
 
-  async initializeForUser(userId: number): Promise<SyncStatus> {
-  console.log(`🚀 Initializing sync service for user: ${userId}`);
-  
-  try {
-    // Setup user listener for tier/permission changes
-    this.setupUserListener(userId, (user) => {
-      console.log('👤 User data updated via listener:', user.tier);
-    });
-    
-    // Start safe upload scheduling
-    this.startUploadScheduling(userId);
-    
-    // 🔍 INTEGRATE SCREENING SERVICE - ADD THIS LINE
-    integrateWithFirebaseSync(userId);
-    
-    // Perform full sync with conflict resolution and safe upload
-    const syncResult = await this.performFullSync(userId);
-    
-    console.log('✅ Sync service initialized successfully with safe sync and screening');
-    return syncResult;
-    
-  } catch (error) {
-    console.error('❌ Failed to initialize sync service:', error);
-    throw error;
-  }
-}
-
 
   // ==================== ENHANCED DOWNLOAD WITH SEQUENTIAL PROCESSING ====================
 
@@ -571,6 +544,127 @@ private async mergePropertyWithConflictResolution(userId: number, propertyData: 
   }
 }
 
+// Add this method to your FirebaseSyncService class
+
+private async waitForDatabaseReady(maxWaitMs: number = 30000): Promise<void> {
+  const startTime = Date.now();
+  const checkInterval = 200; // Check every 200ms
+  
+  console.log('⏳ Waiting for database to be ready...');
+  
+  while (Date.now() - startTime < maxWaitMs) {
+    try {
+      // Check if database is initialized and ready
+      if (!database.db) {
+        await new Promise(resolve => setTimeout(resolve, checkInterval));
+        continue;
+      }
+      
+      // Try a simple query to verify database is fully operational
+      const testResult = await database.db.query('SELECT 1 as test');
+      
+      if (testResult && testResult.values) {
+        console.log('✅ Database is ready for sync operations');
+        
+        // Additional wait to ensure all initialization is complete
+        await new Promise(resolve => setTimeout(resolve, 500));
+        return;
+      }
+    } catch (error) {
+      // Database not ready yet, continue waiting
+      await new Promise(resolve => setTimeout(resolve, checkInterval));
+    }
+  }
+  
+  throw new Error('Database failed to become ready within timeout period');
+}
+
+// Update the initializeForUser method
+async initializeForUser(userId: number): Promise<SyncStatus> {
+  console.log(`🚀 Initializing sync service for user: ${userId}`);
+  
+  try {
+    // CRITICAL: Wait for database to be fully ready before any sync operations
+    await this.waitForDatabaseReady();
+    
+    // Setup user listener for tier/permission changes
+    this.setupUserListener(userId, (user) => {
+      console.log('👤 User data updated via listener:', user.tier);
+    });
+    
+    // Start safe upload scheduling
+    this.startUploadScheduling(userId);
+    
+    // 🔍 INTEGRATE SCREENING SERVICE
+    integrateWithFirebaseSync(userId);
+    
+    // Perform full sync with conflict resolution and safe upload
+    const syncResult = await this.performFullSync(userId);
+    
+    console.log('✅ Sync service initialized successfully with safe sync and screening');
+    return syncResult;
+    
+  } catch (error) {
+    console.error('❌ Failed to initialize sync service:', error);
+    throw error;
+  }
+}
+
+// Update performDownloadSync to check database readiness
+async performDownloadSync(userId: number, source: 'signin' | 'manual' = 'manual'): Promise<SyncStatus> {
+  const lockKey = `download_${userId}`;
+  
+  if (this.isOperationLocked(lockKey)) {
+    throw new Error('Download already in progress');
+  }
+
+  console.log(`🔽 Starting DOWNLOAD sync (${source}) for user: ${userId}`);
+  
+  try {
+    await this.acquireOperationLock(lockKey);
+    
+    // CRITICAL: Ensure database is ready before any operations
+    await this.waitForDatabaseReady();
+    
+    const user = await database.getUserById(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    if (!this.canUserSync(user)) {
+      console.log('❌ User cannot sync - no storage permission');
+      return this.buildSyncStatus('No sync permission');
+    }
+
+    if (!navigator.onLine) {
+      throw new Error('No network connection available');
+    }
+
+    // Download user updates first
+    await this.downloadUserUpdates(userId);
+
+    // Download and merge all data with conflict resolution
+    await this.downloadAllDataWithConflictResolution(userId);
+
+    // Enforce tier limits after download
+    await this.enforceTierLimits(userId);
+
+    const now = new Date().toISOString();
+    localStorage.setItem(this.LAST_DOWNLOAD_KEY, now);
+    
+    console.log('✅ Download sync completed successfully');
+    
+    return this.buildSyncStatus('Download completed');
+    
+  } catch (error) {
+    console.error('❌ Download sync failed:', error);
+    throw error;
+  } finally {
+    this.releaseOperationLock(lockKey);
+  }
+}
+
+// Enhanced mergeTenantWithConflictResolution with better debugging
 private async mergeTenantWithConflictResolution(tenantData: any): Promise<void> {
   const startTime = Date.now();
   try {
@@ -590,12 +684,14 @@ private async mergeTenantWithConflictResolution(tenantData: any): Promise<void> 
         }
       } catch (error) {
         console.error(`❌ Property verification failed for tenant ${tenantData.localId}:`, error);
-        throw error; // Critical error - stop processing
+        throw error;
       }
       
       console.log(`📝 Creating tenant ${tenantData.localId} from Firestore backup`);
       
-      await database.createTenant({
+      // Create the tenant
+      const createdTenant = await database.createTenant({
+        id: tenantData.localId,
         propertyId: tenantData.propertyId,
         name: tenantData.name || 'Restored Tenant',
         phone: tenantData.phone || '',
@@ -608,13 +704,90 @@ private async mergeTenantWithConflictResolution(tenantData: any): Promise<void> 
         leaseEnd: tenantData.leaseEnd || undefined
       });
       
-      // VERIFICATION: Ensure the tenant was actually created with correct property reference
-      const verification = await database.getTenantById(tenantData.localId);
+      console.log(`✅ Tenant created, ID returned:`, createdTenant?.id);
+      
+      // ENHANCED VERIFICATION with multiple strategies
+      let verification = null;
+      const maxRetries = 5;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        const delayMs = 50 * Math.pow(2, attempt - 1);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        
+        try {
+          // Strategy 1: Try getTenantById
+          verification = await database.getTenantById(tenantData.localId);
+          
+          if (verification && verification.propertyId === tenantData.propertyId) {
+            console.log(`✅ Tenant ${tenantData.localId} verified on attempt ${attempt}`);
+            break;
+          }
+          
+          // Strategy 2: If getTenantById returns null but tenant exists, try direct query
+          if (!verification) {
+            console.log(`⏳ Attempt ${attempt}/${maxRetries}: getTenantById returned null, trying direct query...`);
+            
+            const directQuery = await database.db!.query(
+              'SELECT * FROM tenants WHERE id = ?',
+              [tenantData.localId]
+            );
+            
+            if (directQuery?.values && directQuery.values.length > 0) {
+              const foundTenants = database.mapToTenants(directQuery.values);
+              if (foundTenants.length > 0) {
+                verification = foundTenants[0];
+                console.log(`✅ Found tenant via direct query on attempt ${attempt}`);
+                break;
+              }
+            }
+          }
+          
+          console.log(`⏳ Attempt ${attempt}/${maxRetries}: Tenant not yet visible...`);
+        } catch (error) {
+          console.log(`⏳ Attempt ${attempt}/${maxRetries}: Query failed, retrying...`, error);
+        }
+      }
+      
+      // Final check and detailed debugging
       if (!verification || verification.propertyId !== tenantData.propertyId) {
-        throw new Error(`Tenant creation verification failed for ID ${tenantData.localId}`);
+        console.error(`❌ VERIFICATION FAILED for tenant ${tenantData.localId}:`);
+        console.error(`Expected propertyId: ${tenantData.propertyId}`);
+        console.error(`Found tenant:`, verification);
+        console.error(`Created tenant result:`, createdTenant);
+        
+        // Get all tenants for debugging
+        try {
+          const allTenantsQuery = await database.db!.query(
+            'SELECT id, property_id, name FROM tenants'
+          );
+          console.error(`Current tenants in database:`, allTenantsQuery?.values);
+          
+          // Check if tenant exists with different ID
+          const byPropertyQuery = await database.db!.query(
+            'SELECT * FROM tenants WHERE property_id = ?',
+            [tenantData.propertyId]
+          );
+          console.error(`Tenants for property ${tenantData.propertyId}:`, byPropertyQuery?.values);
+          
+          // Check if it's an ID mismatch issue
+          if (createdTenant && createdTenant.id !== tenantData.localId) {
+            console.error(`⚠️ ID MISMATCH: Created with ID ${createdTenant.id} but expected ${tenantData.localId}`);
+            // Try to find by the created ID
+            const byCreatedId = await database.getTenantById(createdTenant.id);
+            if (byCreatedId) {
+              console.log(`✅ Found tenant by created ID ${createdTenant.id}, considering this a success`);
+              return; // Success - tenant was created, just with different ID
+            }
+          }
+        } catch (debugError) {
+          console.error(`Could not retrieve debug information:`, debugError);
+        }
+        
+        throw new Error(`Tenant creation verification failed for ID ${tenantData.localId} after ${maxRetries} attempts`);
       }
       
       console.log(`✅ Created and verified tenant ${tenantData.localId} from Firestore`);
+      
     } else if (!localTenant.isRestricted) {
       // Conflict resolution: Use most recent data
       const serverLastModified = this.parseFirestoreTimestamp(tenantData.lastModified);
@@ -634,12 +807,6 @@ private async mergeTenantWithConflictResolution(tenantData: any): Promise<void> 
           leaseStart: tenantData.leaseStart || localTenant.leaseStart,
           leaseEnd: tenantData.leaseEnd || localTenant.leaseEnd
         });
-        
-        // VERIFICATION: Ensure update completed
-        const updated = await database.getTenantById(tenantData.localId);
-        if (!updated) {
-          console.warn(`⚠️ Tenant update verification failed for ID ${tenantData.localId}`);
-        }
       } else {
         console.log(`ℹ️ Local tenant ${tenantData.localId} is newer, keeping local data`);
       }
@@ -650,7 +817,7 @@ private async mergeTenantWithConflictResolution(tenantData: any): Promise<void> 
     
   } catch (error) {
     console.error(`❌ Failed to merge tenant ${tenantData.localId}:`, error);
-    throw error; // Re-throw to stop sequence if critical
+    throw error;
   }
 }
 
@@ -1347,55 +1514,60 @@ private async verifyLocalDataIntegrity(_userId: number): Promise<void> {
 
   // ==================== DOWNLOAD OPERATIONS (EXISTING CODE) ====================
 
-  async performDownloadSync(userId: number, source: 'signin' | 'manual' = 'manual'): Promise<SyncStatus> {
-    const lockKey = `download_${userId}`;
+  // Replace the downloadUserUpdates method in FirebaseSyncService
+
+async downloadUserUpdates(userId: number): Promise<{ tier: string; type: string; storage: boolean; company?: any } | null> {
+  try {
+    console.log('📥 Downloading user updates for userId:', userId);
     
-    if (this.isOperationLocked(lockKey)) {
-      throw new Error('Download already in progress');
-    }
-
-    console.log(`🔽 Starting DOWNLOAD sync (${source}) for user: ${userId}`);
+    const userRef = doc(db, 'users', userId.toString());
+    const userDoc = await getDoc(userRef);
     
-    try {
-      await this.acquireOperationLock(lockKey);
-      
-      const user = await database.getUserById(userId);
-      if (!user) {
-        throw new Error('User not found');
-      }
-
-      if (!this.canUserSync(user)) {
-        console.log('❌ User cannot sync - no storage permission');
-        return this.buildSyncStatus('No sync permission');
-      }
-
-      if (!navigator.onLine) {
-        throw new Error('No network connection available');
-      }
-
-      // Download user updates first
-      await this.downloadUserUpdates(userId);
-
-      // Download and merge all data with conflict resolution
-      await this.downloadAllDataWithConflictResolution(userId);
-
-      // Enforce tier limits after download
-      await this.enforceTierLimits(userId);
-
-      const now = new Date().toISOString();
-      localStorage.setItem(this.LAST_DOWNLOAD_KEY, now);
-      
-      console.log('✅ Download sync completed successfully');
-      
-      return this.buildSyncStatus('Download completed');
-      
-    } catch (error) {
-      console.error('❌ Download sync failed:', error);
-      throw error;
-    } finally {
-      this.releaseOperationLock(lockKey);
+    if (!userDoc.exists()) {
+      console.log('ℹ️ No user document found in Firestore');
+      return null;
     }
+    
+    const userData = userDoc.data();
+    if (!userData) {
+      console.warn('⚠️ Empty user data received from Firestore');
+      return null;
+    }
+    
+    console.log('✅ User document loaded from Firestore');
+    
+    // Extract and normalize the data
+    const result = {
+      tier: userData.tier || 'free',
+      type: userData.type || 'free', 
+      storage: userData.storage === true,
+      company: userData.company || undefined
+    };
+    
+    // Update local database
+    await database.updateUserTierAndType(userId, result.tier, result.type, result.storage);
+    console.log('✅ User tier and permissions updated locally:', result);
+    
+    // Update company if exists
+    if (result.company) {
+      await this.syncCompanyData(userId, result.company);
+      console.log('✅ Company data updated');
+    }
+    
+    return result;
+    
+  } catch (error: any) {
+    console.error('❌ Failed to download user updates:', error);
+    
+    if (error.code === 'permission-denied') {
+      console.warn('⚠️ Access denied - user may not have Firestore permissions');
+    } else if (error.code === 'unavailable') {
+      console.warn('⚠️ Firestore unavailable - offline mode');
+    }
+    
+    return null; // Return null on any error - app continues offline
   }
+}
 
   
 
@@ -1600,56 +1772,56 @@ private async verifyLocalDataIntegrity(_userId: number): Promise<void> {
   // ==================== EXISTING HELPER METHODS (Updated) ====================
 
   
-  async downloadUserUpdates(userId: number): Promise<{ tier: string; type: string; storage: boolean; company?: any } | null> {
-  try {
-    console.log('📥 Downloading user updates for userId:', userId);
+//   async downloadUserUpdates(userId: number): Promise<{ tier: string; type: string; storage: boolean; company?: any } | null> {
+//   try {
+//     console.log('📥 Downloading user updates for userId:', userId);
     
-    const userRef = doc(db, 'users', userId.toString());
-    const userDoc = await getDoc(userRef);
+//     const userRef = doc(db, 'users', userId.toString());
+//     const userDoc = await getDoc(userRef);
     
-    if (!userDoc.exists()) {
-      console.log('No user document found in Firestore');
-      return null;
-    }
+//     if (!userDoc.exists()) {
+//       console.log('No user document found in Firestore');
+//       return null;
+//     }
     
-    const userData = userDoc.data();
-    if (!userData) {
-      console.warn('Empty user data received from Firestore');
-      return null;
-    }
+//     const userData = userDoc.data();
+//     if (!userData) {
+//       console.warn('Empty user data received from Firestore');
+//       return null;
+//     }
     
-    console.log('✅ User document loaded from Firestore');
+//     console.log('✅ User document loaded from Firestore');
     
-    // Extract and normalize the data
-    const result = {
-      tier: userData.tier || 'free',
-      type: userData.type || 'free', 
-      storage: userData.storage === true,
-      company: userData.company || undefined
-    };
+//     // Extract and normalize the data
+//     const result = {
+//       tier: userData.tier || 'free',
+//       type: userData.type || 'free', 
+//       storage: userData.storage === true,
+//       company: userData.company || undefined
+//     };
     
-    // Update local database
-    await database.updateUserTierAndType(userId, result.tier, result.type, result.storage);
-    console.log('✅ User tier and permissions updated locally');
+//     // Update local database
+//     await database.updateUserTierAndType(userId, result.tier, result.type, result.storage);
+//     console.log('✅ User tier and permissions updated locally');
     
-    // Update company if exists
-    if (result.company) {
-      await this.syncCompanyData(userId, result.company);
-      console.log('✅ Company data updated');
-    }
+//     // Update company if exists
+//     if (result.company) {
+//       await this.syncCompanyData(userId, result.company);
+//       console.log('✅ Company data updated');
+//     }
     
-    return result;
+//     return result;
     
-  } catch (error: any) {
-    console.error('❌ Failed to download user updates:', error);
+//   } catch (error: any) {
+//     console.error('❌ Failed to download user updates:', error);
     
-    if (error.code === 'permission-denied') {
-      console.warn('Access denied - user may not have Firestore permissions');
-    }
+//     if (error.code === 'permission-denied') {
+//       console.warn('Access denied - user may not have Firestore permissions');
+//     }
     
-    return null; // Return null on any error - app continues offline
-  }
-}
+//     return null; // Return null on any error - app continues offline
+//   }
+// }
 
   private async syncCompanyData(userId: number, companyData: any): Promise<void> {
     try {

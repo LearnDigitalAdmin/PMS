@@ -490,6 +490,31 @@ export class Tables {
         UNIQUE(user_id, month, property_filter)
       )`,
 
+      // Tenant Screening Quick View Cache (NEW v1.1)
+      `CREATE TABLE IF NOT EXISTS tenant_screening_quick_view (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER UNIQUE NOT NULL,
+        tenant_name TEXT NOT NULL,
+        tenant_phone TEXT NOT NULL,
+        property_id INTEGER NOT NULL,
+        unit_number TEXT,
+        current_rent REAL NOT NULL,
+        screening_score INTEGER NOT NULL,
+        risk_level TEXT NOT NULL CHECK (risk_level IN ('low', 'medium', 'high')),
+        on_time_payment_rate REAL NOT NULL DEFAULT 0,
+        total_arrears REAL NOT NULL DEFAULT 0,
+        months_tracked INTEGER NOT NULL DEFAULT 0,
+        last_payment_status TEXT CHECK (last_payment_status IN ('early', 'on_time', 'late', 'unpaid')),
+        days_since_last_payment INTEGER,
+        early_warning_flags TEXT, -- JSON array
+        data_quality_score REAL NOT NULL DEFAULT 0,
+        recommended_action TEXT CHECK (recommended_action IN ('approve', 'conditional', 'review', 'reject')),
+        portfolio_percentile INTEGER, -- 0-100
+        last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+        FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+      )`,
+
       // Agent KPI History
       `CREATE TABLE IF NOT EXISTS agent_kpi_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -595,6 +620,12 @@ export class Tables {
       // KPI History Indexes
       'CREATE INDEX IF NOT EXISTS idx_kpi_history_user_month ON agent_kpi_history(user_id, month)',
       'CREATE INDEX IF NOT EXISTS idx_kpi_history_created_at ON agent_kpi_history(created_at)',
+
+      // Screening Quick View Indexes (NEW v1.1)
+      'CREATE INDEX IF NOT EXISTS idx_screening_quick_view_tenant ON tenant_screening_quick_view(tenant_id)',
+      'CREATE INDEX IF NOT EXISTS idx_screening_quick_view_property ON tenant_screening_quick_view(property_id)',
+      'CREATE INDEX IF NOT EXISTS idx_screening_quick_view_risk ON tenant_screening_quick_view(risk_level)',
+      'CREATE INDEX IF NOT EXISTS idx_screening_quick_view_score ON tenant_screening_quick_view(screening_score)',
 
       // NEW PERFORMANCE INDEXES
       // Composite indexes for common query patterns
