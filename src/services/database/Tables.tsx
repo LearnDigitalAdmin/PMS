@@ -492,8 +492,7 @@ export class Tables {
 
       // Tenant Screening Quick View Cache (NEW v1.1)
       `CREATE TABLE IF NOT EXISTS tenant_screening_quick_view (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        tenant_id INTEGER UNIQUE NOT NULL,
+        tenant_id INTEGER PRIMARY KEY,
         tenant_name TEXT NOT NULL,
         tenant_phone TEXT NOT NULL,
         property_id INTEGER NOT NULL,

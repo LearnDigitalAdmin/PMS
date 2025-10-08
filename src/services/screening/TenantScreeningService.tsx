@@ -1292,8 +1292,10 @@ private async calculatePortfolioBenchmarks(
 
 private async updateQuickViewCache(screeningData: ScreeningData): Promise<void> {
   try {
+    console.log('[QuickViewCache] Starting cache update for tenant:', screeningData.tenantId);
+    
     if (!database.db) {
-      console.warn('Database not initialized, skipping quick view cache update');
+      console.warn('[QuickViewCache] Database not initialized, skipping quick view cache update');
       return;
     }
     
@@ -1326,8 +1328,20 @@ private async updateQuickViewCache(screeningData: ScreeningData): Promise<void> 
       recommendedAction = 'reject';
     }
     
+    console.log('[QuickViewCache] Prepared data:', {
+      tenantId: screeningData.tenantId,
+      tenantName: screeningData.tenantName,
+      screeningScore: screeningData.calculatedMetrics.screeningScore,
+      riskLevel: screeningData.calculatedMetrics.riskLevel,
+      recommendedAction,
+      lastPaymentStatus,
+      daysSinceLastPayment,
+      totalArrears: screeningData.calculatedMetrics.totalArrearsAccumulated,
+      monthsTracked: screeningData.paymentHistory.totalMonthsTracked
+    });
+    
     // Use REPLACE to insert or update
-    await database.db.run(`
+    const result = await database.db.run(`
       REPLACE INTO tenant_screening_quick_view (
         tenant_id, tenant_name, tenant_phone, property_id, unit_number,
         current_rent, screening_score, risk_level, on_time_payment_rate,
@@ -1355,8 +1369,18 @@ private async updateQuickViewCache(screeningData: ScreeningData): Promise<void> 
       screeningData.portfolioBenchmarks?.percentileRank || null
     ]);
     
+    console.log('[QuickViewCache] ✅ Successfully updated cache:', {
+      tenantId: screeningData.tenantId,
+      rowsAffected: result.changes,
+      //...(result.lastID !== undefined ? { lastID: result.lastID } : {})
+    });
+    
   } catch (error) {
-    console.error('Failed to update quick view cache:', error);
+    console.error('[QuickViewCache] ❌ Failed to update quick view cache:', {
+      tenantId: screeningData.tenantId,
+      error: error instanceof Error ? error.message : error,
+      stack: error instanceof Error ? error.stack : undefined
+    });
     // Don't throw - this is just caching, shouldn't fail the main operation
   }
 }
