@@ -138,18 +138,24 @@ export class FirebaseSyncService {
 
   // ==================== SIMPLIFIED DOWNLOAD - PARALLEL + ORPHAN CLEANUP ====================
 
+  // ==================== SIMPLIFIED DOWNLOAD - SEQUENTIAL + ORPHAN CLEANUP ====================
+
   private async downloadAllData(userId: number): Promise<void> {
-    console.log('📥 Starting PARALLEL download...');
+    console.log('📥 Starting SEQUENTIAL download...');
     
     try {
-      // Download everything in parallel - let the database handle relationships
-      const [propertiesResult, tenantsResult, invoicesResult] = await Promise.all([
-        this.downloadProperties(userId),
-        this.downloadTenants(userId),
-        this.downloadInvoices(userId)
-      ]);
-
-      console.log(`✅ Downloaded: ${propertiesResult} properties, ${tenantsResult} tenants, ${invoicesResult} invoices`);
+      // Download in order to maintain referential integrity
+      // 1. Properties first (no dependencies)
+      const propertiesResult = await this.downloadProperties(userId);
+      console.log(`✅ Downloaded ${propertiesResult} properties`);
+      
+      // 2. Tenants second (depend on properties)
+      const tenantsResult = await this.downloadTenants(userId);
+      console.log(`✅ Downloaded ${tenantsResult} tenants`);
+      
+      // 3. Invoices last (depend on tenants and properties)
+      const invoicesResult = await this.downloadInvoices(userId);
+      console.log(`✅ Downloaded ${invoicesResult} invoices`);
 
       // Clean up orphans after download
       await this.purgeOrphans(userId);

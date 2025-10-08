@@ -215,6 +215,8 @@ export interface InvoiceInput {
   otherChargesDescription?: string;
   dueDate?: string;
   isPaid?: string;
+  invoiceNumber?: string;
+  totalAmount?: number;
 }
 
 export interface Payment {
@@ -1323,6 +1325,7 @@ async getInvoices(filters: InvoiceFilters = {}): Promise<InvoiceWithDetails[]> {
 
 async getDashboardData(userId: number, propertyId?: number, month?: string): Promise<DashboardData> {
   try {
+    
     // Build the base query
     let query = `
       SELECT 
@@ -1331,14 +1334,14 @@ async getDashboardData(userId: number, propertyId?: number, month?: string): Pro
         SUM(CASE WHEN i.is_paid = 1 AND t.is_restricted = 0 THEN i.total_amount ELSE 0 END) as monthly_revenue,
         SUM(CASE WHEN t.is_restricted = 0 THEN i.arrears ELSE 0 END) as total_arrears,
         COUNT(CASE WHEN i.is_paid = 1 AND t.is_restricted = 0 THEN 1 END) as paid_invoices,
-        COUNT(CASE WHEN i.is_paid = 0 AND t.is_restricted = 0 THEN 1 END) as unpaid_invoices,
+        COUNT(CASE WHEN t.is_restricted = 0 THEN 1 END) as unpaid_invoices,
         COUNT(CASE WHEN t.is_active = 1 AND t.is_restricted = 0 THEN 1 END) as active_tenants,
         SUM(CASE WHEN p.is_restricted = 0 THEN p.max_units ELSE 0 END) as total_max_units
       FROM properties p
       LEFT JOIN tenants t ON p.id = t.property_id
       LEFT JOIN invoices i ON t.id = i.tenant_id`;
 
-    // Add month filter to JOIN condition if specified
+    // Add month filter to JOIN condition if specifiedi.is_paid = 0 AND 
     if (month) {
       query = query.replace(
         'LEFT JOIN invoices i ON t.id = i.tenant_id',
@@ -1351,6 +1354,7 @@ async getDashboardData(userId: number, propertyId?: number, month?: string): Pro
 
     // Add property filter if specified
     if (propertyId) {
+      //const propertyData = await this.getPropertyById(propertyId);
       query += ` AND p.id = ?`;
     }
 
@@ -1381,6 +1385,7 @@ async getDashboardData(userId: number, propertyId?: number, month?: string): Pro
     // Calculate occupancy rate based on max_units
     const activeTenants = row.active_tenants || 0;
     const totalMaxUnits = row.total_max_units || 0;
+    //const occupancyRate = propertyData.maxUnits > 0 ? (occupiedUnits / propertyData.maxUnits) * 100 : 0;
     const occupancyRate = totalMaxUnits > 0 ? (activeTenants / totalMaxUnits) * 100 : 0;
 
     return {
@@ -1390,7 +1395,7 @@ async getDashboardData(userId: number, propertyId?: number, month?: string): Pro
       totalArrears: totalArrears,
       paidInvoices: row.paid_invoices || 0,
       unpaidInvoices: row.unpaid_invoices || 0,
-      occupancyRate: Math.round(occupancyRate * 100) / 100 // Round to 2 decimal places
+      occupancyRate: occupancyRate,// Round to 2 decimal places
     };
   } catch (error) {
     console.error('Error getting dashboard data:', error);
@@ -1554,7 +1559,7 @@ async createInvoice(invoice: InvoiceInput): Promise<Invoice> {
     invoiceId,
     invoice.tenantId,
     invoice.propertyId,
-    invoiceNumber,
+    invoice.invoiceNumber || invoiceNumber,
     invoice.billingMonth,
     invoice.rentAmount,
     invoice.waterCurrentReading || 0,
@@ -1566,7 +1571,7 @@ async createInvoice(invoice: InvoiceInput): Promise<Invoice> {
     invoice.powerUnitPrice || 0,
     invoice.otherCharges || 0,
     invoice.otherChargesDescription || '',
-    totalAmount,
+    invoice.totalAmount || totalAmount,
     invoice.dueDate || null,
     invoice.isPaid
   ]);

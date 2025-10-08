@@ -617,7 +617,7 @@ const App: React.FC = () => {
       try {
         // STEP 1: Initialize database FIRST and WAIT for completion
         console.log('📊 Step 1/3: Initializing database...');
-        await database.initializeDatabase();
+        //await database.initializeDatabase();
         console.log('✅ Database initialized');
         
         // STEP 2: Wait for database to settle

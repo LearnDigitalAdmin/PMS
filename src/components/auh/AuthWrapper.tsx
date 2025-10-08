@@ -607,7 +607,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           } catch (error) {
             console.error('Background data replacement failed:', error);
           }
-        }, 2000);
+        }, 10000);
       }
 
       console.log('Firestore login completed - local data will be replaced');

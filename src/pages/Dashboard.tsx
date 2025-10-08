@@ -429,7 +429,7 @@ const PaymentStatusChart: React.FC<{
     );
   }
 
-  const total = paidCount + unpaidCount;
+  const total = unpaidCount;
   const paidPercentage = total > 0 ? (paidCount / total) * 100 : 0;
   
   const pieData = [
