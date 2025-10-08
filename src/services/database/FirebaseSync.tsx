@@ -396,11 +396,12 @@ export class FirebaseSyncService {
         });
         
         // Restore payment data
-        if (data.amountPaid !== undefined || data.arrears !== undefined) {
-          await database.db!.run(
-            `UPDATE invoices SET amount_paid = ?, arrears = ?, paid_date = ?, is_paid = ? WHERE id = ?`,
-            [data.amountPaid, data.arrears, data.paidDate, data.isPaid, data.localId]
-          );
+        if (data.amountPaid > 0 || data.arrears > 0) {
+          await database.markInvoicePaid(data.localId, data.amountPaid, data.arrears);
+          // await database.db!.run(
+          //   `UPDATE invoices SET amount_paid = ?, arrears = ?, paid_date = ?, is_paid = ? WHERE id = ?`,
+          //   [data.amountPaid, data.arrears, data.paidDate, data.isPaid, data.localId]
+          // );
         }
       } else if (this.isNewer(data.lastModified, local.updatedAt)) {
         await database.updateInvoice(data.localId, {
@@ -419,11 +420,12 @@ export class FirebaseSyncService {
         });
         
         // Always sync payment data from server (authoritative)
-        if (data.amountPaid !== undefined || data.arrears !== undefined) {
-          await database.db!.run(
-            `UPDATE invoices SET amount_paid = ?, arrears = ?, paid_date = ?, is_paid = ? WHERE id = ?`,
-            [data.amountPaid, data.arrears, data.paidDate, data.isPaid, data.localId]
-          );
+        if (data.amountPaid > 0 || data.arrears > 0) {
+          await database.markInvoicePaid(data.localId, data.amountPaid, data.arrears);
+          // await database.db!.run(
+          //   `UPDATE invoices SET amount_paid = ?, arrears = ?, paid_date = ?, is_paid = ? WHERE id = ?`,
+          //   [data.amountPaid, data.arrears, data.paidDate, data.isPaid, data.localId]
+          // );
         }
       }
     } catch (error) {

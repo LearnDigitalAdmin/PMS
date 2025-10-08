@@ -203,7 +203,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   // Create/Update local user from Firestore data - COMPLETE REPLACEMENT
-  const createLocalUserFromFirestore = async (firestoreUser: any): Promise<User | null> => {
+  const createLocalUserFromFirestore = async (firestoreUser: any, password: string): Promise<User | null> => {
     try {
       console.log('Creating/updating local user from Firestore data - COMPLETE REPLACEMENT');
       
@@ -272,7 +272,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           name: firestoreUser.name,
           email: firestoreUser.email,
           phone: firestoreUser.phone || 0,
-          password: 'FIRESTORE_SYNCED', // Placeholder - will be overwritten
+          password: password, 
           type: firestoreUser.type || 'free',
           tier: firestoreUser.tier || 'free'
         },
@@ -572,7 +572,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('FIRESTORE LOGIN SUCCESS - Will REPLACE all local data');
       
       // Step 3: Create/update local user from Firestore data - COMPLETE REPLACEMENT
-      const localUser = await createLocalUserFromFirestore(firestoreResult.user!);
+      const localUser = await createLocalUserFromFirestore(firestoreResult.user!, password);
       if (!localUser) {
         return { success: false, error: 'Failed to create local account' };
       }
