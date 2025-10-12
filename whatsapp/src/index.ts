@@ -1,9 +1,10 @@
 // functions/src/index.ts - TypeScript Version with South Africa Region
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { onRequest } from 'firebase-functions/v2/https';
+import { CallableRequest, HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import * as admin from 'firebase-admin';
 import axios from 'axios';
 import crypto from 'crypto';
 
@@ -12,6 +13,9 @@ if (getApps().length === 0) {
     initializeApp();
 }
 const db = getFirestore();
+
+const PAYSTACK_SECRET_KEY = "sk_live_85e131b71617b25498db9283081a5ba17fef296c";
+const PAYSTACK_API_BASE = "https://api.paystack.co";
 
 // Configuration - Replace with your actual values
 const WHATSAPP_CONFIG = {
@@ -26,6 +30,7 @@ const TEMPLATES = {
     NEW_INVOICE: 'invoice',
     OVERDUE: 'payment_overdue_1',
     PAYMENT_SUCCESS: 'payment_confirmation_2',
+    SUBSCRIPTION: 'subscription',
     APP_CONSENT: 'app_consent', // New template for consent
 };
 
@@ -59,6 +64,449 @@ const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
 //         }
 //     }
 // }, 60 * 60 * 1000);
+interface ProcessWebSubscriptionRequest {
+  userId: string;
+  userName: string;
+  email: string;
+  phone: string;
+  planId: string;
+  planName: string;
+  billingCycle: 'monthly' | 'annual';
+  amount: number;
+  daysToAdd: number;
+}
+
+
+async function sendWhatsAppReminder(phone: string, daysLeft: number, planName: string) {
+  try {
+    const formattedPhone = phone.startsWith('254') ? phone : '254' + phone.replace(/^0/, '');
+    
+    const url = `${WHATSAPP_CONFIG.BASE_URL}/${WHATSAPP_CONFIG.VERSION}/${WHATSAPP_CONFIG.PHONE_NUMBER_ID}/messages`;
+    
+    const payload = {
+      messaging_product: "whatsapp",
+      to: formattedPhone,
+      type: "template",
+      template: {
+        name: TEMPLATES.SUBSCRIPTION,
+        language: {
+          code: "en"
+        },
+        components: [
+          {
+            type: "body",
+            parameters: [
+              {
+                type: "text",
+                text: daysLeft.toString()
+              },
+              {
+                type: "text",
+                text: planName
+              }
+            ]
+          }
+        ]
+      }
+    };
+
+    await axios.post(url, payload, {
+      headers: {
+        'Authorization': `Bearer ${WHATSAPP_CONFIG.ACCESS_TOKEN}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log(`WhatsApp reminder sent to ${phone}: ${daysLeft} days left`);
+  } catch (error: any) {
+    console.error('Failed to send WhatsApp reminder:', error.response?.data || error.message);
+  }
+}
+
+export const processWebSubscription = onCall({
+  timeoutSeconds: 60,
+  memory: "512MiB",
+  maxInstances: 10,
+  region: "africa-south1",
+  cors: true,
+}, async (request: CallableRequest<ProcessWebSubscriptionRequest>) => {
+  try {
+    //const paystackHeaders = getPaystackHeaders();
+    
+    const { userId, userName, email, phone, planId, planName, billingCycle, amount, daysToAdd } = request.data;
+
+    if (!userId || !userName || !email || !phone || !planId || !planName || !amount) {
+      throw new HttpsError(
+        "invalid-argument",
+        "All fields are required"
+      );
+    }
+
+    console.log(`Processing web subscription for user ${userId}, plan ${planId}, amount ${amount}`);
+
+    let formattedPhone = phone.replace(/[\s-]/g, '');
+    
+    if (formattedPhone.startsWith('+254')) {
+      formattedPhone = formattedPhone;
+    } else if (formattedPhone.startsWith('254')) {
+      formattedPhone = '+' + formattedPhone;
+    } else if (formattedPhone.startsWith('0')) {
+      formattedPhone = '+254' + formattedPhone.substring(1);
+    } else if (formattedPhone.startsWith('7') || formattedPhone.startsWith('1')) {
+      formattedPhone = '+254' + formattedPhone;
+    }
+    
+    console.log(`Formatted phone for M-Pesa: ${phone} -> ${formattedPhone}`);
+
+    const amountInCents = Math.round(amount * 100);
+
+    const chargePayload = {
+      email: email,
+      amount: amountInCents,
+      currency: "KES",
+      mobile_money: {
+        phone: formattedPhone,
+        provider: "mpesa",
+      },
+      reference: `SUB_${userId}_${planId}_${Date.now()}`,
+      metadata: {
+        userId: userId,
+        userName: userName,
+        planId: planId,
+        planName: planName,
+        billingCycle: billingCycle,
+        daysToAdd: daysToAdd,
+        originalAmount: amount,
+        subscriptionType: 'web'
+      },
+    };
+
+    console.log('Paystack charge request:', JSON.stringify(chargePayload, null, 2));
+
+    const paystackResponse = await axios.post(
+      `${PAYSTACK_API_BASE}/charge`,
+      chargePayload,
+      { headers: {
+        Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+        "Content-Type": "application/json"
+        }}
+    );
+
+    console.log('Paystack response:', JSON.stringify(paystackResponse.data, null, 2));
+
+    if (!paystackResponse.data.status) {
+      throw new HttpsError(
+        "internal",
+        `Paystack API error: ${paystackResponse.data.message}`
+      );
+    }
+
+    const transactionData = paystackResponse.data.data;
+
+    console.log(`Subscription payment initiated: ${transactionData.reference}, status: ${transactionData.status}`);
+
+    const subscriptionRecord = {
+      userId: userId,
+      userName: userName,
+      email: email,
+      phone: formattedPhone,
+      planId: planId,
+      planName: planName,
+      billingCycle: billingCycle,
+      amount: amount,
+      daysToAdd: daysToAdd,
+      reference: transactionData.reference,
+      status: "pending",
+      displayText: transactionData.display_text,
+      accountReference: transactionData.account_reference,
+      initiatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      expiryDate: null,
+      remindersSent: {
+        day0: false,
+        day2: false,
+        day5: false
+      }
+    };
+
+    await db.collection("subscriptions").doc(transactionData.reference).set(subscriptionRecord);
+
+    await db.collection("users").doc(userId).set({
+      lastSubscriptionAttempt: admin.firestore.FieldValue.serverTimestamp(),
+      lastSubscriptionReference: transactionData.reference
+    }, { merge: true });
+
+    return {
+      success: true,
+      message: "Payment initialized successfully",
+      data: {
+        reference: transactionData.reference,
+        status: transactionData.status,
+        displayText: transactionData.display_text || "Check your phone for the M-Pesa prompt",
+        accountReference: transactionData.account_reference,
+      },
+    };
+  } catch (error: any) {
+    console.error("Error in processWebSubscription:", error);
+    
+    if (error.response) {
+      console.error("Paystack error response:", {
+        status: error.response.status,
+        data: JSON.stringify(error.response.data, null, 2),
+      });
+    }
+
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+
+    const errorMessage = error.response?.data?.message || error.message;
+    throw new HttpsError(
+      "internal",
+      `Failed to process subscription: ${errorMessage}`
+    );
+  }
+});
+
+export const paystackWebhook = onCall({
+  timeoutSeconds: 60,
+  memory: "512MiB",
+  cors: false,
+  maxInstances: 10,
+  region: "africa-south1",
+}, async (request: any) => {
+  console.log(`Webhook request received`);
+  
+  try {
+    const hash = request.headers?.["x-paystack-signature"]?.toString();
+    const body = JSON.stringify(request.data);
+
+    const expectedHash = crypto
+      .createHmac("sha512", PAYSTACK_SECRET_KEY)
+      .update(body)
+      .digest("hex");
+      
+    if (hash !== expectedHash) {
+      console.error("Invalid signature");
+      throw new HttpsError("permission-denied", "Invalid signature");
+    }
+
+    const event = request.data;
+
+    console.log(`Received webhook event: ${event.event}`);
+
+    if (event.event === "charge.success") {
+      const data = event.data;
+      const reference = data.reference;
+      const metadata = data.metadata;
+
+      console.log(`Processing successful subscription payment: ${reference}`);
+
+      const subscriptionRef = db.collection("subscriptions").doc(reference);
+      const subscriptionDoc = await subscriptionRef.get();
+
+      if (!subscriptionDoc.exists) {
+        console.error(`Subscription not found: ${reference}`);
+        throw new HttpsError("not-found", "Subscription not found");
+      }
+
+      const subscriptionData = subscriptionDoc.data();
+      const userId = metadata.userId || subscriptionData?.userId;
+      const planId = metadata.planId || subscriptionData?.planId;
+      const planName = metadata.planName || subscriptionData?.planName;
+      const daysToAdd = metadata.daysToAdd || subscriptionData?.daysToAdd || 30;
+
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + daysToAdd);
+
+      await subscriptionRef.update({
+        status: "success",
+        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+        expiryDate: admin.firestore.Timestamp.fromDate(expiryDate),
+        paystackResponse: data,
+      });
+
+      const userRef = db.collection("users").doc(userId);
+      await userRef.set({
+        type: "paid",
+        tier: planId,
+        storage: true,
+        subscriptionExpiry: admin.firestore.Timestamp.fromDate(expiryDate),
+        lastPaymentDate: admin.firestore.FieldValue.serverTimestamp(),
+        lastPaymentReference: reference,
+        lastPaymentAmount: data.amount / 100,
+        planName: planName
+      }, { merge: true });
+
+      console.log(`Successfully activated subscription for user ${userId}, expires: ${expiryDate.toISOString()}`);
+    }
+
+    if (event.event === "charge.failed") {
+      const data = event.data;
+      const reference = data.reference;
+
+      console.warn(`Subscription payment failed: ${reference}`);
+
+      await db.collection("subscriptions").doc(reference).update({
+        status: "failed",
+        failedAt: admin.firestore.FieldValue.serverTimestamp(),
+        failureReason: data.gateway_response,
+      });
+    }
+
+    return { 
+      received: true,
+      processed: true,
+      eventType: event.event 
+    };
+  } catch (error: any) {
+    console.error("Error in paystackWebhook:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+export const checkExpiredSubscriptions = onSchedule(
+  {
+    schedule: "0 8 * * 1",
+    timeZone: "Africa/Nairobi",
+    region: "us-central1",
+    //memory: "512MiB",
+  },
+  async (event) => {
+    console.log("Running weekly subscription expiry check...");
+
+    try {
+      const now = admin.firestore.Timestamp.now();
+      
+      const usersSnapshot = await db.collection("users")
+        .where("type", "==", "paid")
+        .where("subscriptionExpiry", "<=", now)
+        .get();
+
+      console.log(`Found ${usersSnapshot.size} expired subscriptions`);
+
+      const batch = db.batch();
+      
+      usersSnapshot.forEach((doc) => {
+        const userRef = db.collection("users").doc(doc.id);
+        batch.update(userRef, {
+          type: "free",
+          tier: "free",
+          storage: false,
+          subscriptionExpiredAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      });
+
+      await batch.commit();
+
+      console.log(`Successfully reset ${usersSnapshot.size} expired subscriptions`);
+
+      // Do not return an object, just return void
+      return;
+    } catch (error: any) {
+      console.error("Error in checkExpiredSubscriptions:", error);
+      throw error;
+    }
+  }
+);
+
+export const sendSubscriptionReminders = onSchedule(
+  {
+    schedule: "0 9 * * *",
+    timeZone: "Africa/Nairobi",
+    region: "us-central1",
+    //memory: "512MiB",
+  },
+  async (event) => {
+    console.log("Running daily subscription reminder check...");
+
+    try {
+      const now = new Date();
+      
+      const check0Days = new Date(now);
+      check0Days.setDate(check0Days.getDate());
+      //const check0DaysTimestamp = admin.firestore.Timestamp.fromDate(check0Days);
+      
+      const check2Days = new Date(now);
+      check2Days.setDate(check2Days.getDate() + 2);
+      //const check2DaysTimestamp = admin.firestore.Timestamp.fromDate(check2Days);
+      
+      const check5Days = new Date(now);
+      check5Days.setDate(check5Days.getDate() + 5);
+      //const check5DaysTimestamp = admin.firestore.Timestamp.fromDate(check5Days);
+
+      const usersSnapshot = await db.collection("users")
+        .where("type", "==", "paid")
+        .get();
+
+      console.log(`Checking ${usersSnapshot.size} paid users for reminders`);
+
+      let remindersSent = 0;
+
+      for (const userDoc of usersSnapshot.docs) {
+        const userData = userDoc.data();
+        const expiryDate = userData.subscriptionExpiry;
+        
+        if (!expiryDate) continue;
+
+        const userId = userDoc.id;
+        const phone = userData.phone;
+        const planName = userData.planName || userData.tier || 'your plan';
+
+        if (!phone) {
+          console.log(`User ${userId} has no phone number, skipping`);
+          continue;
+        }
+
+        const subscriptionRef = db.collection("subscriptions")
+          .where("userId", "==", userId)
+          .where("status", "==", "success")
+          .orderBy("completedAt", "desc")
+          .limit(1);
+        
+        const subscriptionSnapshot = await subscriptionRef.get();
+        
+        if (subscriptionSnapshot.empty) continue;
+
+        const subscriptionDoc = subscriptionSnapshot.docs[0];
+        const subscriptionData = subscriptionDoc.data();
+        let remindersSentFlags = subscriptionData.remindersSent || { day0: false, day2: false, day5: false };
+
+        const expiryTimestamp = expiryDate.toDate();
+        const daysUntilExpiry = Math.ceil((expiryTimestamp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+        if (daysUntilExpiry <= 0 && !remindersSentFlags.day0) {
+          await sendWhatsAppReminder(phone, 0, planName);
+          await db.collection("subscriptions").doc(subscriptionDoc.id).update({
+            "remindersSent.day0": true
+          });
+          remindersSent++;
+        }
+        else if (daysUntilExpiry <= 2 && !remindersSentFlags.day2) {
+          await sendWhatsAppReminder(phone, 2, planName);
+          await db.collection("subscriptions").doc(subscriptionDoc.id).update({
+            "remindersSent.day2": true
+          });
+          remindersSent++;
+        }
+        else if (daysUntilExpiry <= 5 && !remindersSentFlags.day5) {
+          await sendWhatsAppReminder(phone, 5, planName);
+          await db.collection("subscriptions").doc(subscriptionDoc.id).update({
+            "remindersSent.day5": true
+          });
+          remindersSent++;
+        }
+      }
+
+      console.log(`Successfully sent ${remindersSent} reminders`);
+
+      // Do not return an object, just return void
+      return;
+    } catch (error: any) {
+      console.error("Error in sendSubscriptionReminders:", error);
+      throw error;
+    }
+  }
+);
 
 // Rate limiting function
 function checkRateLimit(identifier: string): boolean {
@@ -1180,7 +1628,7 @@ export const checkOverdueInvoices = onSchedule({
     schedule: '0 9 * * *',
     timeZone: 'Africa/Nairobi',
     region: 'us-central1'
-}, async (event) => {
+}, async () => {
     console.log('Starting daily overdue check with flattened structure in South Africa...');
     
     try {

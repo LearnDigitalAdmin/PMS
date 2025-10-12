@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Building, Eye, EyeOff, User, Mail, Phone, Lock, Briefcase, MapPin, CheckCircle, Wifi, WifiOff } from 'lucide-react';
+import { Building, Eye, EyeOff, User, Mail, Phone, Lock, Briefcase, MapPin, CheckCircle, Wifi, WifiOff, IdCard } from 'lucide-react';
 import { database } from '../../services/database/Database';
 import { useAuth, createUserWithFirebaseAuth } from './AuthWrapper';
 import PricingModal from '../ui/PricingPage';
@@ -16,6 +16,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
     name: '',
     email: '',
     phone: 0, // Keep as number for database compatibility
+    id: 0,
     password: '',
     confirmPassword: '',
     // Company details
@@ -46,7 +47,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
   }, []);
 
   const validateStep1 = () => {
-    if (!formData.name || !formData.email || !formData.phone || !formData.password || !formData.confirmPassword) {
+    if (!formData.name || !formData.email || !formData.id || !formData.phone || !formData.password || !formData.confirmPassword) {
       setError('Please fill in all required fields');
       return false;
     }
@@ -65,6 +66,11 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
     
     if (formData.password.length < 6) {
       setError('Password must be at least 6 characters long');
+      return false;
+    }
+
+    if (formData.id.toString().length < 7 || formData.id.toString().length > 10) {
+      setError('Please enter a valid National ID number');
       return false;
     }
     
@@ -117,7 +123,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
       console.log('📝 Creating local user account...');
       const localUserResult = await database.createUserWithCompany({
         user: {
-          id: formData.phone, // Number as expected by database
+          id: formData.id, // Number as expected by database
           name: formData.name,
           email: formData.email,
           phone: formData.phone, // Number as expected by database
@@ -139,7 +145,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
         formData.email,
         formData.password,
         {
-          localId: formData.phone,
+          localId: formData.id,
           name: formData.name,
           phone: formData.phone.toString(),
           tier: localUserResult.user.tier || 'free',
@@ -318,6 +324,30 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
                       }}
                       className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
                       placeholder="Enter your phone number"
+                      minLength={9}
+                      maxLength={13}
+                    />
+                  </div>
+                </div>
+
+                <div >
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    National ID Number *
+                  </label>
+                  <div className="relative">
+                    <IdCard className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="number"
+                      value={formData.id || ''} // Display empty string if phone is 0
+                      onChange={(e) => {
+                        // Only allow numeric input and convert to number
+                        const value = e.target.value.replace(/\D/g, '');
+                        setFormData({ ...formData, id: value ? parseInt(value, 10) : 0 });
+                      }}
+                      className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                      placeholder="Enter your national ID number"
+                      minLength={7}
+                      maxLength={10}
                     />
                   </div>
                   <p className="mt-1 text-xs text-gray-500">Used as your unique account ID</p>
@@ -480,7 +510,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
               </div>
             )}
 
-            <div className="mt-8 text-center">
+            <div className="mt-8 text-center space-y-4">
               <p className="text-gray-600">
                 Already have an account?{' '}
                 <button
@@ -490,12 +520,26 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
                   Sign in instead
                 </button>
               </p>
-              <p className="mt-4 text-xs text-gray-500">
+              
+              <p className="text-xs text-gray-500">
                 By creating an account, you agree to our Terms of Service and Privacy Policy
               </p>
-              <span className="block mt-2 text-xs text-red-600 font-medium">
-                Powered by: SMB KENYA LTD and Cogvana Technologies
-              </span>
+              
+              <div className="pt-2 border-t border-gray-100">
+                <a 
+                  href="https://cogvana.co.ke/"
+                  className="inline-block text-xs text-gray-600 hover:text-purple-600 font-medium transition-colors"
+                >
+                  Powered by: SMB KENYA LTD and Cogvana Technologies
+                </a>
+                
+                <a 
+                  href="https://admin.cogvana.co.ke/"
+                  className="block mt-2 text-xs text-purple-600 hover:text-purple-700 font-medium transition-colors"
+                >
+                  Use website →
+                </a>
+              </div>
             </div>
           </div>
         </div>
