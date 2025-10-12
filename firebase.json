@@ -14,5 +14,22 @@
         "npm --prefix \"$RESOURCE_DIR\" run build"
       ]
     }
+  ],
+  "hosting": [
+    {
+      "site": "admin-x1",
+      "public": "dist",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    }
   ]
 }

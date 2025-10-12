@@ -13,7 +13,8 @@ import {
   orderBy,
   onSnapshot,
   type Unsubscribe,
-  Timestamp
+  Timestamp,
+  where
 } from 'firebase/firestore';
 import { 
   getStorage, 
@@ -128,6 +129,269 @@ export class FirebaseSyncService {
   private readonly LAST_UPLOAD_KEY = 'lastUploadTime';
   private readonly LAST_DOWNLOAD_KEY = 'lastDownloadTime';
   private readonly UPLOAD_SCHEDULE_KEY = 'uploadScheduleEnabled';
+
+  // Add these methods to FirebaseSyncService class
+
+// ==================== TRANSACTION LISTENER ====================
+
+private transactionListeners = new Map<number, Unsubscribe>();
+
+/**
+ * Sets up a real-time listener for transactions where agentId matches userId
+ * Automatically updates invoices when transaction status changes to SUCCESS
+ */
+setupTransactionListener(userId: number): void {
+  const existing = this.transactionListeners.get(userId);
+  if (existing) existing();
+
+  console.log(`🔔 Setting up transaction listener for user ${userId}`);
+
+  const unsubscribe = onSnapshot(
+    query(
+      collection(db, 'transactions'),
+      where('agentId', '==', userId.toString())
+    ),
+    async (snapshot) => {
+      if (snapshot.empty) return;
+
+      const changes = snapshot.docChanges();
+      let hasUpdates = false;
+
+      for (const change of changes) {
+        if (change.type === 'added' || change.type === 'modified') {
+          const data = change.doc.data();
+          
+          // Only process SUCCESS transactions
+          if (data.status === 'success' && data.invoiceId) {
+            try {
+              await this.processSuccessfulTransaction(userId, data);
+              hasUpdates = true;
+            } catch (error) {
+              console.error(`❌ Failed to process transaction ${change.doc.id}:`, error);
+            }
+          }
+        }
+      }
+
+      // Trigger upload if any invoices were updated
+      if (hasUpdates && navigator.onLine) {
+        try {
+          console.log('📤 Triggering upload after transaction update...');
+          await this.performSafeUploadSync(userId, 'manual');
+        } catch (error) {
+          console.error('❌ Post-transaction upload failed:', error);
+        }
+      }
+    },
+    (error) => {
+      console.error('❌ Transaction listener error:', error);
+    }
+  );
+
+  this.transactionListeners.set(userId, unsubscribe);
+}
+
+/**
+ * Processes a successful transaction and updates the corresponding invoice
+ */
+private async processSuccessfulTransaction(userId: number, data: any): Promise<void> {
+  try {
+    const invoiceId = parseInt(data.invoiceId);
+    if (isNaN(invoiceId)) {
+      console.warn(`⚠️ Invalid invoiceId: ${data.invoiceId}`);
+      return;
+    }
+
+    // Verify invoice exists and belongs to user
+    const invoice = await database.getInvoiceById(invoiceId);
+    if (!invoice) {
+      console.warn(`⚠️ Invoice ${invoiceId} not found`);
+      return;
+    }
+
+    const tenant = await database.getTenantById(invoice.tenantId);
+    if (!tenant) {
+      console.warn(`⚠️ Invoice ${invoiceId} does not belong to user ${userId}`);
+      return;
+    }
+
+    const amount = typeof data.amount === 'number' ? data.amount : 0;
+    const arrears = typeof data.arrears === 'number' ? data.arrears : 0;
+    
+    // Convert completedAt timestamp
+    let paidDate = null;
+    if (data.completedAt) {
+      if (typeof data.completedAt === 'number') {
+        // Firestore timestamp in milliseconds
+        paidDate = new Date(data.completedAt).toISOString().split('T')[0];
+      } else if (data.completedAt.seconds) {
+        // Firestore Timestamp object
+        paidDate = new Date(data.completedAt.seconds * 1000).toISOString().split('T')[0];
+      } else if (typeof data.completedAt === 'string') {
+        paidDate = new Date(data.completedAt).toISOString().split('T')[0];
+      }
+    }
+
+    // Calculate if invoice is fully paid
+    const totalAmount = invoice.totalAmount || 0;
+    const isPaid = (amount >= (totalAmount * 0.40)) ? 1 : 0;
+
+    // Update invoice in SQLite
+    await database.db!.run(
+      `UPDATE invoices 
+       SET amount_paid = ?, arrears = ?, paid_date = ?, is_paid = ? 
+       WHERE id = ?`,
+      [amount, arrears, paidDate, isPaid, invoiceId]
+    );
+
+    console.log(`✅ Invoice ${invoiceId} updated from transaction (Amount: ${amount}, Arrears: ${arrears}, Paid: ${isPaid === 1})`);
+
+  } catch (error) {
+    console.error('❌ Transaction processing failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Syncs all pending successful transactions (for offline recovery)
+ * Call this when user comes back online or during initialization
+ */
+private async syncPendingTransactions(userId: number): Promise<number> {
+  console.log('🔄 Syncing pending transactions...');
+  
+  try {
+    const snapshot = await getDocs(
+      query(
+        collection(db, 'transactions'),
+        where('agentId', '==', userId.toString()),
+        where('status', '==', 'success'),
+        orderBy('completedAt', 'desc')
+      )
+    );
+
+    if (snapshot.empty) {
+      console.log('✅ No pending transactions to sync');
+      return 0;
+    }
+
+    let processedCount = 0;
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      
+      if (!data.invoiceId) continue;
+
+      try {
+        // Check if invoice needs update
+        const invoiceId = parseInt(data.invoiceId);
+        const invoice = await database.getInvoiceById(invoiceId);
+        
+        if (invoice) {
+          const currentPaid = invoice.amountPaid || 0;
+          const transactionAmount = typeof data.amount === 'number' ? data.amount : 0;
+          
+          // Only update if transaction amount is different (avoid duplicate processing)
+          if (currentPaid !== transactionAmount) {
+            await this.processSuccessfulTransaction(userId, data);
+            processedCount++;
+          }
+        }
+      } catch (error) {
+        console.error(`❌ Failed to sync transaction ${doc.id}:`, error);
+      }
+    }
+
+    console.log(`✅ Synced ${processedCount} pending transactions`);
+
+    // Trigger upload if any transactions were processed
+    if (processedCount > 0 && navigator.onLine) {
+      await this.performSafeUploadSync(userId, 'manual');
+    }
+
+    return processedCount;
+
+  } catch (error) {
+    console.error('❌ Pending transactions sync failed:', error);
+    return 0;
+  }
+}
+
+/**
+ * Removes the transaction listener for a user
+ */
+removeTransactionListener(userId: number): void {
+  const listener = this.transactionListeners.get(userId);
+  if (listener) {
+    listener();
+    this.transactionListeners.delete(userId);
+    console.log(`🔕 Transaction listener removed for user ${userId}`);
+  }
+}
+
+// ==================== UPDATE INITIALIZATION METHOD ====================
+
+/**
+ * Updated initialization to include transaction listener
+ */
+async initializeForUser(userId: number): Promise<SyncStatus> {
+  console.log(`🚀 Initializing sync for user ${userId}...`);
+  
+  try {
+    // Setup user updates listener
+    this.setupUserListener(userId, (user) => {
+      console.log('👤 User updated:', user.tier);
+    });
+    
+    // Setup transaction listener
+    this.setupTransactionListener(userId);
+    
+    // Start scheduled uploads
+    this.startUploadScheduling(userId);
+    
+    // Integrate with tenant screening
+    integrateWithFirebaseSync(userId);
+    
+    // Perform full sync
+    const result = await this.performFullSync(userId);
+    
+    // Sync any pending transactions
+    await this.syncPendingTransactions(userId);
+    
+    console.log('✅ Sync initialized with transaction listener');
+    return result;
+  } catch (error) {
+    console.error('❌ Sync initialization failed:', error);
+    throw error;
+  }
+}
+
+// ==================== UPDATE CLEANUP METHOD ====================
+
+/**
+ * Updated cleanup to remove transaction listeners
+ */
+cleanup(userId?: number): void {
+  if (userId) {
+    this.removeUserListener(userId);
+    this.removeTransactionListener(userId);
+    this.stopUploadScheduling(userId);
+    this.releaseOperationLock(`download_${userId}`);
+    this.releaseOperationLock(`upload_${userId}`);
+  } else {
+    this.userListeners.forEach((listener, uid) => {
+      listener();
+      this.stopUploadScheduling(uid);
+    });
+    this.transactionListeners.forEach((listener) => listener());
+    
+    this.userListeners.clear();
+    this.transactionListeners.clear();
+    this.uploadScheduleTimers.clear();
+    this.operationLocks.clear();
+  }
+}
+
+
 
   static getInstance(): FirebaseSyncService {
     if (!this.instance) {
@@ -274,189 +538,240 @@ export class FirebaseSyncService {
     }
   }
 
-  // ==================== SIMPLE UPSERT OPERATIONS ====================
 
-  private async upsertProperty(userId: number, data: any): Promise<void> {
+
+
+  // ==================== SIMPLE UPSERT OPERATIONS - FIXED ====================
+
+private async upsertProperty(userId: number, data: any): Promise<void> {
+  try {
+    let local = null;
     try {
-      let local = null;
-      try {
-        local = await database.getPropertyById(data.localId);
-      } catch {}
-      
-      if (!local) {
-        const canCreate = await database.canCreateProperty?.(userId);
-        if (canCreate?.allowed !== false) {
-          await database.createProperty({
-            userId: data.userId || userId,
-            companyId: data.companyId,
-            name: data.name || 'Restored Property',
-            address: data.address || '',
-            description: data.description || '',
-            image: data.image,
-            agentCommissionRate: data.agentCommissionRate || 0,
-            maxUnits: data.maxUnits || 50
-          });
-        }
-      } else if (!local.isRestricted && this.isNewer(data.lastModified, local.updatedAt)) {
-        await database.updateProperty(data.localId, {
-          name: data.name || local.name,
-          address: data.address || local.address,
-          description: data.description || local.description,
-          image: data.image || local.image,
-          agentCommissionRate: data.agentCommissionRate ?? local.agentCommissionRate,
-          maxUnits: data.maxUnits || local.maxUnits
-        });
-      }
-    } catch (error) {
-      console.error(`❌ Upsert property ${data.localId} failed:`, error);
-    }
-  }
-
-  // private async upsertUnit(propertyId: number, data: any): Promise<void> {
-  //   try {
-  //     const existing = await database.getUnitsByProperty(propertyId);
-  //     const found = existing.find(u => u.id === data.localId);
-      
-  //     if (!found) {
-  //       await database.createUnit(propertyId, {
-  //         unitNumber: data.unitNumber || '',
-  //         rentAmount: data.rentAmount || 0,
-  //         status: data.status || 'vacant'
-  //       });
-  //     } else if (this.isNewer(data.lastModified, found.createdAt)) {
-  //       await database.updateUnit(data.localId, {
-  //         unitNumber: data.unitNumber || found.unitNumber,
-  //         rentAmount: data.rentAmount ?? found.rentAmount,
-  //         status: data.status || found.status
-  //       });
-  //     }
-  //   } catch (error) {
-  //     console.error(`❌ Upsert unit ${data.localId} failed:`, error);
-  //   }
-  // }
-
-  private async upsertTenant(data: any): Promise<void> {
-    try {
-      let local = null;
-      try {
-        local = await database.getTenantById(data.localId);
-      } catch {}
-      
-      if (!local) {
-        await database.createTenant({
-          id: data.localId,
-          propertyId: data.propertyId,
-          name: data.name || 'Restored Tenant',
-          phone: data.phone || '',
-          email: data.email || '',
-          unitNumber: data.unitNumber || '',
-          rentAmount: data.rentAmount || 0,
-          standingFees: data.standingFees || 0,
-          depositAmount: data.depositAmount || 0,
-          leaseStart: data.leaseStart,
-          leaseEnd: data.leaseEnd
-        });
-      } else if (!local.isRestricted && this.isNewer(data.lastModified, local.updatedAt)) {
-        await database.updateTenant(data.localId, {
-          name: data.name || local.name,
-          phone: data.phone || local.phone,
-          email: data.email || local.email,
-          unitNumber: data.unitNumber || local.unitNumber,
-          rentAmount: data.rentAmount ?? local.rentAmount,
-          standingFees: data.standingFees ?? local.standingFees,
-          depositAmount: data.depositAmount ?? local.depositAmount,
-          leaseStart: data.leaseStart || local.leaseStart,
-          leaseEnd: data.leaseEnd || local.leaseEnd
-        });
-      }
-    } catch (error) {
-      console.error(`❌ Upsert tenant ${data.localId} failed:`, error);
-    }
-  }
-
-  private async upsertInvoice(data: any): Promise<void> {
-    try {
-      let local = null;
-      try {
-        local = await database.getInvoiceById(data.localId);
-      } catch {}
-      
-      if (!local) {
-        await database.createInvoice({
-          id: data.localId,
-          tenantId: data.tenantId,
-          propertyId: data.propertyId,
-          billingMonth: data.billingMonth || new Date().toISOString().substring(0, 7),
-          rentAmount: data.rentAmount || 0,
-          waterCurrentReading: data.waterCurrentReading || 0,
-          waterPreviousReading: data.waterPreviousReading || 0,
-          waterStandingFee: data.waterStandingFee || 0,
-          waterUnitPrice: data.waterUnitPrice || 0,
-          powerCurrentReading: data.powerCurrentReading || 0,
-          powerPreviousReading: data.powerPreviousReading || 0,
-          powerUnitPrice: data.powerUnitPrice || 0,
-          otherCharges: data.otherCharges || 0,
-          otherChargesDescription: data.otherChargesDescription || '',
-          dueDate: data.dueDate,
-          isPaid: data.isPaid || false
-        });
+      local = await database.getPropertyById(data.localId);
+    } catch {}
+    
+    if (!local) {
+      const canCreate = await database.canCreateProperty?.(userId);
+      if (canCreate?.allowed !== false) {
+        // CRITICAL: Use raw SQL to insert with exact ID from Firebase
+        await database.db!.run(`
+          INSERT INTO properties (
+            id, user_id, company_id, name, address, description, image,
+            agent_commission_rate, max_units, is_restricted,
+            created_at, updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `, [
+          data.localId,  // Use exact ID from Firebase
+          data.userId || userId,
+          data.companyId || null,
+          data.name || 'Restored Property',
+          data.address || '',
+          data.description || '',
+          data.image || null,
+          data.agentCommissionRate || 0,
+          data.maxUnits || 50
+        ]);
         
-        // Restore payment data
-        if (data.amountPaid > 0 || data.arrears > 0) {
-          await database.markInvoicePaid(data.localId, data.amountPaid, data.arrears);
-          // await database.db!.run(
-          //   `UPDATE invoices SET amount_paid = ?, arrears = ?, paid_date = ?, is_paid = ? WHERE id = ?`,
-          //   [data.amountPaid, data.arrears, data.paidDate, data.isPaid, data.localId]
-          // );
-        }
-      } else if (this.isNewer(data.lastModified, local.updatedAt)) {
-        await database.updateInvoice(data.localId, {
-          billingMonth: data.billingMonth || local.billingMonth,
-          rentAmount: data.rentAmount ?? local.rentAmount,
-          waterCurrentReading: data.waterCurrentReading ?? local.waterCurrentReading,
-          waterPreviousReading: data.waterPreviousReading ?? local.waterPreviousReading,
-          waterStandingFee: data.waterStandingFee ?? local.waterStandingFee,
-          waterUnitPrice: data.waterUnitPrice ?? local.waterUnitPrice,
-          powerCurrentReading: data.powerCurrentReading ?? local.powerCurrentReading,
-          powerPreviousReading: data.powerPreviousReading ?? local.powerPreviousReading,
-          powerUnitPrice: data.powerUnitPrice ?? local.powerUnitPrice,
-          otherCharges: data.otherCharges ?? local.otherCharges,
-          otherChargesDescription: data.otherChargesDescription || local.otherChargesDescription,
-          dueDate: data.dueDate || local.dueDate
-        });
-        
-        // Always sync payment data from server (authoritative)
-        if (data.amountPaid > 0 || data.arrears > 0) {
-          await database.markInvoicePaid(data.localId, data.amountPaid, data.arrears);
-          // await database.db!.run(
-          //   `UPDATE invoices SET amount_paid = ?, arrears = ?, paid_date = ?, is_paid = ? WHERE id = ?`,
-          //   [data.amountPaid, data.arrears, data.paidDate, data.isPaid, data.localId]
-          // );
-        }
+        console.log(`✅ Created property ${data.localId} for user ${userId}`);
       }
-    } catch (error) {
-      console.error(`❌ Upsert invoice ${data.localId} failed:`, error);
-    }
-  }
-
-  private async upsertPayment(invoiceId: number, data: any): Promise<void> {
-    try {
-      const existing = await database.getPaymentsByInvoice(invoiceId);
-      const found = existing.find(p => p.id === data.localId);
+    } else if (!local.isRestricted && this.isNewer(data.lastModified, local.updatedAt)) {
+      await database.updateProperty(data.localId, {
+        name: data.name || local.name,
+        address: data.address || local.address,
+        description: data.description || local.description,
+        image: data.image || local.image,
+        agentCommissionRate: data.agentCommissionRate ?? local.agentCommissionRate,
+        maxUnits: data.maxUnits || local.maxUnits
+      });
       
-      if (!found) {
-        await database.createPayment({
-          invoiceId,
-          amount: data.amount || 0,
-          paymentDate: data.paymentDate || new Date().toISOString().split('T')[0],
-          paymentMethod: data.paymentMethod || 'Cash',
-          notes: data.notes || ''
-        });
-      }
-    } catch (error) {
-      console.error(`❌ Upsert payment ${data.localId} failed:`, error);
+      console.log(`✅ Updated property ${data.localId}`);
     }
+  } catch (error) {
+    console.error(`❌ Upsert property ${data.localId} failed:`, error);
   }
+}
+
+private async upsertTenant(data: any): Promise<void> {
+  try {
+    let local = null;
+    try {
+      local = await database.getTenantById(data.localId);
+    } catch {}
+    
+    if (!local) {
+      // CRITICAL: Use raw SQL to insert with exact ID from Firebase
+      await database.db!.run(`
+        INSERT INTO tenants (
+          id, property_id, name, phone, email, unit_number, rent_amount,
+          standing_fees, deposit_amount, lease_start, lease_end,
+          is_restricted, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      `, [
+        data.localId,  // Use exact ID from Firebase
+        data.propertyId,
+        data.name || 'Restored Tenant',
+        data.phone || '',
+        data.email || '',
+        data.unitNumber || '',
+        data.rentAmount || 0,
+        data.standingFees || 0,
+        data.depositAmount || 0,
+        data.leaseStart || null,
+        data.leaseEnd || null
+      ]);
+      
+      console.log(`✅ Created tenant ${data.localId} for property ${data.propertyId}`);
+      
+    } else if (!local.isRestricted && this.isNewer(data.lastModified, local.updatedAt)) {
+      await database.updateTenant(data.localId, {
+        name: data.name || local.name,
+        phone: data.phone || local.phone,
+        email: data.email || local.email,
+        unitNumber: data.unitNumber || local.unitNumber,
+        rentAmount: data.rentAmount ?? local.rentAmount,
+        standingFees: data.standingFees ?? local.standingFees,
+        depositAmount: data.depositAmount ?? local.depositAmount,
+        leaseStart: data.leaseStart || local.leaseStart,
+        leaseEnd: data.leaseEnd || local.leaseEnd
+      });
+      
+      console.log(`✅ Updated tenant ${data.localId}`);
+    }
+  } catch (error) {
+    console.error(`❌ Upsert tenant ${data.localId} failed:`, error);
+  }
+}
+
+private async upsertInvoice(data: any): Promise<void> {
+  try {
+    let local = null;
+    try {
+      local = await database.getInvoiceById(data.localId);
+    } catch {}
+    
+    if (!local) {
+      // CRITICAL: Use raw SQL to insert with exact ID from Firebase
+      const waterAmount = ((data.waterCurrentReading || 0) - (data.waterPreviousReading || 0)) * 
+                         (data.waterUnitPrice || 0) + (data.waterStandingFee || 0);
+      const powerAmount = ((data.powerCurrentReading || 0) - (data.powerPreviousReading || 0)) * 
+                         (data.powerUnitPrice || 0);
+      const totalAmount = (data.rentAmount || 0) + waterAmount + powerAmount + (data.otherCharges || 0);
+      
+      await database.db!.run(`
+        INSERT INTO invoices (
+          id, tenant_id, property_id, invoice_number, billing_month, rent_amount,
+          water_current_reading, water_previous_reading, water_standing_fee, water_unit_price,
+          power_current_reading, power_previous_reading, power_unit_price,
+          other_charges, other_charges_description, total_amount, amount_paid, arrears,
+          due_date, paid_date, is_paid, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      `, [
+        data.localId,  // Use exact ID from Firebase
+        data.tenantId,
+        data.propertyId,
+        data.invoiceNumber || `INV-${data.localId}`,
+        data.billingMonth || new Date().toISOString().substring(0, 7),
+        data.rentAmount || 0,
+        data.waterCurrentReading || 0,
+        data.waterPreviousReading || 0,
+        data.waterStandingFee || 0,
+        data.waterUnitPrice || 0,
+        data.powerCurrentReading || 0,
+        data.powerPreviousReading || 0,
+        data.powerUnitPrice || 0,
+        data.otherCharges || 0,
+        data.otherChargesDescription || '',
+        totalAmount,
+        data.amountPaid || 0,
+        data.arrears || 0,
+        data.dueDate || null,
+        data.paidDate || null,
+        data.isPaid ? 1 : 0
+      ]);
+      
+      console.log(`✅ Created invoice ${data.localId} for tenant ${data.tenantId}`);
+      
+    } else if (this.isNewer(data.lastModified, local.updatedAt)) {
+      // Update existing invoice
+      await database.updateInvoice(data.localId, {
+        billingMonth: data.billingMonth || local.billingMonth,
+        rentAmount: data.rentAmount ?? local.rentAmount,
+        waterCurrentReading: data.waterCurrentReading ?? local.waterCurrentReading,
+        waterPreviousReading: data.waterPreviousReading ?? local.waterPreviousReading,
+        waterStandingFee: data.waterStandingFee ?? local.waterStandingFee,
+        waterUnitPrice: data.waterUnitPrice ?? local.waterUnitPrice,
+        powerCurrentReading: data.powerCurrentReading ?? local.powerCurrentReading,
+        powerPreviousReading: data.powerPreviousReading ?? local.powerPreviousReading,
+        powerUnitPrice: data.powerUnitPrice ?? local.powerUnitPrice,
+        otherCharges: data.otherCharges ?? local.otherCharges,
+        otherChargesDescription: data.otherChargesDescription || local.otherChargesDescription,
+        dueDate: data.dueDate || local.dueDate
+      });
+      
+      // Update payment data separately
+      await database.db!.run(`
+        UPDATE invoices 
+        SET amount_paid = ?, arrears = ?, paid_date = ?, is_paid = ?
+        WHERE id = ?
+      `, [
+        data.amountPaid || 0,
+        data.arrears || 0,
+        data.paidDate || null,
+        data.isPaid ? 1 : 0,
+        data.localId
+      ]);
+      
+      console.log(`✅ Updated invoice ${data.localId} for tenant ${data.tenantId}`);
+    }
+  } catch (error) {
+    console.error(`❌ Upsert invoice ${data.localId} failed:`, error);
+  }
+}
+
+private async upsertPayment(invoiceId: number, data: any): Promise<void> {
+  try {
+    const existing = await database.getPaymentsByInvoice(invoiceId);
+    const found = existing.find(p => p.id === data.localId);
+    
+    if (!found) {
+      // CRITICAL: Use raw SQL to insert with exact ID from Firebase
+      await database.db!.run(`
+        INSERT INTO payments (
+          id, invoice_id, amount, payment_date, payment_method, notes,
+          created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `, [
+        data.localId,  // Use exact ID from Firebase
+        invoiceId,
+        data.amount || 0,
+        data.paymentDate || new Date().toISOString().split('T')[0],
+        data.paymentMethod || 'Cash',
+        data.notes || ''
+      ]);
+      
+      console.log(`✅ Created payment ${data.localId} for invoice ${invoiceId}`);
+    }
+  } catch (error) {
+    console.error(`❌ Upsert payment ${data.localId} failed:`, error);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   // ==================== ORPHAN CLEANUP ====================
 
@@ -1067,29 +1382,7 @@ export class FirebaseSyncService {
     }
   }
 
-  // ==================== PUBLIC API - INITIALIZATION ====================
-
-  async initializeForUser(userId: number): Promise<SyncStatus> {
-    console.log(`🚀 Initializing sync for user ${userId}...`);
-    
-    try {
-      this.setupUserListener(userId, (user) => {
-        console.log('👤 User updated:', user.tier);
-      });
-      
-      this.startUploadScheduling(userId);
-      
-      integrateWithFirebaseSync(userId);
-      
-      const result = await this.performFullSync(userId);
-      
-      console.log('✅ Sync initialized');
-      return result;
-    } catch (error) {
-      console.error('❌ Sync initialization failed:', error);
-      throw error;
-    }
-  }
+  
 
   // ==================== PUBLIC API - FORCE OPERATIONS ====================
 
@@ -1322,24 +1615,7 @@ export class FirebaseSyncService {
     };
   }
 
-  // ==================== CLEANUP ====================
-
-  cleanup(userId?: number): void {
-    if (userId) {
-      this.removeUserListener(userId);
-      this.stopUploadScheduling(userId);
-      this.releaseOperationLock(`download_${userId}`);
-      this.releaseOperationLock(`upload_${userId}`);
-    } else {
-      this.userListeners.forEach((listener, uid) => {
-        listener();
-        this.stopUploadScheduling(uid);
-      });
-      this.userListeners.clear();
-      this.uploadScheduleTimers.clear();
-      this.operationLocks.clear();
-    }
-  }
+  
 
   // ==================== WEBHOOK HANDLER ====================
 

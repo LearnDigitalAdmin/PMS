@@ -343,14 +343,16 @@ export class SummariesService {
       const commissionBreakdown = await this.generateCommissionBreakdown(properties, transcripts);
       
       // Generate other income breakdown
-      const otherIncomeBreakdown = await this.generateOtherIncomeBreakdown(properties, transcripts);
+      // Generate other income breakdown
+      const otherIncomeBreakdown: OtherIncomeRevenue[] = []; // Initialize as an empty array
+      //const otherIncomeBreakdown = 0;//await this.generateOtherIncomeBreakdown(properties, transcripts);
       
       // Generate expense breakdown
       const expenseBreakdown = this.generateExpenseBreakdown(businessExpenses);
 
       // Calculate totals
       const totalCommissionRevenue = commissionBreakdown.reduce((sum, item) => sum + item.commissionAmount, 0);
-      const totalOtherIncomeRevenue = otherIncomeBreakdown.reduce((sum, item) => sum + item.amount, 0);
+      const totalOtherIncomeRevenue = 0;//otherIncomeBreakdown.reduce((sum, item) => sum + item.amount, 0);
       const totalGrossRevenue = totalCommissionRevenue + totalOtherIncomeRevenue;
       const totalBusinessExpenses = businessExpenses.reduce((sum, exp) => sum + exp.amount, 0);
       const netIncome = totalGrossRevenue - totalBusinessExpenses;
@@ -656,50 +658,50 @@ export class SummariesService {
 
 
 
-  private async generateOtherIncomeBreakdown(properties: Property[], transcripts: MonthlyTranscript[]): Promise<OtherIncomeRevenue[]> {
-    const breakdown: OtherIncomeRevenue[] = [];
+  // private async generateOtherIncomeBreakdown(properties: Property[], transcripts: MonthlyTranscript[]): Promise<OtherIncomeRevenue[]> {
+  //   const breakdown: OtherIncomeRevenue[] = [];
 
-    for (const property of properties) {
-      const transcript = transcripts.find(t => t.propertyId === property.id);
+  //   for (const property of properties) {
+  //     const transcript = transcripts.find(t => t.propertyId === property.id);
       
-      if (transcript) {
-        // Water charges
-        // if (transcript.totalWaterCharges > 0) {
-        //   breakdown.push({
-        //     propertyId: property.id,
-        //     propertyName: property.name,
-        //     amount: transcript.totalWaterCharges,
-        //     source: "Water charges",
-        //     description: "Water utility management fees"
-        //   });
-        // }
+  //     if (transcript) {
+  //       // Water charges
+  //       // if (transcript.totalWaterCharges > 0) {
+  //       //   breakdown.push({
+  //       //     propertyId: property.id,
+  //       //     propertyName: property.name,
+  //       //     amount: transcript.totalWaterCharges,
+  //       //     source: "Water charges",
+  //       //     description: "Water utility management fees"
+  //       //   });
+  //       // }
 
-        // // Power charges
-        // if (transcript.totalPowerCharges > 0) {
-        //   breakdown.push({
-        //     propertyId: property.id,
-        //     propertyName: property.name,
-        //     amount: transcript.totalPowerCharges,
-        //     source: "Power charges",
-        //     description: "Power utility management fees"
-        //   });
-        // }
+  //       // // Power charges
+  //       // if (transcript.totalPowerCharges > 0) {
+  //       //   breakdown.push({
+  //       //     propertyId: property.id,
+  //       //     propertyName: property.name,
+  //       //     amount: transcript.totalPowerCharges,
+  //       //     source: "Power charges",
+  //       //     description: "Power utility management fees"
+  //       //   });
+  //       // }
 
-        // Other charges
-        if (transcript.totalOtherCharges > 0) {
-          breakdown.push({
-            propertyId: property.id,
-            propertyName: property.name,
-            amount: transcript.totalOtherCharges,
-            source: "Other charges",
-            description: "Additional management fees"
-          });
-        }
-      }
-    }
+  //       // Other charges
+  //       if (transcript.totalOtherCharges > 0) {
+  //         breakdown.push({
+  //           propertyId: property.id,
+  //           propertyName: property.name,
+  //           amount: transcript.totalOtherCharges,
+  //           source: "Other charges",
+  //           description: "Additional management fees"
+  //         });
+  //       }
+  //     }
+  //   }
 
-    return breakdown;
-  }
+  //   return breakdown;
+  // }
 
   private generateExpenseBreakdown(businessExpenses: BusinessExpense[]): ExpenseBreakdown[] {
     const totalExpenses = businessExpenses.reduce((sum, e) => sum + e.amount, 0);

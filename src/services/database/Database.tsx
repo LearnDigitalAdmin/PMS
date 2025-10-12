@@ -1,9 +1,14 @@
 // Database.tsx - Complete SQLite Database Implementation with Transaction Fixes
-import { SQLiteDBConnection, type capSQLiteChanges } from '@capacitor-community/sqlite';
-import SQLiteConnectionManager from './Initializer';
+import { type capSQLiteChanges } from '@capacitor-community/sqlite';
+//import SQLiteConnectionManager from './Initializer';SQLiteDBConnection, t
 import { db, USER_LIMITS, type UserTier, type UserType } from './FirebaseSync';
 import { deleteDoc, doc } from 'firebase/firestore';
 import { tables } from './Tables';
+import { argon2id, argon2Verify } from 'hash-wasm';
+import { 
+  UniversalConnectionManager as SQLiteConnectionManager,
+  type UniversalSQLiteConnection  // Import the interface
+} from './UniversalSQLiteAdapter';
 
 // ==================== TYPE INTERFACES ====================
 export interface User {
@@ -343,7 +348,8 @@ export interface AuthResult {
 
 export class DatabaseManager {
   private connectionManager: SQLiteConnectionManager;
-  public db: SQLiteDBConnection | null = null;
+  //public db: SQLiteDBConnection | null = null;
+  public db: UniversalSQLiteConnection | null = null;
   private readonly DB_NAME = 'Plot';
   private fireDB = db;
   // 2. FIX: Add missing USER_LIMITS constant
@@ -351,6 +357,24 @@ USER_LIMITS: any = {USER_LIMITS};
 
   constructor() {
     this.connectionManager = SQLiteConnectionManager.getInstance();
+  }
+
+  async initializeDatabase(): Promise<void> {
+    try {
+      console.log('Initializing Database...');
+      
+      this.db = await this.connectionManager.getConnection(this.DB_NAME);
+      
+      await tables.initializeDatabase();
+
+      //await this.cleanupStaleCache();
+      await this.optimizeAgentSummaryTables();
+      
+      console.log('Database initialized successfully');
+    } catch (error) {
+      console.error('Error initializing database:', error);
+      throw error;
+    }
   }
 
   // ==================== INITIALIZATION ====================
@@ -918,22 +942,7 @@ async exportUserDataOffline(userId: number): Promise<{
   };
 }
   
-  async initializeDatabase(): Promise<void> {
-    try {
-      console.log('Initializing Database...');
-      
-      this.db = await this.connectionManager.getConnection(this.DB_NAME);
-      await tables.initializeDatabase();
-
-      //await this.cleanupStaleCache();
-      await this.optimizeAgentSummaryTables();
-      
-      console.log('Database initialized successfully');
-    } catch (error) {
-      console.error('Error initializing database:', error);
-      throw error;
-    }
-  }
+  
 
   
 
@@ -2474,8 +2483,12 @@ async refreshCurrentUser(id: number): Promise<User | null> {
 
   private async verifyPassword(password: string, hash: string): Promise<boolean> {
     try {
-      const passwordHash = await this.hashPassword(password);
-      return passwordHash === hash;
+      const result = await argon2Verify({
+        password: password,
+        hash: hash
+      });
+
+      return result === true;
     } catch (error) {
       console.error('Error verifying password:', error);
       return false;
@@ -2483,17 +2496,18 @@ async refreshCurrentUser(id: number): Promise<User | null> {
   }
 
   private async hashPassword(password: string): Promise<string> {
-    try {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(password + 'propertyflow_salt_2024');
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    } catch (error) {
-      console.error('Error hashing password:', error);
-      throw new Error('Password hashing failed');
-    }
-  }
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const result = await argon2id({
+    password: password,
+    salt: salt,
+    hashLength: 32,
+    iterations: 3,
+    memorySize: 65536, // 64 MB in KB
+    parallelism: 1,
+    outputType: 'encoded'
+  });
+  return result;
+}
 
   // ==================== DELEGATION TO EXISTING METHODS ====================
   

@@ -1,7 +1,7 @@
 // App.tsx - Updated with Enhanced User State Management, Sync Integration, and Exit Confirmation
 import React, { useState, useEffect, Suspense, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, NavLink } from 'react-router-dom';
-import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle } from 'lucide-react';
+import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, DollarSign } from 'lucide-react';
 import { database } from './services/database/Database';
 import { firebaseSyncService } from './services/database/FirebaseSync';
 import Dashboard from './pages/Dashboard';
@@ -14,6 +14,7 @@ import type { User } from './services/database/Database';
 // Capacitor imports for platform detection and app handling
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
+import AgentView from './pages/payments/Payments';
 
 // Loading component with skeleton animation
 const LoadingSpinner = () => (
@@ -183,6 +184,7 @@ const BottomNavigation = () => {
     { path: '/properties', icon: Building, label: 'Properties', color: 'indigo', restricted: false },
     { path: '/invoices', icon: FileText, label: 'Invoices', color: 'purple', restricted: false },
     { path: '/profile', icon: UserIcon, label: 'Profile', color: 'green', restricted: false },
+    { path: '/payments', icon: DollarSign, label: 'Payments', color: 'black', restricted: false },
   ];
 
   return (
@@ -195,6 +197,7 @@ const BottomNavigation = () => {
               indigo: 'text-indigo-600 dark:text-indigo-400',
               purple: 'text-purple-600 dark:text-purple-400',
               green: 'text-green-600 dark:text-green-400',
+              black: 'text-gray-900 dark:text-gray-100'
             };
             const inactiveColorClasses = 'text-gray-400 dark:text-gray-500';
 
@@ -595,6 +598,11 @@ const AppContent: React.FC = () => {
                 <ProfileWrapper />
               </Suspense>
             } />
+            <Route path="/payments" element={
+              <Suspense fallback={<LoadingSpinner />}>
+                <AgentView />
+              </Suspense>
+            } />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AppLayout>
@@ -609,7 +617,43 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const syncInitializedRef = useRef(false);
+  const isInitializingRef = useRef(false); // Prevent concurrent initializations
+  const listenersActiveRef = useRef(false); // Track if listeners are currently active
+
+  // Helper function to initialize sync and listeners
+  const initializeSyncService = async (userId: number, reason: string) => {
+    // Prevent concurrent initializations
+    if (isInitializingRef.current) {
+      console.log(`⏳ Sync initialization already in progress, skipping ${reason}`);
+      return;
+    }
+
+    // Skip if listeners are already active
+    if (listenersActiveRef.current) {
+      console.log(`✅ Listeners already active, skipping ${reason}`);
+      return;
+    }
+
+    try {
+      isInitializingRef.current = true;
+      console.log(`🔄 Initializing sync service (${reason})...`);
+
+      // Wait a bit to ensure database is ready
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Initialize sync service (this will handle user listener and scheduling)
+      await firebaseSyncService.initializeForUser(userId);
+      
+      listenersActiveRef.current = true;
+      console.log(`✅ Sync service initialized successfully (${reason})`);
+    } catch (syncError) {
+      console.error(`❌ Sync initialization failed (${reason}):`, syncError);
+      listenersActiveRef.current = false;
+      throw syncError;
+    } finally {
+      isInitializingRef.current = false;
+    }
+  };
 
   useEffect(() => {
     // Initialize app with PROPER SEQUENCE
@@ -681,7 +725,7 @@ const App: React.FC = () => {
               if (dbUser) {
                 setUser(dbUser);
                 
-                // NOW set up sync if user has permissions
+                // Check if user has sync permissions
                 const canSync = dbUser.tier === 'business' || 
                                dbUser.tier === 'pro' || 
                                dbUser.tier === 'solo' || 
@@ -692,20 +736,10 @@ const App: React.FC = () => {
                   console.log('🔄 User has sync permissions, initializing sync service...');
                   
                   try {
-                    // CRITICAL: Only initialize sync ONCE
-                    if (!syncInitializedRef.current) {
-                      syncInitializedRef.current = true;
-                      
-                      // Wait a bit more to ensure database is fully ready
-                      await new Promise(resolve => setTimeout(resolve, 500));
-                      
-                      // Initialize sync service (this will handle user listener and scheduling)
-                      await firebaseSyncService.initializeForUser(dbUser.id);
-                      console.log('✅ Sync service initialized successfully');
-                    }
+                    // ALWAYS initialize sync on app start (sets up listeners)
+                    await initializeSyncService(dbUser.id, 'app start');
                   } catch (syncError) {
                     console.error('❌ Sync initialization failed:', syncError);
-                    syncInitializedRef.current = false; // Allow retry
                     // Continue without sync - app should work offline
                   }
                 } else if (!canSync) {
@@ -744,7 +778,10 @@ const App: React.FC = () => {
     // Cleanup sync listeners on unmount
     return () => {
       if (user) {
+        console.log('🧹 Cleaning up sync listeners...');
         firebaseSyncService.cleanup(user.id);
+        listenersActiveRef.current = false;
+        isInitializingRef.current = false;
       }
     };
   }, []); // Empty dependency array - only run once on mount
@@ -766,6 +803,22 @@ const App: React.FC = () => {
         // App became visible and we're online
         try {
           console.log('👁️ App became visible, checking for updates...');
+          
+          // Re-initialize listeners if they're not active (e.g., after app was backgrounded for long time)
+          const canSync = user.tier === 'business' || 
+                         user.tier === 'pro' || 
+                         user.tier === 'solo' || 
+                         user.tier === 'enterprise' || 
+                         user.storage;
+          
+          if (canSync && !listenersActiveRef.current) {
+            console.log('🔄 Listeners not active, re-initializing...');
+            try {
+              await initializeSyncService(user.id, 'visibility change');
+            } catch (error) {
+              console.error('❌ Failed to re-initialize sync:', error);
+            }
+          }
           
           // Check for user updates
           const firestoreUpdate = await firebaseSyncService.downloadUserUpdates(user.id);
@@ -802,29 +855,31 @@ const App: React.FC = () => {
                                        user.tier === 'enterprise' || 
                                        user.storage;
                 
-                if (nowCanSync && !couldSyncBefore && !syncInitializedRef.current) {
+                if (nowCanSync && !couldSyncBefore) {
                   console.log('🚀 Setting up sync for newly upgraded user');
-                  syncInitializedRef.current = true;
                   
                   try {
-                    await firebaseSyncService.initializeForUser(updatedUser.id);
+                    // Clean up old listeners first
+                    firebaseSyncService.cleanup(user.id);
+                    listenersActiveRef.current = false;
+                    
+                    // Initialize new listeners with updated permissions
+                    await initializeSyncService(updatedUser.id, 'user upgrade');
                   } catch (error) {
                     console.error('❌ Failed to initialize sync for upgraded user:', error);
-                    syncInitializedRef.current = false;
                   }
+                } else if (!nowCanSync && couldSyncBefore) {
+                  // User was downgraded, clean up listeners
+                  console.log('⬇️ User downgraded, cleaning up sync');
+                  firebaseSyncService.cleanup(user.id);
+                  listenersActiveRef.current = false;
                 }
               }
             }
           }
           
-          // Perform catch-up sync if user has permissions
-          const canSync = user.tier === 'business' || 
-                         user.tier === 'pro' || 
-                         user.tier === 'solo' || 
-                         user.tier === 'enterprise' || 
-                         user.storage;
-          
-          if (canSync && syncInitializedRef.current) {
+          // Perform catch-up sync if user has permissions and listeners are active
+          if (canSync && listenersActiveRef.current) {
             try {
               const status = await firebaseSyncService.getSyncStatus(user.id);
               const timeSinceLastSync = status.lastUploadTime === 'Never' ? 
@@ -854,7 +909,7 @@ const App: React.FC = () => {
     const handleOnline = async () => {
       console.log('🌐 App came online');
       
-      if (user && !syncInitializedRef.current) {
+      if (user) {
         const canSync = user.tier === 'business' || 
                        user.tier === 'pro' || 
                        user.tier === 'solo' || 
@@ -863,13 +918,17 @@ const App: React.FC = () => {
         
         if (canSync) {
           console.log('🚀 Initializing sync now that we\'re online...');
-          syncInitializedRef.current = true;
           
           try {
-            await firebaseSyncService.initializeForUser(user.id);
+            // ALWAYS re-initialize when coming online (ensures listeners are set up)
+            // Clean up any stale listeners first
+            firebaseSyncService.cleanup(user.id);
+            listenersActiveRef.current = false;
+            
+            // Initialize fresh listeners
+            await initializeSyncService(user.id, 'came online');
           } catch (error) {
             console.error('❌ Failed to initialize sync when coming online:', error);
-            syncInitializedRef.current = false;
           }
         }
       }
@@ -877,6 +936,9 @@ const App: React.FC = () => {
 
     const handleOffline = () => {
       console.log('📴 App went offline');
+      // Note: We keep listeners active even when offline
+      // They'll reconnect automatically when online
+      // But we mark that we might need to re-initialize
     };
 
     window.addEventListener('online', handleOnline);
@@ -886,6 +948,32 @@ const App: React.FC = () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
+  }, [user]);
+
+  // Additional: Handle page focus/blur for web platform
+  useEffect(() => {
+    const handleFocus = async () => {
+      if (user && navigator.onLine) {
+        const canSync = user.tier === 'business' || 
+                       user.tier === 'pro' || 
+                       user.tier === 'solo' || 
+                       user.tier === 'enterprise' || 
+                       user.storage;
+        
+        // Re-initialize listeners if needed when tab regains focus
+        if (canSync && !listenersActiveRef.current) {
+          console.log('👁️ Tab focused, re-initializing listeners...');
+          try {
+            await initializeSyncService(user.id, 'tab focus');
+          } catch (error) {
+            console.error('❌ Failed to re-initialize on focus:', error);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, [user]);
 
   if (isLoading) {
@@ -900,237 +988,5 @@ const App: React.FC = () => {
     </AppErrorBoundary>
   );
 };
-
-//export default App;
-
-// const App: React.FC = () => {
-//   const [isLoading, setIsLoading] = useState(true);
-//   const [isDarkMode, setIsDarkMode] = useState(false);
-//   const [user, setUser] = useState<User | null>(null);
-
-//     useEffect(() => {
-//     // Initialize app with FIXED Firestore update checking
-//     const initializeApp = async () => {
-//       try {
-//         await database.initializeDatabase();
-        
-//         // Check for dark mode preference
-//         const darkMode = localStorage.getItem('darkMode') === 'true' || 
-//           (!localStorage.getItem('darkMode') && window.matchMedia('(prefers-color-scheme: dark)').matches);
-//         setIsDarkMode(darkMode);
-
-//         // Check for saved user
-//         const savedUser = localStorage.getItem('currentUser');
-//         if (savedUser) {
-//           try {
-//             const userData = JSON.parse(savedUser);
-//             let dbUser = await database.getUserById(userData.id);
-            
-//             if (dbUser) {
-//               // CRITICAL FIX: ALWAYS check Firestore for user updates - UNCOMMENTED!
-//               console.log('Checking Firestore for user updates...');
-//               try {
-//                 const firestoreUser = await firebaseSyncService.downloadUserUpdates(dbUser.id);
-//                 if (firestoreUser) {//An expression of type 'void' cannot be tested for truthiness.ts(1345)
-//                   // console.log('Found user updates in Firestore:', {
-//                   //   email: firestoreUser.email,
-//                   //   oldTier: dbUser.tier,
-//                   //   newTier: firestoreUser.tier,
-//                   //   oldType: dbUser.type, 
-//                   //   newType: firestoreUser.type,
-//                   //   oldStorage: dbUser.storage,
-//                   //   newStorage: firestoreUser.storage
-//                   // });
-
-//                   // Update tier, type, and storage from Firestore
-//                   await database.updateUserTierAndType(
-//                     dbUser.id,
-//                     firestoreUser.tier as UserTier,///Property 'tier' does not exist on type 'never'.ts(2339)
-//                     firestoreUser.type as UserType,//Property 'type' does not exist on type 'never'.ts(2339)
-//                     firestoreUser.storage//Property 'storage' does not exist on type 'never'.ts(2339)
-//                   );
-                  
-//                   // Get the updated user from database
-//                   dbUser = await database.getUserById(dbUser.id);
-//                   console.log('User updated from Firestore:', {
-//                     email: dbUser?.email,
-//                     tier: dbUser?.tier, 
-//                     type: dbUser?.type, 
-//                     storage: dbUser?.storage
-//                   });
-
-//                   // Update saved user data
-//                   //if (dbUser) {
-//                     localStorage.setItem('currentUser', JSON.stringify(firestoreUser));
-//                   //}
-//                 }
-//               } catch (firestoreError) {
-//                 console.log('Could not check Firestore (offline mode):', firestoreError);
-//                 // Continue with local user data - app should work offline
-//               }
-              
-//               if (dbUser) {
-//                 setUser(dbUser);
-                
-//                 // NOW set up sync based on UPDATED permissions
-//                 if (dbUser.tier === 'business' || dbUser.tier === 'pro' || dbUser.tier === 'solo' || dbUser.tier === 'enterprise' || dbUser.storage) {
-//                   console.log('Setting up sync for user with updated permissions:', {
-//                     email: dbUser.email, 
-//                     tier: dbUser.tier,
-//                     type: dbUser.type,
-//                     storage: dbUser.storage
-//                   });
-                  
-//                   // Set up real-time user listener
-//                   firebaseSyncService.setupUserListener(dbUser.id, (updatedUser) => {
-//                     console.log('User updated via listener:', {
-//                       email: updatedUser.email, 
-//                       tier: updatedUser.tier,
-//                       type: updatedUser.type,
-//                       storage: updatedUser.storage
-//                     });
-//                     setUser(updatedUser);
-//                     localStorage.setItem('currentUser', JSON.stringify(updatedUser));
-//                   });
-
-//                   // Start automatic sync
-//                   firebaseSyncService.initializeForUser(dbUser.id);
-
-//                   // Perform initial full sync if needed
-//                   try {
-//                     const status = await firebaseSyncService.getSyncStatus(dbUser.id);
-//                     if (status.lastUploadTime === 'Never' || 
-//                         (Date.now() - new Date(status.lastUploadTime).getTime()) > 24 * 60 * 60 * 1000) {
-//                       console.log('Performing initial sync...');
-//                       await firebaseSyncService.initializeForUser(dbUser.id);
-//                     }
-//                   } catch (syncError) {
-//                     console.error('Initial sync failed:', syncError);
-//                     // Continue without sync - app should work offline
-//                   }
-//                 } else {
-//                   console.log('User has no sync permissions:', {
-//                     email: dbUser.email,
-//                     tier: dbUser.tier, 
-//                     type: dbUser.type,
-//                     storage: dbUser.storage
-//                   });
-//                 }
-//               }
-//             }
-//           } catch (error) {
-//             console.error('Failed to initialize saved user:', error);
-//             localStorage.removeItem('currentUser');
-//           }
-//         }
-        
-//         // Simulate loading time for smooth UX
-//         await new Promise(resolve => setTimeout(resolve, 1000));
-//       } catch (error) {
-//         console.error('Failed to initialize app:', error);
-//       } finally {
-//         setIsLoading(false);
-//       }
-//     };
-
-//     initializeApp();
-
-//     // Cleanup sync listeners on unmount
-//     return () => {
-//       firebaseSyncService.cleanup();
-//     };
-//   }, []);
-
-//   useEffect(() => {
-//     // Apply dark mode class to html element
-//     if (isDarkMode) {
-//       document.documentElement.classList.add('dark');
-//     } else {
-//       document.documentElement.classList.remove('dark');
-//     }
-//     localStorage.setItem('darkMode', isDarkMode.toString());
-//   }, [isDarkMode]);
-
-//   // Handle app state changes for better sync management
-//   useEffect(() => {
-//     const handleVisibilityChange = async () => {
-//   if (!document.hidden && user) {
-//     // ALWAYS check for user updates when app becomes visible
-//     try {
-//       console.log('App became visible, checking for user updates...');
-//       await firebaseSyncService.downloadUserUpdates(user.id);
-      
-//       // if (firestoreUser && (
-//       //   firestoreUser.tier !== user.tier || 
-//       //   firestoreUser.type !== user.type || 
-//       //   firestoreUser.storage !== user.storage
-//       // )) {
-//       //   console.log('User tier/permissions changed:', {
-//       //     old: { tier: user.tier, type: user.type, storage: user.storage },
-//       //     new: { tier: firestoreUser.tier, type: firestoreUser.type, storage: firestoreUser.storage }
-//       //   });
-        
-//       //   // Update local database
-//       //   await database.updateUserTierAndType(
-//       //     user.id,
-//       //     firestoreUser.tier,
-//       //     firestoreUser.type,
-//       //     firestoreUser.storage
-//       //   );
-        
-//         // Update React state
-//         const updatedUser = await database.getUserById(user.id);
-//         if (updatedUser) {
-//           setUser(updatedUser);
-//           localStorage.setItem('currentUser', JSON.stringify(updatedUser));
-          
-//           // If user now has sync permissions, set up listener
-//           if ((updatedUser.tier === 'business' || updatedUser.tier === 'pro' || updatedUser.tier === 'solo' || updatedUser.tier === 'enterprise' || updatedUser.storage) &&
-//               (user.tier === 'free' || (!user.storage && user.tier === 'low'))) {
-//             console.log('Setting up sync for newly upgraded user');
-            
-//             firebaseSyncService.setupUserListener(updatedUser.id, (newUserData) => {
-//               setUser(newUserData);
-//               localStorage.setItem('currentUser', JSON.stringify(newUserData));
-//             });
-            
-//             firebaseSyncService.initializeForUser(updatedUser.id);
-//           }
-//         }
-//       //} 
-      
-//       // Also perform catch-up sync if user has permissions
-//       if (user.tier === 'business' || user.tier === 'pro' || user.tier === 'solo' || user.tier === 'enterprise' || user.storage) {
-//         const status = await firebaseSyncService.getSyncStatus(user.id);
-//         const timeSinceLastSync = status.lastUploadTime === 'Never' ? 
-//           Infinity : Date.now() - new Date(status.lastUploadTime).getTime();
-        
-//         if (timeSinceLastSync > 12 * 60 * 60 * 1000) {
-//           console.log('Performing catch-up sync...');
-//           await firebaseSyncService.forceUpload(user.id);
-//         }
-//       }
-//     } catch (error) {
-//       console.error('Visibility change sync failed:', error);
-//     }
-//   }
-// };
-
-//     document.addEventListener('visibilitychange', handleVisibilityChange);
-//     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-//   }, [user]);
-
-//   if (isLoading) {
-//     return <LoadingSpinner />;
-//   }
-
-//   return (
-//     <AppErrorBoundary>
-//       <AuthProvider>
-//         <AppContent />
-//       </AuthProvider>
-//     </AppErrorBoundary>
-//   );
-// };
 
 export default App;

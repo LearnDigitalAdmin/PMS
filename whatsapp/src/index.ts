@@ -51,14 +51,14 @@ const TIER_PERMISSIONS: Record<string, string[]> = {
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
 
 // Cleanup rate limit store every hour
-setInterval(() => {
-    const now = Date.now();
-    for (const [key, value] of rateLimitStore.entries()) {
-        if (now > value.resetTime) {
-            rateLimitStore.delete(key);
-        }
-    }
-}, 60 * 60 * 1000);
+// setInterval(() => {
+//     const now = Date.now();
+//     for (const [key, value] of rateLimitStore.entries()) {
+//         if (now > value.resetTime) {
+//             rateLimitStore.delete(key);
+//         }
+//     }
+// }, 60 * 60 * 1000);
 
 // Rate limiting function
 function checkRateLimit(identifier: string): boolean {
@@ -607,7 +607,7 @@ async function sendWhatsAppMessage(
             messagePayload.template.components.push({
                 type: 'button',
                 sub_type: 'url',
-                index: '0',
+                index: '1',
                 parameters: [{ 
                     type: 'text', 
                     text: buttonUrl // This is now the processed URL path

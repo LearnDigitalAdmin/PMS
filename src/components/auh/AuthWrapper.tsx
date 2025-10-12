@@ -1,4 +1,4 @@
-// components/auth/AuthWrapper.tsx - Enhanced with Multi-Device Support and Fixed User Data Handling
+// components/auth/AuthWrapper.tsx - Enhanced with Firebase Auth + Multi-Device Support
 import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { database } from '../../services/database/Database';
 import { firebaseSyncService } from '../../services/database/FirebaseSync';
@@ -11,8 +11,43 @@ import {
   collection, 
   where, 
   getDocs, 
-  limit 
-} from 'firebase/firestore';
+  limit,
+  doc,
+  setDoc} from 'firebase/firestore';
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  onAuthStateChanged,
+  type Auth,
+  type UserCredential
+} from 'firebase/auth';
+import { initializeApp, type FirebaseApp } from 'firebase/app';
+import { argon2Verify } from 'hash-wasm';
+
+// Firebase Configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyD1hg7YLv08vyR2kSWi2ymxSu2pYCRwPq8",
+  authDomain: "plot-9fd6e.firebaseapp.com",
+  projectId: "plot-9fd6e",
+  storageBucket: "plot-9fd6e.firebasestorage.app",
+  messagingSenderId: "1037620305589",
+  appId: "1:1037620305589:web:2672a7dcaeca4c46b068fc",
+  measurementId: "G-B90H3GJFPM"
+};
+
+// Initialize Firebase
+let firebaseApp: FirebaseApp;
+let auth: Auth;
+
+try {
+  firebaseApp = initializeApp(firebaseConfig);
+  auth = getAuth(firebaseApp);
+  console.log('✅ Firebase initialized successfully');
+} catch (error) {
+  console.error('❌ Firebase initialization error:', error);
+}
 
 // Enhanced Auth Context Interface
 interface AuthContextType {
@@ -53,7 +88,7 @@ const LoadingSpinner = () => (
       </div>
     </div>
   </div>
-  );
+);
 
 // Auth Wrapper Screen (handles sign in/sign up switching)
 const AuthWrapperScreen = () => {
@@ -77,6 +112,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [lastSync, setLastSync] = useState<string>('Never');
+  const [, setFirebaseAuthReady] = useState(false);
 
   // Enhanced user state updater
   const updateUserState = useCallback((updatedUser: User) => {
@@ -115,45 +151,172 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }, [user, updateUserState]);
 
-  // Password verification helper
-
-  const verifyPassword = async (password: string, hash: string): Promise<boolean> => {
-  try {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(password + 'propertyflow_salt_2024');
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const passwordHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    
-    console.log('🔍 Password being verified:', password);
-    console.log('🔍 Generated hash:', passwordHash);
-    console.log('🔍 Expected hash:', hash);
-    console.log('🔍 Match:', passwordHash === hash);
-    
-    return passwordHash === hash;
-  } catch (error) {
-    console.error('Error verifying password:', error);
-    return false;
-  }
-};
-  // const verifyPassword = async (password: string, hash: string): Promise<boolean> => {
+  // Password hashing helper
+  // const hashPassword = async (password: string): Promise<string> => {
   //   try {
   //     const encoder = new TextEncoder();
   //     const data = encoder.encode(password + 'propertyflow_salt_2024');
   //     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   //     const hashArray = Array.from(new Uint8Array(hashBuffer));
-  //     const passwordHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  //     return passwordHash === hash;
+  //     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   //   } catch (error) {
-  //     console.error('Error verifying password:', error);
-  //     return false;
+  //     console.error('Error hashing password:', error);
+  //     throw error;
   //   }
   // };
+
+  // Password verification helper
+  const verifyPassword = async (password: string, hash: string): Promise<boolean> => {
+    try {
+          const result = await argon2Verify({
+            password: password,
+            hash: hash
+          });
+    
+          return result === true;
+        } catch (error) {
+          console.error('Error verifying password:', error);
+          return false;
+        }
+  };
+
+
+
+  // NEW: Create Firebase Auth user and Firestore document
+  // const createFirebaseAuthUser = async (
+  //   email: string, 
+  //   password: string, 
+  //   userData: any
+  // ): Promise<{ success: boolean; uid?: string; error?: string }> => {
+  //   try {
+  //     // Check if online
+  //     if (!navigator.onLine) {
+  //       alert('⚠️ Internet connection required to create a new account. Please check your connection and try again.');
+  //       return { success: false, error: 'No internet connection' };
+  //     }
+
+  //     console.log('🔐 Creating Firebase Auth user for:', email);
+      
+  //     // Create Firebase Auth user
+  //     const userCredential: UserCredential = await createUserWithEmailAndPassword(
+  //       auth, 
+  //       email.toLowerCase().trim(), 
+  //       password
+  //     );
+      
+  //     const uid = userCredential.user.uid;
+  //     console.log('✅ Firebase Auth user created with UID:', uid);
+
+  //     // Hash password for storage
+  //     const passwordHash = await hashPassword(password);
+
+  //     // Create Firestore document with UID field
+  //     const db = getFirestore();
+  //     const userDocRef = doc(db, 'users', userData.localId.toString());
+      
+  //     const firestoreData = {
+  //       uid: uid, // Firebase Auth UID
+  //       localId: userData.localId,
+  //       name: userData.name,
+  //       email: email.toLowerCase().trim(),
+  //       phone: userData.phone || '',
+  //       passwordHash: passwordHash,
+  //       tier: userData.tier || 'free',
+  //       type: userData.type || 'free',
+  //       storage: userData.storage || false,
+  //       isPremium: userData.isPremium || false,
+  //       createdAt: new Date().toISOString(),
+  //       updatedAt: new Date().toISOString(),
+  //       company: userData.company || null
+  //     };
+
+  //     await setDoc(userDocRef, firestoreData);
+  //     console.log('✅ Firestore user document created');
+
+  //     alert('✅ Account created successfully! You can now sign in on any device.');
+      
+  //     return { success: true, uid };
+      
+  //   } catch (error: any) {
+  //     console.error('❌ Firebase Auth creation error:', error);
+      
+  //     let errorMessage = 'Failed to create account';
+      
+  //     if (error.code === 'auth/email-already-in-use') {
+  //       errorMessage = 'This email is already registered. Please sign in instead.';
+  //       alert('⚠️ This email is already registered. Please sign in instead.');
+  //     } else if (error.code === 'auth/weak-password') {
+  //       errorMessage = 'Password is too weak. Please use a stronger password.';
+  //       alert('⚠️ Password is too weak. Please use at least 6 characters.');
+  //     } else if (error.code === 'auth/invalid-email') {
+  //       errorMessage = 'Invalid email address.';
+  //       alert('⚠️ Invalid email address. Please check and try again.');
+  //     } else if (error.code === 'auth/network-request-failed') {
+  //       errorMessage = 'Network error. Please check your connection.';
+  //       alert('⚠️ Network error. Please check your internet connection.');
+  //     } else {
+  //       alert('⚠️ Failed to create account. Please try again.');
+  //     }
+      
+  //     return { success: false, error: errorMessage };
+  //   }
+  // };
+
+  // NEW: Sign in with Firebase Auth
+  const signInWithFirebaseAuth = async (
+    email: string, 
+    password: string
+  ): Promise<{ success: boolean; uid?: string; error?: string }> => {
+    try {
+      console.log('🔐 Signing in with Firebase Auth:', email);
+      
+      const userCredential: UserCredential = await signInWithEmailAndPassword(
+        auth,
+        email.toLowerCase().trim(),
+        password
+      );
+      
+      const uid = userCredential.user.uid;
+      console.log('✅ Firebase Auth sign in successful, UID:', uid);
+      
+      return { success: true, uid };
+      
+    } catch (error: any) {
+      console.error('❌ Firebase Auth sign in error:', error);
+      
+      let errorMessage = 'Authentication failed';
+      
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+        errorMessage = 'Invalid email or password';
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = 'Too many failed attempts. Please try again later.';
+        alert('⚠️ Too many failed login attempts. Please try again later.');
+      } else if (error.code === 'auth/network-request-failed') {
+        errorMessage = 'Network error. Trying offline login...';
+        console.log('Network error, will try offline authentication');
+      }
+      
+      return { success: false, error: errorMessage };
+    }
+  };
 
   // Multi-device login helper - check Firestore for user account
   const loginFromFirestore = async (email: string, password: string): Promise<{ success: boolean; user?: any; error?: string }> => {
     try {
       console.log('Attempting Firestore login for:', email);
+      
+      // First, try Firebase Auth if online
+      if (navigator.onLine) {
+        const authResult = await signInWithFirebaseAuth(email, password);
+        if (!authResult.success && authResult.error !== 'Network error. Trying offline login...') {
+          return { success: false, error: authResult.error };
+        }
+        
+        if (authResult.success) {
+          console.log('✅ Firebase Auth successful');
+        }
+      }
+      
       const db = getFirestore();
       
       // Search for user by email in Firestore
@@ -187,6 +350,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
 
       console.log('Password verified for Firestore user');
+      alert('✅ Signed in successfully! Syncing your data...');
+      
       return { 
         success: true, 
         user: {
@@ -320,14 +485,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return;
       }
 
-      // Clear existing data first to ensure clean replacement
-      console.log('Clearing existing local data before Firestore import...');
-      
-      // Note: We don't delete the user record, but we will replace all related data
-      // during the sync process. The new flattened sync structure handles this better.
-
       // Perform full data sync - this will replace all data
-      //await firebaseSyncService.performFullSync(userId);
       await firebaseSyncService.forceDownload(userId);
       console.log('Complete user data downloaded and ALL LOCAL DATA REPLACED');
       
@@ -417,11 +575,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     initializeAuth();
   }, []);
 
+  // Firebase Auth state listener
+  useEffect(() => {
+    if (!auth) return;
+
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        console.log('🔐 Firebase Auth state: User signed in', firebaseUser.email);
+        setFirebaseAuthReady(true);
+      } else {
+        console.log('🔐 Firebase Auth state: No user signed in');
+        setFirebaseAuthReady(true);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   // Online/offline status monitoring
   useEffect(() => {
     const handleOnline = () => {
-      console.log('App came online');
+      console.log('✅ App came online');
       setIsOnline(true);
+      alert('✅ You are back online! Data will sync automatically.');
       
       // Trigger sync if user has sync capabilities
       if (user && canUserSync(user)) {
@@ -437,8 +613,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
 
     const handleOffline = () => {
-      console.log('App went offline');
+      console.log('⚠️ App went offline');
       setIsOnline(false);
+      alert('⚠️ You are offline. Changes will be saved locally and synced when you reconnect.');
     };
 
     window.addEventListener('online', handleOnline);
@@ -496,7 +673,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       });
 
       // Start automatic sync with new flattened structure
-      //firebaseSyncService.startAutomaticSync(user.id);
       firebaseSyncService.initializeForUser(user.id);
       
     } catch (error) {
@@ -514,7 +690,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // Enhanced login function with proper data handling
+  // Enhanced login function with Firebase Auth integration
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
       console.log('Attempting login for:', email);
@@ -522,12 +698,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Ensure database is initialized
       await database.initializeDatabase();
       
-      // Step 1: Try local authentication first
+      // Step 1: Try local authentication first (for existing offline users)
       console.log('Trying local authentication...');
       const localResult: AuthResult | null = await database.authenticateUser(email, password);
       
       if (localResult) {
-        console.log('LOCAL LOGIN SUCCESS - Local user data preserved');
+        console.log('✅ LOCAL LOGIN SUCCESS - Local user data preserved');
+        
+        // Try Firebase Auth sign in if online (non-blocking)
+        if (navigator.onLine) {
+          try {
+            await signInWithFirebaseAuth(email, password);
+            console.log('✅ Firebase Auth session established');
+          } catch (error) {
+            console.log('Firebase Auth failed, continuing with local auth');
+          }
+        }
         
         // Set user state
         setUser(localResult.user);
@@ -547,33 +733,48 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           await initializeUserSync(localResult.user);
           
           // Perform GENTLE sync - only updates tier/type/storage, uploads local data
-          try {
-            console.log('Performing LOCAL USER sync (preserves local data, only syncs tier updates)...');
-            await firebaseSyncService.forceDownload(localResult.user.id);
-            await updateSyncStatus(localResult.user.id);
-          } catch (syncError) {
-            console.error('Local user sync failed:', syncError);
-            // Don't fail login if sync fails - app works offline
+          if (navigator.onLine) {
+            try {
+              console.log('Performing LOCAL USER sync (preserves local data, only syncs tier updates)...');
+              await firebaseSyncService.forceDownload(localResult.user.id);
+              await updateSyncStatus(localResult.user.id);
+              alert('✅ Signed in successfully! Your data is synced.');
+            } catch (syncError) {
+              console.error('Local user sync failed:', syncError);
+              alert('✅ Signed in successfully! (Working offline - changes will sync later)');
+            }
+          } else {
+            alert('✅ Signed in successfully! (Working offline - changes will sync when online)');
           }
+        } else {
+          alert('✅ Signed in successfully!');
         }
         
         return { success: true };
       }
 
-      // Step 2: Try Firestore authentication - COMPLETE DATA REPLACEMENT
+      // Step 2: Try Firestore authentication if online - COMPLETE DATA REPLACEMENT
+      if (!navigator.onLine) {
+        console.log('⚠️ Offline and no local account found');
+        alert('⚠️ No internet connection. Please connect to the internet to sign in.');
+        return { success: false, error: 'No internet connection and no local account found' };
+      }
+
       console.log('Local authentication failed, trying Firestore...');
       const firestoreResult = await loginFromFirestore(email, password);
       
       if (!firestoreResult.success) {
         console.log('Firestore authentication failed:', firestoreResult.error);
+        alert('⚠️ ' + (firestoreResult.error || 'Authentication failed'));
         return { success: false, error: firestoreResult.error || 'Authentication failed' };
       }
 
-      console.log('FIRESTORE LOGIN SUCCESS - Will REPLACE all local data');
+      console.log('✅ FIRESTORE LOGIN SUCCESS - Will REPLACE all local data');
       
       // Step 3: Create/update local user from Firestore data - COMPLETE REPLACEMENT
       const localUser = await createLocalUserFromFirestore(firestoreResult.user!, password);
       if (!localUser) {
+        alert('⚠️ Failed to create local account. Please try again.');
         return { success: false, error: 'Failed to create local account' };
       }
 
@@ -607,7 +808,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           } catch (error) {
             console.error('Background data replacement failed:', error);
           }
-        }, 10000);
+        }, 2000);
       }
 
       console.log('Firestore login completed - local data will be replaced');
@@ -615,6 +816,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
     } catch (error) {
       console.error('Login error:', error);
+      alert('⚠️ Login failed. Please try again.');
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Authentication failed' 
@@ -622,9 +824,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // Enhanced logout function
-  const logout = () => {
+  // Enhanced logout function with Firebase Auth
+  const logout = async () => {
     console.log('Logging out user');
+    
+    try {
+      // Sign out from Firebase Auth if online
+      if (navigator.onLine && auth) {
+        await firebaseSignOut(auth);
+        console.log('✅ Firebase Auth sign out successful');
+      }
+    } catch (error) {
+      console.error('Firebase Auth sign out error:', error);
+    }
     
     // Clean up sync listeners
     firebaseSyncService.cleanup();
@@ -638,6 +850,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     localStorage.removeItem('currentUser');
     localStorage.removeItem('currentCompany');
     localStorage.removeItem('lastSyncTime');
+    
+    alert('✅ Signed out successfully!');
   };
 
   // Auth context value
@@ -685,6 +899,99 @@ const AuthWrapper: React.FC<AuthWrapperProps> = ({ children }) => {
   }
 
   return <>{children}</>;
+};
+
+// Export helper function for SignUpScreen to use
+export const createUserWithFirebaseAuth = async (
+  email: string,
+  password: string,
+  userData: {
+    localId: number;
+    name: string;
+    phone: string;
+    tier: string;
+    type: string;
+    storage: boolean;
+    isPremium: boolean;
+    company?: any;
+  }
+): Promise<{ success: boolean; uid?: string; error?: string }> => {
+  try {
+    // Check if online
+    if (!navigator.onLine) {
+      alert('⚠️ Internet connection required to create a new account. Please check your connection and try again.');
+      return { success: false, error: 'No internet connection' };
+    }
+
+    console.log('🔐 Creating Firebase Auth user for:', email);
+    
+    // Create Firebase Auth user
+    const userCredential: UserCredential = await createUserWithEmailAndPassword(
+      auth, 
+      email.toLowerCase().trim(), 
+      password
+    );
+    
+    const uid = userCredential.user.uid;
+    console.log('✅ Firebase Auth user created with UID:', uid);
+
+    // Hash password for storage
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password + 'propertyflow_salt_2024');
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const passwordHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+    // Create Firestore document with UID field
+    const db = getFirestore();
+    const userDocRef = doc(db, 'users', userData.localId.toString());
+    
+    const firestoreData = {
+      uid: uid, // Firebase Auth UID
+      localId: userData.localId,
+      name: userData.name,
+      email: email.toLowerCase().trim(),
+      phone: userData.phone || '',
+      passwordHash: passwordHash,
+      tier: userData.tier || 'free',
+      type: userData.type || 'free',
+      storage: userData.storage || false,
+      isPremium: userData.isPremium || false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      company: userData.company || null
+    };
+
+    await setDoc(userDocRef, firestoreData);
+    console.log('✅ Firestore user document created');
+
+    alert('✅ Account created successfully! You can now sign in on any device.');
+    
+    return { success: true, uid };
+    
+  } catch (error: any) {
+    console.error('❌ Firebase Auth creation error:', error);
+    
+    let errorMessage = 'Failed to create account';
+    
+    if (error.code === 'auth/email-already-in-use') {
+      errorMessage = 'This email is already registered. Please sign in instead.';
+      alert('⚠️ This email is already registered. Please sign in instead.');
+    } else if (error.code === 'auth/weak-password') {
+      errorMessage = 'Password is too weak. Please use a stronger password.';
+      alert('⚠️ Password is too weak. Please use at least 6 characters.');
+    } else if (error.code === 'auth/invalid-email') {
+      errorMessage = 'Invalid email address.';
+      alert('⚠️ Invalid email address. Please check and try again.');
+    } else if (error.code === 'auth/network-request-failed') {
+      errorMessage = 'Network error. Please check your connection.';
+      alert('⚠️ Network error. Please check your internet connection.');
+    } else {
+      alert('⚠️ Failed to create account. Please try again.');
+    }
+    
+    return { success: false, error: errorMessage };
+  }
 };
 
 export default AuthWrapper;
