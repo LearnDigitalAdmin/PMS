@@ -162,7 +162,7 @@ const handleDownloadPDF = async () => {
     const pdfBytes = await generateInvoicePDF(
       invoice, 
       property, 
-      payments, 
+      //payments, 
       companyInfo,
       {
         template: 'standard',

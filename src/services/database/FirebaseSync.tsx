@@ -27,6 +27,7 @@ import { database } from '../database/Database';
 import { generateInvoicePDF } from '../pdf/PDFService';
 import type { User, Property, Tenant } from '../database/Database';
 import { integrateWithFirebaseSync } from '../screening/TenantScreeningService';
+import { getFunctions } from 'firebase/functions';
 
 // Firebase config
 const firebaseConfig = {
@@ -93,6 +94,7 @@ class SafeBatchManager {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 const storage = getStorage(app);
+export const functions = getFunctions(app, "africa-south1");
 
 // User tier limits
 export const USER_LIMITS = {
@@ -1050,14 +1052,14 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
       const property = await database.getPropertyById(invoice.propertyId);
       if (!property) return null;
       
-      const payments = await database.getPaymentsByInvoice(invoice.id);
+      //const payments = await database.getPaymentsByInvoice(invoice.id);
       const companyInfo = this.getCompanyInfo(user, company);
       const paymentInstructions = this.getPaymentInstructions();
       
       const pdfBytes = await generateInvoicePDF(
         invoice,
         property,
-        payments,
+        //payments,
         companyInfo,
         { template: 'standard', paymentInstructions, includeCompanyLogo: true },
         user

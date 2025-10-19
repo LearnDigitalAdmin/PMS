@@ -210,7 +210,7 @@ const handleDownloadPDF = async (invoice: InvoiceWithDetails) => {
     }
 
     // Get payment history
-    const payments: Payment[] = await database.getPaymentsByInvoice(invoice.id);
+    //const payments: Payment[] = await database.getPaymentsByInvoice(invoice.id);
     
     // Get stored payment instructions
     const storedInstructions = getStoredPaymentInstructions();
@@ -220,7 +220,7 @@ const handleDownloadPDF = async (invoice: InvoiceWithDetails) => {
     const pdfBytes = await generateInvoicePDF(
       invoice, 
       property, 
-      payments, 
+      //payments, 
       companyInfo,
       {
         template: 'standard',

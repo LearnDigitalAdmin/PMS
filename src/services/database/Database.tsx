@@ -1528,15 +1528,18 @@ async createInvoice(invoice: InvoiceInput): Promise<Invoice> {
   // CRITICAL: Validate tenant and property access before creating invoice
   const tenant = await this.getTenantById(invoice.tenantId);
   if (!tenant) {
+    alert('Tenant not found. Please select a valid tenant.');
     throw new Error('Tenant not found');
   }
   
   if (tenant.isRestricted) {
+    alert('Cannot create invoice for restricted tenant. Please upgrade your plan to access.');
     throw new Error('Cannot create invoice for restricted tenant. Upgrade your plan to access.');
   }
   
   const property = await this.getPropertyById(invoice.propertyId);
   if (!property) {
+    alert('Property not found. Please select a valid property.'); 
     throw new Error('Property not found');
   }
   
@@ -1559,9 +1562,9 @@ async createInvoice(invoice: InvoiceInput): Promise<Invoice> {
       id, tenant_id, property_id, invoice_number, billing_month, rent_amount,
       water_current_reading, water_previous_reading, water_standing_fee, water_unit_price,
       power_current_reading, power_previous_reading, power_unit_price,
-      other_charges, other_charges_description, total_amount, due_date, is_paid
+      other_charges, other_charges_description, total_amount, due_date
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   
   const result = await this.db!.run(query, [
@@ -1582,7 +1585,7 @@ async createInvoice(invoice: InvoiceInput): Promise<Invoice> {
     invoice.otherChargesDescription || '',
     invoice.totalAmount || totalAmount,
     invoice.dueDate || null,
-    invoice.isPaid
+    //invoice.isPaid
   ]);
 
   const createdInvoice = await this.getInvoiceById(result.changes!.lastId!);

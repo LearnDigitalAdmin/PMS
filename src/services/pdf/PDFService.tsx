@@ -3,7 +3,7 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { formatCurrency, formatDate } from '../../utils/FormatUtils';
-import type { InvoiceWithDetails, Property, Payment, User } from '../database/Database';
+import type { InvoiceWithDetails, Property, User } from '../database/Database';
 import cogvanaMessages from '../../assets/cogvana.json';
 
 
@@ -548,355 +548,6 @@ async function drawEnhancedBillingTable(
   return currentY - 15;
 }
 
-// Enhanced payments table with proper sizing
-async function drawEnhancedPaymentsTable(
-  page: any,
-  font: any,
-  boldFont: any,
-  payments: Payment[],
-  yPosition: number,
-  width: number
-): Promise<number> {
-  // Payments section title
-  page.drawText('PAYMENT HISTORY', {
-    x: LAYOUT.MARGIN,
-    y: yPosition,
-    size: 12,
-    font: boldFont,
-    color: COLORS.DARK
-  });
-  
-  yPosition -= 20;
-  
-  const tableWidth = width - (LAYOUT.MARGIN * 2);
-  const rowHeight = 20;
-  const headerHeight = 25;
-  
-  // Fixed column widths for payments table
-  const columnWidths = [90, 90, 90, 245]; // Total fits within table width
-  
-  // Table header
-  page.drawRectangle({
-    x: LAYOUT.MARGIN,
-    y: yPosition - headerHeight,
-    width: tableWidth,
-    height: headerHeight,
-    color: COLORS.ACCENT
-  });
-  
-  const headers = ['Date', 'Amount', 'Method', 'Reference/Notes'];
-  let headerX = LAYOUT.MARGIN + 10;
-  
-  headers.forEach(header => {
-    page.drawText(header.toUpperCase(), {
-      x: headerX,
-      y: yPosition - 16,
-      size: 9,
-      font: boldFont,
-      color: COLORS.WHITE
-    });
-    headerX += columnWidths[headers.indexOf(header)];
-  });
-  
-  let currentY = yPosition - headerHeight;
-  
-  payments.forEach((payment, index) => {
-    const rowColor = index % 2 === 0 ? COLORS.WHITE : rgb(0.98, 0.98, 0.98);
-    
-    page.drawRectangle({
-      x: LAYOUT.MARGIN,
-      y: currentY - rowHeight,
-      width: tableWidth,
-      height: rowHeight,
-      color: rowColor,
-      borderColor: COLORS.BORDER,
-      borderWidth: 0.5
-    });
-    
-    let cellX = LAYOUT.MARGIN + 10;
-    
-    // Payment data
-    const paymentData = [
-      formatDate(new Date(payment.paymentDate)),
-      formatCurrency(payment.amount),
-      sanitizeTextForPDF(payment.paymentMethod || 'N/A'),
-      sanitizeTextForPDF(payment.notes || '')
-    ];
-    
-    paymentData.forEach((data, colIndex) => {
-      // Truncate text if too long
-      let displayText = data;
-      const maxChars = Math.floor(columnWidths[colIndex] / 5);
-      if (displayText.length > maxChars) {
-        displayText = displayText.substring(0, maxChars - 3) + '...';
-      }
-      
-      page.drawText(displayText, {
-        x: cellX,
-        y: currentY - 13,
-        size: 8,
-        font: font,
-        color: COLORS.DARK
-      });
-      cellX += columnWidths[colIndex];
-    });
-    
-    currentY -= rowHeight;
-  });
-  
-  return currentY - 15;
-}
-
-// Fixed summary positioning to avoid overlap - FIXED LINE ISSUE
-// async function drawEnhancedSummary(
-//   page: any,
-//   font: any,
-//   boldFont: any,
-//   invoice: InvoiceWithDetails,
-//   yPosition: number,
-//   width: number
-// ): Promise<number> {
-//   const summaryWidth = 260;
-//   const summaryHeight = 120;
-//   const summaryX = width - summaryWidth - LAYOUT.MARGIN;
-  
-//   // Ensure summary doesn't overlap with other content
-//   const minY = Math.max(yPosition - summaryHeight, 150); // Minimum Y position
-//   const adjustedY = Math.min(yPosition, minY + summaryHeight);
-  
-//   // Summary card with shadow effect
-//   page.drawRectangle({
-//     x: summaryX + 2,
-//     y: adjustedY - summaryHeight - 2,
-//     width: summaryWidth,
-//     height: summaryHeight,
-//     color: rgb(0.85, 0.85, 0.85)
-//   });
-  
-//   page.drawRectangle({
-//     x: summaryX,
-//     y: adjustedY - summaryHeight,
-//     width: summaryWidth,
-//     height: summaryHeight,
-//     color: COLORS.WHITE,
-//     borderColor: COLORS.BORDER,
-//     borderWidth: 2
-//   });
-  
-//   // Summary header
-//   page.drawText('INVOICE SUMMARY', {
-//     x: summaryX + 15,
-//     y: adjustedY - 20,
-//     size: 11,
-//     font: boldFont,
-//     color: COLORS.PRIMARY
-//   });
-  
-//   // Summary items with proper spacing
-//   const items = [
-//     { label: 'Subtotal:', value: formatCurrency(invoice.totalAmount), color: COLORS.DARK },
-//     { label: 'Amount Paid:', value: formatCurrency(invoice.amountPaid), color: COLORS.ACCENT },
-//     { label: 'Balance Due:', value: formatCurrency(invoice.totalAmount - invoice.amountPaid), 
-//       color: invoice.totalAmount - invoice.amountPaid > 0 ? COLORS.DANGER : COLORS.SUCCESS }
-//   ];
-  
-//   if (invoice.arrears > 0) {
-//     items.splice(2, 0, { 
-//       label: 'Previous Arrears:', 
-//       value: formatCurrency(invoice.arrears), 
-//       color: COLORS.DANGER 
-//     });
-//   }
-  
-//   let summaryY = adjustedY - 40;
-  
-//   items.forEach((item, index) => {
-//     const isLast = index === items.length - 1;
-//     const fontSize = isLast ? 12 : 10;
-//     const itemFont = isLast ? boldFont : font;
-    
-//     page.drawText(item.label, {
-//       x: summaryX + 15,
-//       y: summaryY,
-//       size: fontSize,
-//       font: itemFont,
-//       color: COLORS.DARK
-//     });
-    
-//     page.drawText(item.value, {
-//       x: summaryX + 140,
-//       y: summaryY,
-//       size: fontSize,
-//       font: boldFont,
-//       color: item.color
-//     });
-    
-//     if (isLast) {
-//       // Draw line above final total - FIXED POSITIONING
-//       page.drawLine({
-//         start: { x: summaryX + 15, y: summaryY + 8 }, // Moved line higher to avoid cutting through text
-//         end: { x: summaryX + 240, y: summaryY + 8 },
-//         thickness: 1,
-//         color: COLORS.PRIMARY
-//       });
-//     }
-    
-//     summaryY -= isLast ? 20 : 15;
-//   });
-  
-//   return adjustedY - summaryHeight - 20;
-// }
-
-// // UPDATED Cogvana banner - only shows for free and basic users
-// async function drawEnhancedCogvanaBanner(
-//   page: any,
-//   font: any,
-//   boldFont: any,
-//   yPosition: number,
-//   width: number,
-//   userTier: string
-// ): Promise<number> {
-//   // Hide Cogvana section for business and enterprise users
-//   if (userTier === 'business' || userTier === 'pro' || userTier === 'enterprise') {
-//     return yPosition; // Return same position, no banner drawn
-//   }
-  
-//   const cogvanaMsg = getRandomCogvanaMessage();
-//   const [r, g, b] = hexToRgb(cogvanaMsg.color);
-//   const bannerHeight = 60;
-//   const bannerY = yPosition;
-  
-//   // Modern gradient background
-//   const gradientSteps = 4;
-//   for (let i = 0; i < gradientSteps; i++) {
-//     const alpha = 0.05 + (i * 0.03);
-//     const stepHeight = bannerHeight / gradientSteps;
-    
-//     page.drawRectangle({
-//       x: LAYOUT.MARGIN,
-//       y: bannerY - (i + 1) * stepHeight,
-//       width: width - (LAYOUT.MARGIN * 2),
-//       height: stepHeight,
-//       color: rgb(r * alpha + 0.98 * (1 - alpha), 
-//                  g * alpha + 0.98 * (1 - alpha), 
-//                  b * alpha + 0.98 * (1 - alpha))
-//     });
-//   }
-  
-//   // Modern border
-//   page.drawRectangle({
-//     x: LAYOUT.MARGIN,
-//     y: bannerY - bannerHeight,
-//     width: width - (LAYOUT.MARGIN * 2),
-//     height: bannerHeight,
-//     borderColor: rgb(r, g, b),
-//     borderWidth: 2
-//   });
-  
-//   // Cogvana branding section
-//   page.drawText('COGVANA', {
-//     x: LAYOUT.MARGIN + 15,
-//     y: bannerY - 18,
-//     size: 14,
-//     font: boldFont,
-//     color: rgb(r, g, b)
-//   });
-  
-//   page.drawText('Education Platform', {
-//     x: LAYOUT.MARGIN + 15,
-//     y: bannerY - 32,
-//     size: 8,
-//     font: font,
-//     color: COLORS.MEDIUM_GRAY
-//   });
-  
-//   // Message content with complete emoji sanitization
-//   const contentX = LAYOUT.MARGIN + 130;
-  
-//   // Category-based prefix instead of emoji
-//   const categoryPrefix = {
-//     'tutors': '[TUTORS]',
-//     'creators': '[CREATORS]',
-//     'students': '[STUDENTS]',
-//     'general': '[INFO]'
-//   }[cogvanaMsg.category] || '[COGVANA]';
-  
-//   page.drawText(`${categoryPrefix} ${cogvanaMsg.title}`, {
-//     x: contentX,
-//     y: bannerY - 18,
-//     size: 10,
-//     font: boldFont,
-//     color: COLORS.DARK
-//   });
-  
-//   // Message description with safe text wrapping
-//   const maxMessageWidth = width - contentX - 100;
-//   const messageWords = cogvanaMsg.message.split(' ').filter(word => word.length > 0);
-//   let messageLine = '';
-//   let messageY = bannerY - 32;
-  
-//   messageWords.forEach(word => {
-//     const testLine = messageLine + word + ' ';
-//     if (testLine.length * 4.5 < maxMessageWidth) {
-//       messageLine = testLine;
-//     } else {
-//       if (messageLine.trim()) {
-//         page.drawText(messageLine.trim(), {
-//           x: contentX,
-//           y: messageY,
-//           size: 8,
-//           font: font,
-//           color: COLORS.MEDIUM_GRAY
-//         });
-//         messageY -= 10;
-//       }
-//       messageLine = word + ' ';
-//     }
-//   });
-  
-//   if (messageLine.trim()) {
-//     page.drawText(messageLine.trim(), {
-//       x: contentX,
-//       y: messageY,
-//       size: 8,
-//       font: font,
-//       color: COLORS.MEDIUM_GRAY
-//     });
-//   }
-  
-//   // Call to action with safe text handling
-//   const ctaText = cogvanaMsg.cta ? `>> ${cogvanaMsg.cta}` : '>> Learn More';
-  
-//   page.drawText(ctaText, {
-//     x: contentX,
-//     y: bannerY - 50,
-//     size: 9,
-//     font: boldFont,
-//     color: rgb(r, g, b)
-//   });
-  
-//   // Contact information aligned to right
-//   const contactText = cogvanaMsg.category === 'tutors' || cogvanaMsg.category === 'creators' 
-//     ? 'sales@cogvana.co.ke | cogvana.co.ke/cogni'
-//     : 'cogvana.co.ke | Download on Play Store';
-    
-//   page.drawText(contactText, {
-//     x: width - 220,
-//     y: bannerY - 50,
-//     size: 7,
-//     font: font,
-//     color: COLORS.MEDIUM_GRAY
-//   });
-  
-//   return bannerY - bannerHeight - 10; // Return new Y position after banner
-// }
-
-
-
-
-
-
-
 // Enhanced pagination helper - calculates remaining space and determines if new page is needed
 function calculateRemainingSpace(currentY: number, requiredSpace: number, footerSpace: number = 180): boolean {
   return (currentY - requiredSpace - footerSpace) < 50; // 50px minimum margin from bottom
@@ -929,7 +580,7 @@ function addNewPageIfNeeded(
 async function generateEnhancedInvoicePDF(
   invoice: InvoiceWithDetails,
   property: Property,
-  payments: Payment[] = [],
+  //payments: Payment[] = [],
   companyInfo: CompanyInfo,
   options: PDFGenerationOptions = {},
   user: any
@@ -959,11 +610,11 @@ async function generateEnhancedInvoicePDF(
       website: sanitizeTextForPDF(companyInfo.website || '')
     };
     
-    const sanitizedPayments = payments.map(payment => ({
-      ...payment,
-      paymentMethod: sanitizeTextForPDF(payment.paymentMethod || ''),
-      notes: sanitizeTextForPDF(payment.notes || '')
-    }));
+    // const sanitizedPayments = payments.map(payment => ({
+    //   ...payment,
+    //   paymentMethod: sanitizeTextForPDF(payment.paymentMethod || ''),
+    //   notes: sanitizeTextForPDF(payment.notes || '')
+    // }));
     
     const sanitizedOptions = {
       ...options,
@@ -1021,18 +672,18 @@ async function generateEnhancedInvoicePDF(
     yPosition = await drawEnhancedBillingTable(currentPage, font, boldFont, sanitizedInvoice, yPosition, width);
     
     // Handle payments table if exists
-    if (sanitizedPayments.length > 0) {
-      const paymentsTableHeight = 50 + (sanitizedPayments.length * 20);
+    // if (sanitizedPayments.length > 0) {
+    //   const paymentsTableHeight = 50 + (sanitizedPayments.length * 20);
       
-      pageInfo = addNewPageIfNeeded(pdfDoc, currentPage, yPosition, paymentsTableHeight, 200);
-      if (pageInfo.isNewPage) {
-        currentPage = pageInfo.page;
-        yPosition = pageInfo.yPosition;
-        pages.push({ page: currentPage, hasFooter: false });
-      }
+    //   pageInfo = addNewPageIfNeeded(pdfDoc, currentPage, yPosition, paymentsTableHeight, 200);
+    //   if (pageInfo.isNewPage) {
+    //     currentPage = pageInfo.page;
+    //     yPosition = pageInfo.yPosition;
+    //     pages.push({ page: currentPage, hasFooter: false });
+    //   }
       
-      yPosition = await drawEnhancedPaymentsTable(currentPage, font, boldFont, sanitizedPayments, yPosition, width);
-    }
+    //   yPosition = await drawEnhancedPaymentsTable(currentPage, font, boldFont, sanitizedPayments, yPosition, width);
+    // }
     
     // Handle summary - always ensure it has proper space (140px needed)
     pageInfo = addNewPageIfNeeded(pdfDoc, currentPage, yPosition, 140, 200);
@@ -1865,7 +1516,7 @@ export function validateInvoiceData(invoice: InvoiceWithDetails, property: Prope
 export async function generatePDFWithErrorHandling(
   invoice: InvoiceWithDetails,
   property: Property,
-  payments: Payment[] = [],
+  //_payments: Payment[] = [],
   companyInfo: CompanyInfo,
   options: PDFGenerationOptions = {},
   user: any
@@ -1881,7 +1532,7 @@ export async function generatePDFWithErrorHandling(
   }
   
   try {
-    return await generateEnhancedInvoicePDF(invoice, property, payments, companyInfo, options, user);
+    return await generateEnhancedInvoicePDF(invoice, property, companyInfo, options, user);
   } catch (error) {
     console.error('PDF generation error:', error);
     

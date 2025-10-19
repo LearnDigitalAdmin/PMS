@@ -69,14 +69,14 @@ function getRandomCogvanaMessage(preferredCategory?: string): CogvanaMessage {
 export async function shareViaWhatsApp(
   invoice: InvoiceWithDetails,
   property: Property,
-  payments: Payment[] = [],
+  _payments: Payment[] = [],
   companyInfo: CompanyInfo,
   options: any,
   user: any
 ): Promise<void> {
   try {
     // Generate PDF with Cogvana integration
-    const pdfBytes = await generateInvoicePDF(invoice, property, payments, companyInfo, options, user);
+    const pdfBytes = await generateInvoicePDF(invoice, property, companyInfo, options, user);
     const filename = generatePDFFilename(invoice);
     const fileUri = await downloadPDF(pdfBytes, filename, user);
     
@@ -147,14 +147,14 @@ _Powered by Cogvana Education Platform_`;
 export async function shareViaEmail(
   invoice: InvoiceWithDetails,
   property: Property,
-  payments: Payment[] = [],
+  _payments: Payment[] = [],
   companyInfo: CompanyInfo,
   options: any,
   user: any
 ): Promise<void> {
   try {
     // Generate PDF with Cogvana integration
-    const pdfBytes = await generateInvoicePDF(invoice, property, payments, companyInfo, options, user);
+    const pdfBytes = await generateInvoicePDF(invoice, property, companyInfo, options, user);
     const filename = generatePDFFilename(invoice);
     const fileUri = await downloadPDF(pdfBytes, filename, user);
     
@@ -576,14 +576,14 @@ function normalizeKenyanPhoneNumber(phoneNumber: string): string {
 export async function shareInvoicePDF(
   invoice: InvoiceWithDetails,
   property: Property,
-  payments: Payment[] = [],
+  _payments: Payment[] = [],
   companyInfo: CompanyInfo,
   options: any,
   user: any
 ): Promise<void> {
   try {
     // Generate PDF
-    const pdfBytes = await generateInvoicePDF(invoice, property, payments, companyInfo, options, user);
+    const pdfBytes = await generateInvoicePDF(invoice, property, companyInfo, options, user);
     const filename = generatePDFFilename(invoice);
     const fileUri = await downloadPDF(pdfBytes, filename, user);
     
@@ -638,7 +638,7 @@ export async function shareInvoicePDF(
 export async function shareBulkInvoicePDFs(
   invoices: InvoiceWithDetails[],
   properties: Property[],
-  payments: Payment[][],
+  _payments: Payment[][],
   companyInfo: CompanyInfo,
   options: any,
   user: any
@@ -658,10 +658,10 @@ export async function shareBulkInvoicePDFs(
     if (invoices.length > 0) {
       const firstInvoice = invoices[0];
       const firstProperty = properties.find(p => p.id === firstInvoice.propertyId);
-      const firstPayments = payments[0] || [];
+      //const firstPayments = payments[0] || [];
       
       if (firstProperty) {
-        const pdfBytes = await generateInvoicePDF(firstInvoice, firstProperty, firstPayments, companyInfo, options, user);
+        const pdfBytes = await generateInvoicePDF(firstInvoice, firstProperty, companyInfo, options, user);
         const filename = `Sample_${generatePDFFilename(firstInvoice)}`;
         await downloadPDF(pdfBytes, filename, user);
       }

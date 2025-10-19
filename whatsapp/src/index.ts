@@ -74,6 +74,7 @@ interface ProcessWebSubscriptionRequest {
   billingCycle: 'monthly' | 'annual';
   amount: number;
   daysToAdd: number;
+  cyber?: any;
 }
 
 
@@ -96,13 +97,13 @@ async function sendWhatsAppReminder(phone: string, daysLeft: number, planName: s
           {
             type: "body",
             parameters: [
+             {
+                type: "text",
+                text: planName
+              },    
               {
                 type: "text",
                 text: daysLeft.toString()
-              },
-              {
-                type: "text",
-                text: planName
               }
             ]
           }
@@ -123,6 +124,74 @@ async function sendWhatsAppReminder(phone: string, daysLeft: number, planName: s
   }
 }
 
+async function getOrCreateSplitCode(
+  subaccountCode: string,
+  commissionRate: number,
+  agentId: string
+): Promise<string> {
+  //const paystackHeaders = getPaystackHeaders(secretValue);
+  
+  // Check if split code exists in Firestore cache
+  const splitDoc = await db.collection("splitCodes").doc(agentId).get();
+  
+  if (splitDoc.exists) {
+    const data = splitDoc.data();
+    // Verify the split matches current commission rate
+    if (data?.commissionRate === commissionRate) {
+      console.log(`Using cached split code for agent ${agentId}: ${data.splitCode}`);
+      return data.splitCode;
+    }
+  }
+  
+  // Create new split code
+  try {
+    const splitPayload = {
+      name: `Agent ${agentId} Split`,
+      type: "percentage",
+      currency: "KES",
+      subaccounts: [
+        {
+          subaccount: subaccountCode,
+          share: 100 - commissionRate,
+        },
+      ],
+      bearer_type: "all-proportional",
+    };
+    
+    console.log('Creating split code:', JSON.stringify(splitPayload, null, 2));
+    
+    const response = await axios.post(
+      `${PAYSTACK_API_BASE}/split`,
+      splitPayload,
+      { headers: {
+        'Authorization': `Bearer ${PAYSTACK_SECRET_KEY}`,
+        'Content-Type': 'application/json'
+      } }
+    );
+    
+    if (!response.data.status) {
+      throw new Error(`Failed to create split: ${response.data.message}`);
+    }
+    
+    const splitCode = response.data.data.split_code;
+    
+    // Cache the split code
+    await db.collection("splitCodes").doc(agentId).set({
+      splitCode: splitCode,
+      subaccountCode: subaccountCode,
+      commissionRate: commissionRate,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    
+    console.log(`Created new split code for agent ${agentId}: ${splitCode}`);
+    return splitCode;
+    
+  } catch (error: any) {
+    console.error('Error creating split code:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
 export const processWebSubscription = onCall({
   timeoutSeconds: 60,
   memory: "512MiB",
@@ -131,9 +200,7 @@ export const processWebSubscription = onCall({
   cors: true,
 }, async (request: CallableRequest<ProcessWebSubscriptionRequest>) => {
   try {
-    //const paystackHeaders = getPaystackHeaders();
-    
-    const { userId, userName, email, phone, planId, planName, billingCycle, amount, daysToAdd } = request.data;
+    const { userId, userName, email, phone, planId, planName, billingCycle, amount, daysToAdd, cyber } = request.data;
 
     if (!userId || !userName || !email || !phone || !planId || !planName || !amount) {
       throw new HttpsError(
@@ -141,6 +208,42 @@ export const processWebSubscription = onCall({
         "All fields are required"
       );
     }
+
+    let splitCode: string | undefined;
+
+    if (cyber) {
+    try {
+        console.log(`Attempting to process with agent ${cyber.uid}`);
+        
+        // Get agent's payment info (subaccount)
+        const agentDoc = await db.collection("agents").doc(cyber.uid).get();
+
+        if (!agentDoc.exists) {
+        console.warn(`Agent ${cyber.uid} not found - processing payment without split`);
+        } else {
+        const agentData = agentDoc.data();
+        const paymentInfo = agentData?.paymentInfo;
+
+        if (!paymentInfo || !paymentInfo.accountId) {
+            console.warn(`Agent ${cyber.uid} has not set up payment account - processing payment without split`);
+        } else {
+            const subaccountCode = paymentInfo.accountId;
+            console.log(`Processing payment for user ${userId}, agent ${cyber.uid}, amount ${amount}`);
+
+            // Get or create split code
+            splitCode = await getOrCreateSplitCode(subaccountCode, 55, cyber.uid);
+            console.log(`Successfully created split code: ${splitCode}`);
+        }
+        }
+    } catch (agentError: any) {
+        console.error(`Error processing agent split for ${cyber.uid}:`, agentError);
+        console.log(`Continuing payment without agent split`);
+        // Don't throw - just continue without the split
+        splitCode = undefined;
+    }
+    }
+
+console.log(`Processing web subscription for user ${userId}, plan ${planId}, amount ${amount}${splitCode ? ' with agent split' : ' without agent split'}`);
 
     console.log(`Processing web subscription for user ${userId}, plan ${planId}, amount ${amount}`);
 
@@ -160,7 +263,8 @@ export const processWebSubscription = onCall({
 
     const amountInCents = Math.round(amount * 100);
 
-    const chargePayload = {
+    // Build charge payload
+    const chargePayload: any = {
       email: email,
       amount: amountInCents,
       currency: "KES",
@@ -181,15 +285,24 @@ export const processWebSubscription = onCall({
       },
     };
 
+    // Add split_code only if cyber agent is involved
+    if (splitCode) {
+      chargePayload.split_code = splitCode;
+      chargePayload.metadata.agentId = cyber.uid;
+        console.log(`Including split code in charge: ${splitCode}`);
+    }
+
     console.log('Paystack charge request:', JSON.stringify(chargePayload, null, 2));
 
     const paystackResponse = await axios.post(
       `${PAYSTACK_API_BASE}/charge`,
       chargePayload,
-      { headers: {
-        Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
-        "Content-Type": "application/json"
-        }}
+      { 
+        headers: {
+          Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+          "Content-Type": "application/json"
+        }
+      }
     );
 
     console.log('Paystack response:', JSON.stringify(paystackResponse.data, null, 2));
@@ -221,6 +334,7 @@ export const processWebSubscription = onCall({
       accountReference: transactionData.account_reference,
       initiatedAt: admin.firestore.FieldValue.serverTimestamp(),
       expiryDate: null,
+      agentId: null,
       remindersSent: {
         day0: false,
         day2: false,
@@ -228,7 +342,17 @@ export const processWebSubscription = onCall({
       }
     };
 
-    await db.collection("subscriptions").doc(transactionData.reference).set(subscriptionRecord);
+    // Add cyber agent info if applicable
+    // if (cyber) {
+    //   subscriptionRecord.agentId = cyber.uid;
+    // }
+
+    await db.collection("subscriptions").doc(transactionData.reference).set({
+        ...subscriptionRecord,
+        agentId: cyber?.uid || null, // Add agentId property
+    });
+
+    //await db.collection("subscriptions").doc(transactionData.reference).set(subscriptionRecord);
 
     await db.collection("users").doc(userId).set({
       lastSubscriptionAttempt: admin.firestore.FieldValue.serverTimestamp(),
@@ -450,7 +574,7 @@ export const sendSubscriptionReminders = onSchedule(
 
         const userId = userDoc.id;
         const phone = userData.phone;
-        const planName = userData.planName || userData.tier || 'your plan';
+        const planName = userData.name || userData.planName || userData.tier || 'Client';
 
         if (!phone) {
           console.log(`User ${userId} has no phone number, skipping`);

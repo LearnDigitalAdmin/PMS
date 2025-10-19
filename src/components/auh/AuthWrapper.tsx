@@ -1,7 +1,7 @@
 // components/auth/AuthWrapper.tsx - Enhanced with Firebase Auth + Multi-Device Support
 import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { database } from '../../services/database/Database';
-import { firebaseSyncService } from '../../services/database/FirebaseSync';
+import { firebaseSyncService, functions } from '../../services/database/FirebaseSync';
 import SignInScreen from './SignInScreen';
 import SignUpScreen from './SignUpScreen';
 import type { User, Company, AuthResult } from '../../services/database/Database';
@@ -11,12 +11,9 @@ import {
   collection, 
   where, 
   getDocs, 
-  limit,
-  doc,
-  setDoc} from 'firebase/firestore';
+  limit} from 'firebase/firestore';
 import {
   getAuth,
-  createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
@@ -25,6 +22,7 @@ import {
 } from 'firebase/auth';
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { argon2Verify } from 'hash-wasm';
+import { httpsCallable } from 'firebase/functions';
 
 // Firebase Configuration
 const firebaseConfig = {
@@ -923,69 +921,62 @@ export const createUserWithFirebaseAuth = async (
       return { success: false, error: 'No internet connection' };
     }
 
-    console.log('🔐 Creating Firebase Auth user for:', email);
+    console.log('🔐 Calling Cloud Function to create user for:', email);
     
-    // Create Firebase Auth user
-    const userCredential: UserCredential = await createUserWithEmailAndPassword(
-      auth, 
-      email.toLowerCase().trim(), 
-      password
-    );
+    // Call the Cloud Function
+    const createUserFunction = httpsCallable(functions, 'createUserWithFirebaseAuth');
     
-    const uid = userCredential.user.uid;
-    console.log('✅ Firebase Auth user created with UID:', uid);
+    const result = await createUserFunction({
+      email: email,
+      password: password,
+      userData: {
+        localId: userData.localId,
+        name: userData.name,
+        phone: userData.phone,
+        tier: userData.tier,
+        type: userData.type,
+        storage: userData.storage,
+        isPremium: userData.isPremium,
+        company: userData.company
+      },
+      creationType: 'self' // Identifies this as self sign-up
+    });
 
-    // Hash password for storage
-    const encoder = new TextEncoder();
-    const data = encoder.encode(password + 'propertyflow_salt_2024');
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const passwordHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    const data = result.data as any;
 
-    // Create Firestore document with UID field
-    const db = getFirestore();
-    const userDocRef = doc(db, 'users', userData.localId.toString());
-    
-    const firestoreData = {
-      uid: uid, // Firebase Auth UID
-      localId: userData.localId,
-      name: userData.name,
-      email: email.toLowerCase().trim(),
-      phone: userData.phone || '',
-      passwordHash: passwordHash,
-      tier: userData.tier || 'free',
-      type: userData.type || 'free',
-      storage: userData.storage || false,
-      isPremium: userData.isPremium || false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      company: userData.company || null
-    };
-
-    await setDoc(userDocRef, firestoreData);
-    console.log('✅ Firestore user document created');
-
-    alert('✅ Account created successfully! You can now sign in on any device.');
-    
-    return { success: true, uid };
+    if (data.success) {
+      console.log('✅ Cloud Function succeeded:', data.data);
+      alert('✅ Account created successfully! You can now sign in on any device.');
+      
+      return { 
+        success: true, 
+        uid: data.data.uid 
+      };
+    } else {
+      throw new Error(data.message || 'Failed to create account');
+    }
     
   } catch (error: any) {
-    console.error('❌ Firebase Auth creation error:', error);
+    console.error('❌ Cloud Function error:', error);
     
     let errorMessage = 'Failed to create account';
     
-    if (error.code === 'auth/email-already-in-use') {
-      errorMessage = 'This email is already registered. Please sign in instead.';
+    // Handle Firebase Functions errors
+    if (error.code === 'functions/already-exists') {
+      errorMessage = 'This email or phone number is already registered. Please sign in instead.';
       alert('⚠️ This email is already registered. Please sign in instead.');
-    } else if (error.code === 'auth/weak-password') {
-      errorMessage = 'Password is too weak. Please use a stronger password.';
-      alert('⚠️ Password is too weak. Please use at least 6 characters.');
-    } else if (error.code === 'auth/invalid-email') {
-      errorMessage = 'Invalid email address.';
-      alert('⚠️ Invalid email address. Please check and try again.');
-    } else if (error.code === 'auth/network-request-failed') {
-      errorMessage = 'Network error. Please check your connection.';
-      alert('⚠️ Network error. Please check your internet connection.');
+    } else if (error.code === 'functions/invalid-argument') {
+      errorMessage = error.message || 'Invalid input. Please check your information.';
+      alert('⚠️ ' + errorMessage);
+    } else if (error.code === 'functions/unauthenticated') {
+      errorMessage = 'Authentication error. Please try again.';
+      alert('⚠️ Authentication error. Please try again.');
+    } else if (error.code === 'functions/unavailable') {
+      errorMessage = 'Service temporarily unavailable. Please try again.';
+      alert('⚠️ Service temporarily unavailable. Please check your connection.');
+    } else if (error.message) {
+      errorMessage = error.message;
+      alert('⚠️ ' + errorMessage);
     } else {
       alert('⚠️ Failed to create account. Please try again.');
     }
