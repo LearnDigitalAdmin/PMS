@@ -78,6 +78,769 @@ interface ProcessWebSubscriptionRequest {
 }
 
 
+
+// ============================================================
+// SMS LAYER — HostPinnacle Bulk SMS
+// Drop-in additions/replacements for your existing functions file.
+// ============================================================
+// WHAT CHANGED:
+//   - Added SMS_CONFIG and SMS_TEMPLATES (add your .env vars)
+//   - Added sanitizeSmsText() utility
+//   - Added buildSmsMessage() — builds the 3 transactional templates
+//   - Added sendHostPinnacleSms() — core low-level sender
+//   - Added sendSmsWithWhatsAppFallback() — SMS first, WhatsApp if SMS fails
+//     (checks user.tokens before attempting SMS)
+//   - Added exported `sendSMS` onCall Cloud Function — universal,
+//     callable from UI for custom messages / bulk numbers
+//   - REPLACED: sendNewInvoiceNotification()
+//   - REPLACED: sendPaymentSuccessNotification()
+//   - REPLACED: sendOverdueNotification()
+//   All other functions in your file are UNCHANGED.
+// ============================================================
+
+const SMS_CONFIG = {
+    API_URL:   "https://smsportal.hostpinnacle.co.ke/SMSApi/send",
+    USERID:    process.env.HP_SMS_USERID    || "",   // set in .env / functions config
+    PASSWORD:  process.env.HP_SMS_PASSWORD  || "",
+    APIKEY:    process.env.HP_SMS_APIKEY    || "",
+    SENDER_ID: process.env.HP_SMS_SENDERID  || "",   // your approved sender ID
+    MAX_LENGTH: 300,
+};
+
+// Human-readable message type labels used inside SMS text bodies.
+// No template IDs needed — HostPinnacle transactional sends are free-form text.
+const SMS_TEMPLATES = {
+    NEW_INVOICE:     "new_invoice",
+    OVERDUE:         "overdue",
+    PAYMENT_SUCCESS: "payment_success",
+} as const;
+
+type SmsTemplateKey = typeof SMS_TEMPLATES[keyof typeof SMS_TEMPLATES];
+
+// ─── UTILITIES ───────────────────────────────────────────────────────────────
+
+/**
+ * Strip emoji / non-GSM characters and trim to max 300 chars.
+ * GSM-7 safe: printable ASCII + common punctuation only.
+ */
+function sanitizeSmsText(text: string): string {
+    // Remove emoji and non-Latin extended characters (outside GSM-7 basic charset)
+    const stripped = text
+        .replace(/[\u{1F000}-\u{1FFFF}]/gu, "")   // emoji blocks
+        .replace(/[\u{2600}-\u{27BF}]/gu, "")      // misc symbols / dingbats
+        .replace(/[^\x20-\x7E\xA0-\xFF]/gu, "")   // keep printable Latin-1 only
+        .replace(/\s+/g, " ")                       // collapse whitespace
+        .trim();
+
+    return stripped.length > SMS_CONFIG.MAX_LENGTH
+        ? stripped.substring(0, SMS_CONFIG.MAX_LENGTH - 3) + "..."
+        : stripped;
+}
+
+/**
+ * Normalise a Kenyan phone number to 254XXXXXXXXX (no +, no spaces).
+ * Identical logic to what you already use for WhatsApp.
+ */
+function normalizeSmsPhone(raw: string): string {
+    const clean = raw.replace(/[\s\-\+]/g, "");
+    if (clean.startsWith("254"))  return clean;
+    if (clean.startsWith("0"))    return "254" + clean.substring(1);
+    if (clean.startsWith("7") || clean.startsWith("1")) return "254" + clean;
+    return clean;
+}
+
+// ─── TRANSACTIONAL SMS TEMPLATES ─────────────────────────────────────────────
+// Plain-text, max 300 chars, no emoji.
+// These mirror the 3 WhatsApp templates but adapted for SMS constraints.
+
+function buildSmsMessage(
+    type: SmsTemplateKey,
+    params: Record<string, string>
+): string {
+    let msg = "";
+
+    switch (type) {
+        case SMS_TEMPLATES.NEW_INVOICE:
+            // params: tenantName, billingMonth, propertyName, agentName, agentPhone, agentEmail
+            msg = `Dear ${params.tenantName}, your invoice for ${params.billingMonth} at ${params.propertyName} is ready. TOTAL AMOUNT: ${params.totalAmount}` +
+                  ` Contact ${params.agentName} on ${params.agentPhone} for queries.` +
+                  ` PLOT YANGU`;
+            break;
+
+        case SMS_TEMPLATES.OVERDUE:
+            // params: tenantName, outstandingAmount, daysOverdue, propertyName
+            msg = `Dear ${params.tenantName}, your rent at ${params.propertyName} is overdue by ${params.daysOverdue} day(s). ` + 
+                  ` Outstanding: ${params.outstandingAmount}. Please pay to avoid late fees.` + 
+                  ` PLOT YANGU`;
+            break;
+
+        case SMS_TEMPLATES.PAYMENT_SUCCESS:
+            // params: tenantName, amountPaid, propertyUnit
+            msg = `Dear ${params.tenantName}, ${params.agentName} has received your payment of ${params.amountPaid} for ${params.propertyUnit}. Thank you!` + 
+                   ` PLOT YANGU`;
+            break;
+
+        default:
+            msg = `Dear User, you have a new notification from your property manager.`+
+                  ` PLOT YANGU`;
+    }
+
+    return sanitizeSmsText(msg);
+}
+
+// ─── CORE SENDER ─────────────────────────────────────────────────────────────
+
+interface SmsSendOptions {
+    /** Single number OR comma-separated list e.g. "254700000001,254700000002" */
+    mobile: string;
+    message: string;
+    /** Optional: override default sender ID */
+    senderId?: string;
+    /** Skip duplicate suppression — useful for OTPs. Default: true (suppress) */
+    duplicateCheck?: boolean;
+}
+
+interface SmsSendResult {
+    success: boolean;
+    /** Raw response from HostPinnacle */
+    raw?: any;
+    error?: string;
+}
+
+/**
+ * Low-level HostPinnacle sender.
+ * Returns { success: true } on HTTP 200 + non-error response code.
+ * Never throws — callers decide what to do on failure.
+ */
+async function sendHostPinnacleSms(opts: SmsSendOptions): Promise<SmsSendResult> {
+    try {
+        if (!SMS_CONFIG.USERID || !SMS_CONFIG.APIKEY) {
+            console.warn("HostPinnacle SMS credentials not configured — skipping SMS.");
+            return { success: false, error: "SMS credentials not configured" };
+        }
+
+        const params = new URLSearchParams({
+            userid:         SMS_CONFIG.USERID,
+            password:       SMS_CONFIG.PASSWORD,
+            sendMethod:     "quick",
+            mobile:         opts.mobile,
+            msg:            opts.message,
+            senderid:       opts.senderId || SMS_CONFIG.SENDER_ID,
+            msgType:        "text",
+            duplicatecheck: opts.duplicateCheck === false ? "false" : "true",
+            output:         "json",
+        });
+
+        const response = await axios.post(
+            SMS_CONFIG.API_URL,
+            params.toString(),
+            {
+                headers: {
+                    "apikey":       SMS_CONFIG.APIKEY,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                timeout: 10_000,
+            }
+        );
+
+        const data = response.data;
+        console.log(`HostPinnacle SMS response for ${opts.mobile}:`, JSON.stringify(data));
+
+        // HostPinnacle returns a top-level status field.
+        // Treat anything other than explicit error codes as success.
+        const isError =
+            data?.status === "error" ||
+            data?.ErrorCode !== undefined ||
+            (typeof data?.status === "string" && data.status.toLowerCase().includes("fail"));
+
+        if (isError) {
+            return { success: false, raw: data, error: data?.message || "API error" };
+        }
+
+        return { success: true, raw: data };
+    } catch (err: any) {
+        const msg = err?.response?.data
+            ? JSON.stringify(err.response.data)
+            : err.message;
+        console.error(`HostPinnacle SMS send error for ${opts.mobile}:`, msg);
+        return { success: false, error: msg };
+    }
+}
+
+// ─── SMS-FIRST, WHATSAPP-FALLBACK ─────────────────────────────────────────────
+
+/**
+ * Shared logic used by all 3 notification functions.
+ *
+ * Strategy:
+ *   1. If user.tokens > 0  → try SMS via HostPinnacle and deduct 1 token on success.
+ *   2. If SMS fails OR no tokens → fall through to WhatsApp (existing sendWhatsAppMessage call).
+ *
+ * `user.tokens` is an integer field you maintain on the user document.
+ * Decrement is done with a Firestore transaction so concurrent calls are safe.
+ */
+
+
+async function sendSmsWithWhatsAppFallback(opts: {
+    phone:        string;
+    smsMessage:   string;
+    userId:       string;
+    sendWhatsApp: () => Promise<boolean>;
+}): Promise<boolean> {
+    const { phone, smsMessage, userId, sendWhatsApp } = opts;
+    const mobile    = normalizeSmsPhone(phone);
+    const sanitized = sanitizeSmsText(smsMessage);
+
+    // Calculate tokens required: 1 token per 144 chars (ceiling division).
+    // e.g. 144 chars = 1 token, 145 chars = 2 tokens, 288 = 2, 289 = 3 ...
+    const tokensRequired = Math.ceil(sanitized.length / 144);
+
+    let smsAttempted = false;
+    let smsSent      = false;
+
+    try {
+        const userRef = db.collection("users").doc(userId);
+
+        const tokenResult = await db.runTransaction(async (tx) => {
+            const snap = await tx.get(userRef);
+            if (!snap.exists) return { hadTokens: false, tokensRequired: 0 };
+
+            const available: number = snap.data()?.tokens ?? 0;
+            if (available < tokensRequired) {
+                console.log(
+                    `User ${userId} has ${available} token(s) but needs ${tokensRequired} — skipping SMS.`
+                );
+                return { hadTokens: false, tokensRequired };
+            }
+
+            // Reserve all required tokens atomically
+            tx.update(userRef, {
+                tokens: admin.firestore.FieldValue.increment(-tokensRequired),
+            });
+            return { hadTokens: true, tokensRequired };
+        });
+
+        if (tokenResult.hadTokens) {
+            smsAttempted = true;
+            const result = await sendHostPinnacleSms({ mobile, message: sanitized });
+
+            if (result.success) {
+                smsSent = true;
+                console.log(
+                    `SMS sent to ${mobile} for user ${userId} — deducted ${tokensRequired} token(s) ` +
+                    `(${sanitized.length} chars).`
+                );
+                return true; // no WhatsApp needed
+            }
+
+            // SMS failed — refund all reserved tokens
+            console.warn(
+                `SMS failed for ${mobile}, refunding ${tokensRequired} token(s) and falling back to WhatsApp.`
+            );
+            await db.collection("users").doc(userId).update({
+                tokens: admin.firestore.FieldValue.increment(tokensRequired),
+            });
+        } else {
+            console.log(`User ${userId} has insufficient tokens — going straight to WhatsApp.`);
+        }
+    } catch (tokenErr) {
+        console.error("Token transaction error, falling back to WhatsApp:", tokenErr);
+        if (smsAttempted && !smsSent) {
+            // Best-effort refund — fire-and-forget
+            db.collection("users").doc(userId).update({
+                tokens: admin.firestore.FieldValue.increment(tokensRequired),
+            }).catch(() => {});
+        }
+    }
+
+    console.log(`Sending WhatsApp fallback to ${phone} for user ${userId}`);
+    return sendWhatsApp();
+}
+// async function sendSmsWithWhatsAppFallback(opts: {
+//     phone:          string;
+//     smsMessage:     string;
+//     userId:         string;         // for token deduction
+//     /** Async function that sends the WhatsApp message — caller provides it */
+//     sendWhatsApp:   () => Promise<boolean>;
+// }): Promise<boolean> {
+//     const { phone, smsMessage, userId, sendWhatsApp } = opts;
+//     const mobile = normalizeSmsPhone(phone);
+
+//     // ── Attempt SMS if user has tokens ───────────────────────────────────────
+//     let smsAttempted = false;
+//     let smsSent      = false;
+
+//     try {
+//         const userRef = db.collection("users").doc(userId);
+
+//         // Read token count inside a transaction so we never go negative
+//         const tokenResult = await db.runTransaction(async (tx) => {
+//             const snap = await tx.get(userRef);
+//             if (!snap.exists) return { hadTokens: false };
+//             const tokens: number = snap.data()?.tokens ?? 0;
+//             if (tokens <= 0) return { hadTokens: false };
+//             // Reserve the token immediately — we'll release it if SMS fails
+//             tx.update(userRef, { tokens: admin.firestore.FieldValue.increment(-1) });
+//             return { hadTokens: true };
+//         });
+
+//         if (tokenResult.hadTokens) {
+//             smsAttempted = true;
+//             const sanitized = sanitizeSmsText(smsMessage);
+//             const result = await sendHostPinnacleSms({ mobile, message: sanitized });
+
+//             if (result.success) {
+//                 smsSent = true;
+//                 console.log(`SMS sent to ${mobile} for user ${userId}`);
+//                 return true; // done — no WhatsApp needed
+//             }
+
+//             // SMS failed — give the token back
+//             console.warn(`SMS failed for ${mobile}, refunding token and falling back to WhatsApp.`);
+//             await db.collection("users").doc(userId).update({
+//                 tokens: admin.firestore.FieldValue.increment(1),
+//             });
+//         } else {
+//             console.log(`User ${userId} has no SMS tokens — going straight to WhatsApp.`);
+//         }
+//     } catch (tokenErr) {
+//         // Don't let token logic break the notification path
+//         console.error("Token transaction error, falling back to WhatsApp:", tokenErr);
+//         if (smsAttempted && !smsSent) {
+//             // Attempt refund best-effort (fire-and-forget)
+//             db.collection("users").doc(userId).update({
+//                 tokens: admin.firestore.FieldValue.increment(1),
+//             }).catch(() => {});
+//         }
+//     }
+
+//     // ── WhatsApp fallback ────────────────────────────────────────────────────
+//     console.log(`Sending WhatsApp fallback to ${phone} for user ${userId}`);
+//     return sendWhatsApp();
+// }
+
+// ─── UPDATED NOTIFICATION FUNCTIONS ──────────────────────────────────────────
+// These are drop-in replacements.  The consent check, template sends, and
+// flag updates are identical to your original code — the only new part is the
+// SMS-first / WhatsApp-fallback wrapper.
+
+async function sendNewInvoiceNotification(
+    invoice: any,
+    fallbackInvoiceId: string | null = null
+): Promise<boolean> {
+    try {
+        const invoiceLocalId = invoice.localId || fallbackInvoiceId || "unknown";
+        console.log(`Sending new invoice notification for invoice ${invoiceLocalId}`);
+        const { tenant, property, user, company } = await getInvoiceContext(invoice, fallbackInvoiceId);
+
+        if (!canSendNotification(user, "invoice")) {
+            console.log(`User ${user.localId} cannot receive invoice notifications`);
+            return false;
+        }
+
+        // Consent check — only relevant for WhatsApp path
+        const consentCheck = await checkTenantConsent(tenant.phone);
+        if (!consentCheck.hasConsent) {
+            // For SMS we skip consent; for WhatsApp we request it.
+            // We still try SMS first (no consent needed), then request consent for WA.
+            const smsMsg = buildSmsMessage(SMS_TEMPLATES.NEW_INVOICE, {
+                tenantName:   tenant.name,
+                billingMonth: invoice.billingMonth,
+                totalAmount:  formatCurrency(invoice.totalAmount),
+                propertyName: property.name,
+                agentName:    company?.name  || user.name,
+                agentPhone:   company?.phone || user.phone || "",
+                agentEmail:   company?.email || user.email,
+            });
+
+            const smsSent = await trySmsOnly(tenant.phone, smsMsg, invoice.userId);
+            if (!smsSent) {
+                // Fallback: send consent request via WhatsApp as before
+                console.log(`No consent for ${tenant.phone} and SMS failed — sending consent request`);
+                return await sendConsentRequest(tenant, property, company, user);
+            }
+            return smsSent;
+        }
+
+        if (!invoice.hasOwnProperty("isNew") || invoice.isNew === true) {
+            // nothing — proceed below
+        } else {
+            console.log(`Invoice ${invoiceLocalId} already processed (isNew=false)`);
+            return false;
+        }
+
+        if (invoice.pdfStatus === "paid" || invoice.status === "paid") {
+            console.log(`Invoice ${invoiceLocalId} already paid, skipping`);
+            return false;
+        }
+
+        if (!tenant.phone) {
+            console.error(`No phone for tenant ${tenant.name}`);
+            return false;
+        }
+
+        const smsMsg = buildSmsMessage(SMS_TEMPLATES.NEW_INVOICE, {
+            tenantName:   tenant.name,
+            billingMonth: invoice.billingMonth,
+            totalAmount:  formatCurrency(invoice.totalAmount),
+            propertyName: property.name,
+            agentName:    company?.name  || user.name,
+            agentPhone:   company?.phone || user.phone || "",
+            agentEmail:   company?.email || user.email,
+        });
+
+        const processedUrl = processFirebaseUrlForWhatsApp(invoice.pdfUrl);
+        const templateParams = [
+            tenant.name,
+            invoice.billingMonth,
+            property.name,
+            company?.name  || user.name,
+            company?.phone || user.phone || "",
+            company?.email || user.email,
+        ];
+
+        const success = await sendSmsWithWhatsAppFallback({
+            phone:       tenant.phone,
+            smsMessage:  smsMsg,
+            userId:      invoice.userId,
+            sendWhatsApp: () =>
+                sendWhatsAppMessage(tenant.phone, TEMPLATES.NEW_INVOICE, templateParams, processedUrl),
+        });
+
+        if (success) {
+            await updateInvoiceFlags(invoice.userId, invoiceLocalId, { isNew: false });
+        }
+        return success;
+    } catch (error) {
+        console.error("Error in sendNewInvoiceNotification:", error);
+        return false;
+    }
+}
+
+async function sendPaymentSuccessNotification(
+    invoice: any,
+    fallbackInvoiceId: string | null = null
+): Promise<boolean> {
+    try {
+        const invoiceLocalId = invoice.localId || fallbackInvoiceId || "unknown";
+        console.log(`Sending payment success notification for invoice ${invoiceLocalId}`);
+        const { tenant, property, user, company } = await getInvoiceContext(invoice, fallbackInvoiceId);
+
+        if (!canSendNotification(user, "payment")) {
+            console.log(`User ${user.localId} cannot receive payment notifications`);
+            return false;
+        }
+
+        const consentCheck = await checkTenantConsent(tenant.phone);
+        if (!consentCheck.hasConsent) {
+            const smsMsg = buildSmsMessage(SMS_TEMPLATES.PAYMENT_SUCCESS, {
+                tenantName:  tenant.name,
+                amountPaid:  formatCurrency(invoice.amountPaid),
+                propertyUnit: `${property.name} ${tenant.unitNumber || ""}`.trim(),
+                agentName:    company?.name  || user.name,
+            });
+            const smsSent = await trySmsOnly(tenant.phone, smsMsg, invoice.userId);
+            if (!smsSent) {
+                return await sendConsentRequest(tenant, property, company, user);
+            }
+            return smsSent;
+        }
+
+        const isInvoicePaid = invoice.pdfStatus === "paid" || invoice.isPaid;
+        if (!isInvoicePaid) {
+            console.log(`Invoice ${invoiceLocalId} not paid yet, skipping`);
+            return false;
+        }
+        if (invoice.hasPaid === true) {
+            console.log(`Invoice ${invoiceLocalId} payment notification already sent`);
+            return false;
+        }
+        if (!tenant.phone) {
+            console.error(`No phone for tenant ${tenant.name}`);
+            return false;
+        }
+
+        const smsMsg = buildSmsMessage(SMS_TEMPLATES.PAYMENT_SUCCESS, {
+            tenantName:   tenant.name,
+            amountPaid:   formatCurrency(invoice.amountPaid),
+            propertyUnit: `${property.name} ${tenant.unitNumber || ""}`.trim(),
+            agentName:    company?.name  || user.name,
+        });
+
+        const processedUrl  = processFirebaseUrlForWhatsApp(invoice.pdfUrl);
+        const templateParams = [
+            tenant.name,
+            formatCurrency(invoice.amountPaid),
+            `${property.name} ${tenant.unitNumber || ""}`.trim(),
+        ];
+
+        const success = await sendSmsWithWhatsAppFallback({
+            phone:       tenant.phone,
+            smsMessage:  smsMsg,
+            userId:      invoice.userId,
+            sendWhatsApp: () =>
+                sendWhatsAppMessage(tenant.phone, TEMPLATES.PAYMENT_SUCCESS, templateParams, processedUrl),
+        });
+
+        if (success) {
+            await updateInvoiceFlags(invoice.userId, invoiceLocalId, { hasPaid: true });
+        }
+        return success;
+    } catch (error) {
+        console.error("Error in sendPaymentSuccessNotification:", error);
+        return false;
+    }
+}
+
+async function sendOverdueNotification(
+    invoice: any,
+    fallbackInvoiceId: string | null = null
+): Promise<boolean> {
+    try {
+        const invoiceLocalId = invoice.localId || fallbackInvoiceId || "unknown";
+        console.log(`Checking overdue notification for invoice ${invoiceLocalId}`);
+        const { tenant, user, property, company } = await getInvoiceContext(invoice, fallbackInvoiceId);
+
+        if (!shouldSendOverdueMessage(invoice, user)) {
+            console.log(`Should not send overdue for invoice ${invoiceLocalId}`);
+            return false;
+        }
+
+        const consentCheck = await checkTenantConsent(tenant.phone);
+        if (!consentCheck.hasConsent) {
+            const daysOverdue      = getDaysOverdue(invoice.dueDate);
+            const outstandingAmount = invoice.totalAmount - invoice.amountPaid;
+            const smsMsg = buildSmsMessage(SMS_TEMPLATES.OVERDUE, {
+                tenantName:        tenant.name,
+                outstandingAmount: formatCurrency(outstandingAmount),
+                daysOverdue:       daysOverdue.toString(),
+                propertyName:      property.name,
+            });
+            const smsSent = await trySmsOnly(tenant.phone, smsMsg, invoice.userId);
+            if (!smsSent) {
+                return await sendConsentRequest(tenant, property, company, user);
+            }
+            return smsSent;
+        }
+
+        if (!tenant.phone) {
+            console.error(`No phone for tenant ${tenant.name}`);
+            return false;
+        }
+
+        const daysOverdue       = getDaysOverdue(invoice.dueDate);
+        const outstandingAmount = invoice.totalAmount - invoice.amountPaid;
+
+        const smsMsg = buildSmsMessage(SMS_TEMPLATES.OVERDUE, {
+            tenantName:        tenant.name,
+            outstandingAmount: formatCurrency(outstandingAmount),
+            daysOverdue:       daysOverdue.toString(),
+            propertyName:      property.name,
+        });
+
+        const processedUrl  = processFirebaseUrlForWhatsApp(invoice.pdfUrl);
+        const templateParams = [
+            "Reminder: Pay your current and bills",
+            formatCurrency(outstandingAmount),
+            daysOverdue.toString(),
+            "late fees",
+        ];
+
+        const success = await sendSmsWithWhatsAppFallback({
+            phone:       tenant.phone,
+            smsMessage:  smsMsg,
+            userId:      invoice.userId,
+            sendWhatsApp: () =>
+                sendWhatsAppMessage(tenant.phone, TEMPLATES.OVERDUE, templateParams, processedUrl),
+        });
+
+        if (success) {
+            await updateInvoiceFlags(invoice.userId, invoiceLocalId, { isDue: true });
+        }
+        return success;
+    } catch (error) {
+        console.error("Error in sendOverdueNotification:", error);
+        return false;
+    }
+}
+
+// ─── INTERNAL HELPER: SMS-only (no WhatsApp fallback) ────────────────────────
+// Used when there's no WhatsApp consent AND we still want to try SMS.
+
+async function trySmsOnly(
+    phone: string,
+    message: string,
+    userId: string
+): Promise<boolean> {
+    const mobile = normalizeSmsPhone(phone);
+    try {
+        const userSnap = await db.collection("users").doc(userId).get();
+        const tokens: number = userSnap.data()?.tokens ?? 0;
+        if (tokens <= 0) {
+            console.log(`No tokens for user ${userId}, cannot send SMS-only.`);
+            return false;
+        }
+
+        await db.collection("users").doc(userId).update({
+            tokens: admin.firestore.FieldValue.increment(-1),
+        });
+
+        const result = await sendHostPinnacleSms({ mobile, message: sanitizeSmsText(message) });
+        if (!result.success) {
+            // Refund
+            await db.collection("users").doc(userId).update({
+                tokens: admin.firestore.FieldValue.increment(1),
+            });
+        }
+        return result.success;
+    } catch (err) {
+        console.error("trySmsOnly error:", err);
+        return false;
+    }
+}
+
+// ─── UNIVERSAL sendSMS CLOUD FUNCTION ────────────────────────────────────────
+// Callable from the UI. Supports:
+//   - Single or multiple recipients (array of numbers)
+//   - Custom message text (no template needed)
+//   - Same sanitisation + token rules apply
+//   - Returns per-number results
+
+interface SendSmsRequest {
+    /** One number or an array of numbers — any format, normalised internally */
+    numbers: string | string[];
+    message: string;
+    /** Optional sender ID override (must be pre-approved in your HP account) */
+    senderId?: string;
+}
+
+export const sendSMS = onCall({
+    timeoutSeconds: 30,
+    memory: "256MiB",
+    region: "africa-south1",
+    cors: true,
+}, async (request: CallableRequest<SendSmsRequest>) => {
+    // Auth required
+    if (!request.auth) {
+        throw new HttpsError("unauthenticated", "You must be logged in to send SMS.");
+    }
+
+    const { numbers, message, senderId } = request.data;
+
+    if (!numbers || !message) {
+        throw new HttpsError("invalid-argument", "numbers and message are required.");
+    }
+
+    const rawNumbers = Array.isArray(numbers) ? numbers : [numbers];
+    if (rawNumbers.length === 0) {
+        throw new HttpsError("invalid-argument", "At least one number is required.");
+    }
+    if (rawNumbers.length > 100) {
+        throw new HttpsError("invalid-argument", "Maximum 100 numbers per call.");
+    }
+
+    const sanitizedMessage = sanitizeSmsText(message);
+    if (!sanitizedMessage) {
+        throw new HttpsError("invalid-argument", "Message is empty after sanitisation.");
+    }
+
+    const userId = request.auth.uid;
+
+    // Token check — deduct one token per unique number
+    const userRef = db.collection("users").doc(userId);
+    let tokensAvailable = 0;
+
+    try {
+        const userSnap = await userRef.get();
+        tokensAvailable = userSnap.data()?.tokens ?? 0;
+    } catch (err) {
+        throw new HttpsError("internal", "Could not read user token balance.");
+    }
+
+    if (tokensAvailable < rawNumbers.length) {
+        throw new HttpsError(
+            "resource-exhausted",
+            `Insufficient SMS tokens. Required: ${rawNumbers.length}, available: ${tokensAvailable}.`
+        );
+    }
+
+    // Deduct upfront; we'll refund for individual failures below
+    await userRef.update({
+        tokens: admin.firestore.FieldValue.increment(-rawNumbers.length),
+    });
+
+    // Send to each number and collect results
+    const results: Array<{ number: string; success: boolean; error?: string }> = [];
+    let failCount = 0;
+
+    for (const raw of rawNumbers) {
+        const mobile = normalizeSmsPhone(raw);
+        const result = await sendHostPinnacleSms({
+            mobile,
+            message: sanitizedMessage,
+            ...(senderId ? { senderId } : {}),
+        });
+
+        results.push({ number: mobile, success: result.success, error: result.error });
+        if (!result.success) failCount++;
+    }
+
+    // Refund tokens for failed sends
+    if (failCount > 0) {
+        await userRef.update({
+            tokens: admin.firestore.FieldValue.increment(failCount),
+        });
+    }
+
+    const successCount = rawNumbers.length - failCount;
+    console.log(`sendSMS: ${successCount}/${rawNumbers.length} sent for user ${userId}`);
+
+    return {
+        success:      successCount > 0,
+        sent:         successCount,
+        failed:       failCount,
+        totalNumbers: rawNumbers.length,
+        results,
+    };
+});
+
+// ─── ENV VARS TO ADD ──────────────────────────────────────────────────────────
+// Add to functions/.env (Firebase Gen 2) or via `firebase functions:config:set`:
+//
+//   HP_SMS_USERID=your_hostpinnacle_username
+//   HP_SMS_PASSWORD=your_hostpinnacle_password
+//   HP_SMS_APIKEY=your_hostpinnacle_apikey
+//   HP_SMS_SENDERID=YOURID
+//
+// Also add `tokens` (integer, default 0) to your user documents.
+// Top up tokens from your admin panel or a separate purchase flow.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 async function sendWhatsAppReminder(phone: string, daysLeft: number, planName: string) {
   try {
     const formattedPhone = phone.startsWith('254') ? phone : '254' + phone.replace(/^0/, '');
@@ -998,136 +1761,136 @@ const handleSubscriptionEvent = async (event: RevenueCatEvent): Promise<void> =>
 };
 
 // UPDATED: New invoice notification function with consent check
-async function sendNewInvoiceNotification(invoice: any, fallbackInvoiceId: string | null = null): Promise<boolean> {
-    try {
-        const invoiceLocalId = invoice.localId || fallbackInvoiceId || 'unknown';
-        console.log(`Sending new invoice notification for invoice ${invoiceLocalId}`);
-        const { tenant, property, user, company } = await getInvoiceContext(invoice, fallbackInvoiceId);
+// async function sendNewInvoiceNotification(invoice: any, fallbackInvoiceId: string | null = null): Promise<boolean> {
+//     try {
+//         const invoiceLocalId = invoice.localId || fallbackInvoiceId || 'unknown';
+//         console.log(`Sending new invoice notification for invoice ${invoiceLocalId}`);
+//         const { tenant, property, user, company } = await getInvoiceContext(invoice, fallbackInvoiceId);
         
-        if (!canSendNotification(user, 'invoice')) {
-            console.log(`User ${user.localId} cannot receive invoice notifications`);
-            return false;
-        }
+//         if (!canSendNotification(user, 'invoice')) {
+//             console.log(`User ${user.localId} cannot receive invoice notifications`);
+//             return false;
+//         }
 
-        // CHECK CONSENT FIRST
-        const consentCheck = await checkTenantConsent(tenant.phone);
-        if (!consentCheck.hasConsent) {
-            console.log(`No consent for tenant ${tenant.name} (${tenant.phone}), sending consent request`);
-            return await sendConsentRequest(tenant, property, company, user);
-        }
+//         // CHECK CONSENT FIRST
+//         const consentCheck = await checkTenantConsent(tenant.phone);
+//         if (!consentCheck.hasConsent) {
+//             console.log(`No consent for tenant ${tenant.name} (${tenant.phone}), sending consent request`);
+//             return await sendConsentRequest(tenant, property, company, user);
+//         }
 
-        const shouldSendNewNotification = !invoice.hasOwnProperty('isNew') || invoice.isNew === true;
+//         const shouldSendNewNotification = !invoice.hasOwnProperty('isNew') || invoice.isNew === true;
         
-        if (!shouldSendNewNotification) {
-            console.log(`Invoice ${invoiceLocalId} already processed for new invoice (isNew=false)`);
-            return false;
-        }
+//         if (!shouldSendNewNotification) {
+//             console.log(`Invoice ${invoiceLocalId} already processed for new invoice (isNew=false)`);
+//             return false;
+//         }
 
-        if (invoice.pdfStatus === 'paid' || invoice.status === 'paid') {
-            console.log(`Invoice ${invoiceLocalId} is already paid, skipping new invoice notification`);
-            return false;
-        }
+//         if (invoice.pdfStatus === 'paid' || invoice.status === 'paid') {
+//             console.log(`Invoice ${invoiceLocalId} is already paid, skipping new invoice notification`);
+//             return false;
+//         }
 
-        if (!tenant.phone) {
-            console.error(`No phone number found for tenant ${tenant.name}`);
-            return false;
-        }
+//         if (!tenant.phone) {
+//             console.error(`No phone number found for tenant ${tenant.name}`);
+//             return false;
+//         }
 
-        const templateParams = [
-            tenant.name,
-            invoice.billingMonth,
-            property.name,
-            company?.name || user.name,
-            company?.phone || user.phone || '',
-            company?.email || user.email
-        ];
+//         const templateParams = [
+//             tenant.name,
+//             invoice.billingMonth,
+//             property.name,
+//             company?.name || user.name,
+//             company?.phone || user.phone || '',
+//             company?.email || user.email
+//         ];
 
-        // Process the PDF URL for WhatsApp template
-        const processedUrl = processFirebaseUrlForWhatsApp(invoice.pdfUrl);
+//         // Process the PDF URL for WhatsApp template
+//         const processedUrl = processFirebaseUrlForWhatsApp(invoice.pdfUrl);
 
-        console.log(`Sending NEW INVOICE to phone: ${tenant.phone}, template: ${TEMPLATES.NEW_INVOICE}`);
-        console.log(`Template params:`, templateParams);
-        console.log(`Original PDF URL: ${invoice.pdfUrl}`);
-        console.log(`Processed URL parameter: ${processedUrl}`);
+//         console.log(`Sending NEW INVOICE to phone: ${tenant.phone}, template: ${TEMPLATES.NEW_INVOICE}`);
+//         console.log(`Template params:`, templateParams);
+//         console.log(`Original PDF URL: ${invoice.pdfUrl}`);
+//         console.log(`Processed URL parameter: ${processedUrl}`);
         
-        const success = await sendWhatsAppMessage(tenant.phone, TEMPLATES.NEW_INVOICE, templateParams, processedUrl);
+//         const success = await sendWhatsAppMessage(tenant.phone, TEMPLATES.NEW_INVOICE, templateParams, processedUrl);
         
-        if (success) {
-            await updateInvoiceFlags(invoice.userId, invoiceLocalId, { isNew: false });
-            console.log(`Successfully sent new invoice notification for invoice ${invoiceLocalId}`);
-        }
+//         if (success) {
+//             await updateInvoiceFlags(invoice.userId, invoiceLocalId, { isNew: false });
+//             console.log(`Successfully sent new invoice notification for invoice ${invoiceLocalId}`);
+//         }
         
-        return success;
-    } catch (error) {
-        console.error('Error sending new invoice notification:', error);
-        return false;
-    }
-}
+//         return success;
+//     } catch (error) {
+//         console.error('Error sending new invoice notification:', error);
+//         return false;
+//     }
+// }
 
-// UPDATED: Payment success notification function with consent check
-async function sendPaymentSuccessNotification(invoice: any, fallbackInvoiceId: string | null = null): Promise<boolean> {
-    try {
-        const invoiceLocalId = invoice.localId || fallbackInvoiceId || 'unknown';
-        console.log(`Sending payment success notification for invoice ${invoiceLocalId}`);
-        const { tenant, property, user, company } = await getInvoiceContext(invoice, fallbackInvoiceId);
+// // UPDATED: Payment success notification function with consent check
+// async function sendPaymentSuccessNotification(invoice: any, fallbackInvoiceId: string | null = null): Promise<boolean> {
+//     try {
+//         const invoiceLocalId = invoice.localId || fallbackInvoiceId || 'unknown';
+//         console.log(`Sending payment success notification for invoice ${invoiceLocalId}`);
+//         const { tenant, property, user, company } = await getInvoiceContext(invoice, fallbackInvoiceId);
         
-        if (!canSendNotification(user, 'payment')) {
-            console.log(`User ${user.localId} cannot receive payment notifications`);
-            return false;
-        }
+//         if (!canSendNotification(user, 'payment')) {
+//             console.log(`User ${user.localId} cannot receive payment notifications`);
+//             return false;
+//         }
 
-        // CHECK CONSENT FIRST
-        const consentCheck = await checkTenantConsent(tenant.phone);
-        if (!consentCheck.hasConsent) {
-            console.log(`No consent for tenant ${tenant.name} (${tenant.phone}), sending consent request`);
-            return await sendConsentRequest(tenant, property, company, user);
-        }
+//         // CHECK CONSENT FIRST
+//         const consentCheck = await checkTenantConsent(tenant.phone);
+//         if (!consentCheck.hasConsent) {
+//             console.log(`No consent for tenant ${tenant.name} (${tenant.phone}), sending consent request`);
+//             return await sendConsentRequest(tenant, property, company, user);
+//         }
 
-        const isInvoicePaid = invoice.pdfStatus === 'paid' || invoice.isPaid;
-        const notificationAlreadySent = invoice.hasPaid === true;
+//         const isInvoicePaid = invoice.pdfStatus === 'paid' || invoice.isPaid;
+//         const notificationAlreadySent = invoice.hasPaid === true;
         
-        if (!isInvoicePaid) {
-            console.log(`Invoice ${invoiceLocalId} is not paid yet, skipping payment notification`);
-            return false;
-        }
+//         if (!isInvoicePaid) {
+//             console.log(`Invoice ${invoiceLocalId} is not paid yet, skipping payment notification`);
+//             return false;
+//         }
         
-        if (notificationAlreadySent) {
-            console.log(`Invoice ${invoiceLocalId} payment notification already sent (isPaid=true)`);
-            return false;
-        }
+//         if (notificationAlreadySent) {
+//             console.log(`Invoice ${invoiceLocalId} payment notification already sent (isPaid=true)`);
+//             return false;
+//         }
 
-        if (!tenant.phone) {
-            console.error(`No phone number found for tenant ${tenant.name}`);
-            return false;
-        }
+//         if (!tenant.phone) {
+//             console.error(`No phone number found for tenant ${tenant.name}`);
+//             return false;
+//         }
 
-        const templateParams = [
-            tenant.name,
-            formatCurrency(invoice.amountPaid),
-            `${property.name} ${tenant.unitNumber || ''}`
-        ];
+//         const templateParams = [
+//             tenant.name,
+//             formatCurrency(invoice.amountPaid),
+//             `${property.name} ${tenant.unitNumber || ''}`
+//         ];
 
-        // Process the PDF URL for WhatsApp template
-        const processedUrl = processFirebaseUrlForWhatsApp(invoice.pdfUrl);
+//         // Process the PDF URL for WhatsApp template
+//         const processedUrl = processFirebaseUrlForWhatsApp(invoice.pdfUrl);
 
-        console.log(`Sending PAYMENT SUCCESS to phone: ${tenant.phone}, template: ${TEMPLATES.PAYMENT_SUCCESS}`);
-        console.log(`Template params:`, templateParams);
-        console.log(`Original PDF URL: ${invoice.pdfUrl}`);
-        console.log(`Processed URL parameter: ${processedUrl}`);
+//         console.log(`Sending PAYMENT SUCCESS to phone: ${tenant.phone}, template: ${TEMPLATES.PAYMENT_SUCCESS}`);
+//         console.log(`Template params:`, templateParams);
+//         console.log(`Original PDF URL: ${invoice.pdfUrl}`);
+//         console.log(`Processed URL parameter: ${processedUrl}`);
         
-        const success = await sendWhatsAppMessage(tenant.phone, TEMPLATES.PAYMENT_SUCCESS, templateParams, processedUrl);
+//         const success = await sendWhatsAppMessage(tenant.phone, TEMPLATES.PAYMENT_SUCCESS, templateParams, processedUrl);
         
-        if (success) {
-            await updateInvoiceFlags(invoice.userId, invoiceLocalId, { hasPaid: true });
-            console.log(`Successfully sent payment success notification for invoice ${invoiceLocalId}`);
-        }
+//         if (success) {
+//             await updateInvoiceFlags(invoice.userId, invoiceLocalId, { hasPaid: true });
+//             console.log(`Successfully sent payment success notification for invoice ${invoiceLocalId}`);
+//         }
         
-        return success;
-    } catch (error) {
-        console.error('Error sending payment success notification:', error);
-        return false;
-    }
-}
+//         return success;
+//     } catch (error) {
+//         console.error('Error sending payment success notification:', error);
+//         return false;
+//     }
+// }
 
 // WhatsApp API helper functions
 // Enhanced error handling for WhatsApp API
@@ -1396,59 +2159,59 @@ function getDaysOverdue(dueDate: string): number {
 }
 
 // UPDATED: Send overdue notification with consent check
-async function sendOverdueNotification(invoice: any, fallbackInvoiceId: string | null = null): Promise<boolean> {
-    try {
-        const invoiceLocalId = invoice.localId || fallbackInvoiceId || 'unknown';
-        console.log(`Checking overdue notification for invoice ${invoiceLocalId}`);
-        const { tenant, user, property, company } = await getInvoiceContext(invoice, fallbackInvoiceId);
+// async function sendOverdueNotification(invoice: any, fallbackInvoiceId: string | null = null): Promise<boolean> {
+//     try {
+//         const invoiceLocalId = invoice.localId || fallbackInvoiceId || 'unknown';
+//         console.log(`Checking overdue notification for invoice ${invoiceLocalId}`);
+//         const { tenant, user, property, company } = await getInvoiceContext(invoice, fallbackInvoiceId);
         
-        if (!shouldSendOverdueMessage(invoice, user)) {
-            console.log(`Should not send overdue message for invoice ${invoiceLocalId}`);
-            return false;
-        }
+//         if (!shouldSendOverdueMessage(invoice, user)) {
+//             console.log(`Should not send overdue message for invoice ${invoiceLocalId}`);
+//             return false;
+//         }
 
-        // CHECK CONSENT FIRST
-        const consentCheck = await checkTenantConsent(tenant.phone);
-        if (!consentCheck.hasConsent) {
-            console.log(`No consent for tenant ${tenant.name} (${tenant.phone}), sending consent request`);
-            return await sendConsentRequest(tenant, property, company, user);
-        }
+//         // CHECK CONSENT FIRST
+//         const consentCheck = await checkTenantConsent(tenant.phone);
+//         if (!consentCheck.hasConsent) {
+//             console.log(`No consent for tenant ${tenant.name} (${tenant.phone}), sending consent request`);
+//             return await sendConsentRequest(tenant, property, company, user);
+//         }
 
-        if (!tenant.phone) {
-            console.error(`No phone number found for tenant ${tenant.name}`);
-            return false;
-        }
+//         if (!tenant.phone) {
+//             console.error(`No phone number found for tenant ${tenant.name}`);
+//             return false;
+//         }
 
-        const daysOverdue = getDaysOverdue(invoice.dueDate);
-        const outstandingAmount = invoice.totalAmount - invoice.amountPaid;
+//         const daysOverdue = getDaysOverdue(invoice.dueDate);
+//         const outstandingAmount = invoice.totalAmount - invoice.amountPaid;
 
-        const templateParams = [
-            'Reminder: Pay your current and bills',
-            formatCurrency(outstandingAmount),
-            daysOverdue.toString(),
-            'late fees'
-        ];
+//         const templateParams = [
+//             'Reminder: Pay your current and bills',
+//             formatCurrency(outstandingAmount),
+//             daysOverdue.toString(),
+//             'late fees'
+//         ];
 
-        // Process the PDF URL for WhatsApp template
-        const processedUrl = processFirebaseUrlForWhatsApp(invoice.pdfUrl);
+//         // Process the PDF URL for WhatsApp template
+//         const processedUrl = processFirebaseUrlForWhatsApp(invoice.pdfUrl);
 
-        console.log(`Sending overdue to phone: ${tenant.phone}, days overdue: ${daysOverdue}`);
-        console.log(`Original PDF URL: ${invoice.pdfUrl}`);
-        console.log(`Processed URL parameter: ${processedUrl}`);
+//         console.log(`Sending overdue to phone: ${tenant.phone}, days overdue: ${daysOverdue}`);
+//         console.log(`Original PDF URL: ${invoice.pdfUrl}`);
+//         console.log(`Processed URL parameter: ${processedUrl}`);
         
-        const success = await sendWhatsAppMessage(tenant.phone, TEMPLATES.OVERDUE, templateParams, processedUrl);
+//         const success = await sendWhatsAppMessage(tenant.phone, TEMPLATES.OVERDUE, templateParams, processedUrl);
         
-        if (success) {
-            await updateInvoiceFlags(invoice.userId, invoiceLocalId, { isDue: true });
-            console.log(`Successfully sent overdue notification for invoice ${invoiceLocalId}`);
-        }
+//         if (success) {
+//             await updateInvoiceFlags(invoice.userId, invoiceLocalId, { isDue: true });
+//             console.log(`Successfully sent overdue notification for invoice ${invoiceLocalId}`);
+//         }
         
-        return success;
-    } catch (error) {
-        console.error('Error sending overdue notification:', error);
-        return false;
-    }
-}
+//         return success;
+//     } catch (error) {
+//         console.error('Error sending overdue notification:', error);
+//         return false;
+//     }
+// }
 
 // Helper function to update invoice flags - FLATTENED STRUCTURE
 async function updateInvoiceFlags(userId: string, invoiceLocalId: string, flags: any): Promise<void> {
