@@ -11,6 +11,8 @@ import {
   collection, 
   where, 
   getDocs, 
+  doc,
+  updateDoc,
   limit} from 'firebase/firestore';
 import {
   getAuth,
@@ -21,7 +23,7 @@ import {
   type UserCredential
 } from 'firebase/auth';
 import { initializeApp, type FirebaseApp } from 'firebase/app';
-import { argon2Verify } from 'hash-wasm';
+import { argon2Verify, argon2id } from 'hash-wasm';
 import { httpsCallable } from 'firebase/functions';
 
 // Firebase Configuration
@@ -149,19 +151,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }, [user, updateUserState]);
 
-  // Password hashing helper
-  // const hashPassword = async (password: string): Promise<string> => {
-  //   try {
-  //     const encoder = new TextEncoder();
-  //     const data = encoder.encode(password + 'propertyflow_salt_2024');
-  //     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  //     const hashArray = Array.from(new Uint8Array(hashBuffer));
-  //     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  //   } catch (error) {
-  //     console.error('Error hashing password:', error);
-  //     throw error;
-  //   }
-  // };
+  // Password hashing helper - mints a fresh argon2 hash from a password that
+  // Firebase Auth has just verified as correct. Used to resync the Firestore
+  // `passwordHash` field (and, via createLocalUserFromFirestore, the local
+  // `password_hash` column) after a successful Firebase Auth login - this is
+  // what keeps offline auth valid after the user resets their password via
+  // Firebase's forgot-password flow, which only updates Firebase Auth itself.
+  const hashPassword = async (password: string): Promise<string> => {
+    try {
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const result = await argon2id({
+        password: password,
+        salt: salt,
+        hashLength: 32,
+        iterations: 3,
+        memorySize: 65536, // 64 MB in KB
+        parallelism: 1,
+        outputType: 'encoded'
+      });
+      return result;
+    } catch (error) {
+      console.error('Error hashing password:', error);
+      throw error;
+    }
+  };
 
   // Password verification helper
   const verifyPassword = async (password: string, hash: string): Promise<boolean> => {
@@ -304,6 +317,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('Attempting Firestore login for:', email);
       
       // First, try Firebase Auth if online
+      let firebaseAuthVerified = false;
       if (navigator.onLine) {
         const authResult = await signInWithFirebaseAuth(email, password);
         if (!authResult.success && authResult.error !== 'Network error. Trying offline login...') {
@@ -312,6 +326,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         
         if (authResult.success) {
           console.log('✅ Firebase Auth successful');
+          firebaseAuthVerified = true;
         }
       }
       
@@ -336,15 +351,49 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       console.log('Found user in Firestore:', firestoreUser.email);
 
-      // Verify password against Firestore hash
       if (!firestoreUser.passwordHash) {
         return { success: false, error: 'Invalid account data' };
       }
 
-      const isValidPassword = await verifyPassword(password, firestoreUser.passwordHash);
+      // Decide how to trust this password:
+      // - If Firebase Auth just signed in successfully, that IS the
+      //   authoritative password check - a stale Firestore hash (e.g. from
+      //   before a "forgot password" reset, which only updates Firebase Auth)
+      //   must not be allowed to override that. Instead of re-verifying
+      //   against it, mint a fresh hash from the password we know is correct.
+      // - If Firebase Auth couldn't be reached (network hiccup while
+      //   navigator.onLine was true), we have no external proof, so fall
+      //   back to verifying against the last-known stored hash.
+      let isValidPassword: boolean;
+      let refreshedHash: string | undefined;
+
+      if (firebaseAuthVerified) {
+        isValidPassword = true;
+        refreshedHash = await hashPassword(password);
+      } else {
+        isValidPassword = await verifyPassword(password, firestoreUser.passwordHash);
+      }
+
       if (!isValidPassword) {
         console.log('Invalid password for Firestore user');
         return { success: false, error: 'Invalid password' };
+      }
+
+      // Persist the refreshed hash so Firestore (and, downstream, the local
+      // DB via createLocalUserFromFirestore) stop relying on the stale one.
+      if (refreshedHash) {
+        try {
+          await updateDoc(doc(db, 'users', userDoc.id), {
+            passwordHash: refreshedHash,
+            updatedAt: new Date().toISOString()
+          });
+          firestoreUser.passwordHash = refreshedHash;
+          console.log('✅ Refreshed Firestore passwordHash after Firebase Auth login');
+        } catch (hashSyncError) {
+          // Non-fatal: the user already authenticated via Firebase Auth.
+          // Worst case, this resync is retried on their next online login.
+          console.error('Failed to refresh Firestore passwordHash:', hashSyncError);
+        }
       }
 
       console.log('Password verified for Firestore user');

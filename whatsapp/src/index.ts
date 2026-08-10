@@ -2235,6 +2235,35 @@ async function updateInvoiceFlags(userId: string, invoiceLocalId: string, flags:
     }
 }
 
+// Notification-bookkeeping fields that processInvoiceNotifications itself writes
+// back to the invoice document via updateInvoiceFlags(). Each of those writes
+// re-triggers onDocumentWritten, so we need to recognize and skip our own
+// follow-up writes below - otherwise every notification run causes 1-2 extra
+// self-triggered re-runs that can re-send notifications against a stale
+// snapshot (the re-run's `before`/`after` predates the OTHER flag write that
+// was still in flight) before the flags settle.
+const NOTIFICATION_FLAG_KEYS = ['isNew', 'hasPaid', 'isDue'];
+
+// Returns true if `after` differs from `before` only in the notification
+// flag fields above - i.e. this write was caused by our own updateInvoiceFlags()
+// call rather than a real change to the invoice (creation, payment, edits, etc).
+function isFlagsOnlySelfTrigger(before: any, after: any): boolean {
+    if (!before) {
+        return false; // Document creation - always process
+    }
+
+    const allKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    for (const key of allKeys) {
+        if (NOTIFICATION_FLAG_KEYS.includes(key)) {
+            continue; // Ignore differences in the flags themselves
+        }
+        if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) {
+            return false; // Something other than a flag changed - process normally
+        }
+    }
+    return true;
+}
+
 // NEW: Consent handler function
 export const handleConsent = onRequest({
     timeoutSeconds: 30,
@@ -2414,6 +2443,16 @@ export const processInvoiceNotifications = onDocumentWritten({
         }
         
         console.log(`Raw invoice data:`, JSON.stringify(invoice, null, 2));
+
+        // Skip re-runs caused by our own updateInvoiceFlags() writes below.
+        // Without this, a write that only sets isNew/hasPaid/isDue re-triggers
+        // this function against a snapshot that predates any OTHER flag write
+        // still in flight from the original run, which can re-send a
+        // notification (e.g. a duplicate overdue SMS) before the flags settle.
+        if (isFlagsOnlySelfTrigger(previousInvoice, invoice)) {
+            console.log(`Invoice ${invoiceId} write was a flags-only update from a previous notification run - skipping`);
+            return;
+        }
         
         // Determine notification needs based on YOUR logic
         const isInvoicePaid = invoice.pdfStatus === 'paid' || invoice.isPaid;
@@ -2495,9 +2534,9 @@ export const processInvoiceNotifications = onDocumentWritten({
             paymentStatusChanged,
             processedAt: new Date().toISOString(),
             flags: {
-                isNew: invoice.isNew,
-                hasPaid: invoice.hasPaid,
-                isDue: invoice.isDue
+                isNew: invoice.isNew ?? null,
+                hasPaid: invoice.hasPaid ?? null,
+                isDue: invoice.isDue ?? null
             }
         });
         
