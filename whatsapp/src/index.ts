@@ -7,6 +7,7 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import * as admin from 'firebase-admin';
 import axios from 'axios';
 import crypto from 'crypto';
+import { defineSecret } from 'firebase-functions/params';
 
 // Initialize Firebase Admin SDK
 if (getApps().length === 0) {
@@ -14,13 +15,13 @@ if (getApps().length === 0) {
 }
 const db = getFirestore();
 
-const PAYSTACK_SECRET_KEY = "sk_live_85e131b71617b25498db9283081a5ba17fef296c";
+const PAYSTACK_SECRET_KEY = defineSecret('PAYSTACK_SECRET_KEY');
 const PAYSTACK_API_BASE = "https://api.paystack.co";
 
 // Configuration - Replace with your actual values
 const WHATSAPP_CONFIG = {
-    ACCESS_TOKEN: 'EAASC7YgLv0YBPRIdAASQas8IdC1vLwtsiKYcVvuC0MtZAEKQAnfaIM9Vgtnn1HNeH92ZBNlQ1kZA8Wgg7fxuoihZC6mH17frZBsAyQvk6igPZAJxK7kdI0dJ7ZAzxsKZCpUCiDZAxnnCYNgTc5zZCEeTQ3Xn8EeykvjfxxqBNZAcsxMwL6PLbQVZB7TFtLXxlFiVdgZDZD',
-    PHONE_NUMBER_ID: '740740482466935',
+    ACCESS_TOKEN: process.env.ACCESS_TOKEN,
+    PHONE_NUMBER_ID: process.env.PHONE_NUMBER_ID,
     VERSION: 'v23.0',
     BASE_URL: 'https://graph.facebook.com'
 };
@@ -104,7 +105,7 @@ const SMS_CONFIG = {
     PASSWORD:  process.env.HP_SMS_PASSWORD  || "",
     APIKEY:    process.env.HP_SMS_APIKEY    || "",
     SENDER_ID: process.env.HP_SMS_SENDERID  || "",   // your approved sender ID
-    MAX_LENGTH: 300,
+    MAX_LENGTH: 400,
 };
 
 // Human-readable message type labels used inside SMS text bodies.
@@ -961,6 +962,7 @@ export const processWebSubscription = onCall({
   maxInstances: 10,
   region: "africa-south1",
   cors: true,
+  secrets: [PAYSTACK_SECRET_KEY]
 }, async (request: CallableRequest<ProcessWebSubscriptionRequest>) => {
   try {
     const { userId, userName, email, phone, planId, planName, billingCycle, amount, daysToAdd, cyber } = request.data;
@@ -1062,7 +1064,7 @@ console.log(`Processing web subscription for user ${userId}, plan ${planId}, amo
       chargePayload,
       { 
         headers: {
-          Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+          Authorization: `Bearer ${PAYSTACK_SECRET_KEY.value()}`,
           "Content-Type": "application/json"
         }
       }
@@ -1160,6 +1162,7 @@ export const paystackWebhook = onCall({
   cors: false,
   maxInstances: 10,
   region: "africa-south1",
+  secrets: [PAYSTACK_SECRET_KEY]
 }, async (request: any) => {
   console.log(`Webhook request received`);
   
@@ -1168,7 +1171,7 @@ export const paystackWebhook = onCall({
     const body = JSON.stringify(request.data);
 
     const expectedHash = crypto
-      .createHmac("sha512", PAYSTACK_SECRET_KEY)
+      .createHmac("sha512", PAYSTACK_SECRET_KEY.value())
       .update(body)
       .digest("hex");
       
