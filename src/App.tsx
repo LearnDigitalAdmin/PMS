@@ -16,6 +16,7 @@ import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import AgentView from './pages/payments/Payments';
 import { useSmsTokens } from './hooks/useSmsTokens';
+import { useSubscriptionInfo } from './hooks/useSubscriptionInfo';
 
 // Loading component with skeleton animation
 const LoadingSpinner = () => (
@@ -74,6 +75,7 @@ const ExitConfirmationDialog = ({ isOpen, onConfirm, onCancel }: {
 const StatusBar = () => {
   const { user } = useAuth();
   const { tokens: smsCredits } = useSmsTokens(user!.id);
+  const { info } = useSubscriptionInfo(user?.id);
   const [syncStatus, setSyncStatus] = useState<{
     lastSync: string;
     isOnline: boolean;
@@ -146,6 +148,12 @@ const StatusBar = () => {
         </span>
         {!user.storage && user.tier !== 'business' && user.tier !== 'solo' && user.tier !== 'pro' && user.tier !== 'enterprise' && (
           <AlertCircle className="w-3 h-3 text-yellow-300" />
+        )}
+
+        {info?.isTrial && info.subscriptionExpiry && (
+          <span>
+            Business tier trial — ends {new Date(info.subscriptionExpiry).toLocaleDateString()}
+          </span>
         )}
       </div>
       

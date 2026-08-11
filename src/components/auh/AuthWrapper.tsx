@@ -1,5 +1,5 @@
 // components/auth/AuthWrapper.tsx - Enhanced with Firebase Auth + Multi-Device Support
-import React, { useState, useEffect, useContext, useCallback } from 'react';
+import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { database } from '../../services/database/Database';
 import { firebaseSyncService, functions } from '../../services/database/FirebaseSync';
 import SignInScreen from './SignInScreen';
@@ -25,6 +25,7 @@ import {
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { argon2Verify, argon2id } from 'hash-wasm';
 import { httpsCallable } from 'firebase/functions';
+import HeroSection from './HeroSection';
 
 // Firebase Configuration
 const firebaseConfig = {
@@ -93,11 +94,31 @@ const LoadingSpinner = () => (
 // Auth Wrapper Screen (handles sign in/sign up switching)
 const AuthWrapperScreen = () => {
   const [showSignUp, setShowSignUp] = useState(false);
+  const authSectionRef = useRef<HTMLDivElement>(null);
 
-  return showSignUp ? (
-    <SignUpScreen onSwitchToSignIn={() => setShowSignUp(false)} />
-  ) : (
-    <SignInScreen onSwitchToSignUp={() => setShowSignUp(true)} />
+  const goToAuth = (signUp: boolean) => {
+    setShowSignUp(signUp);
+    // wait a tick so the section is on screen before scrolling to it
+    requestAnimationFrame(() => {
+      authSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
+    });
+  };
+
+  return (
+    <div className="bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-800">
+      <HeroSection
+        onGetStarted={() => goToAuth(true)}
+        onSignIn={() => goToAuth(false)}
+      />
+
+      <div ref={authSectionRef}>
+        {showSignUp ? (
+          <SignUpScreen onSwitchToSignIn={() => setShowSignUp(false)} />
+        ) : (
+          <SignInScreen onSwitchToSignUp={() => setShowSignUp(true)} />
+        )}
+      </div>
+    </div>
   );
 };
 
