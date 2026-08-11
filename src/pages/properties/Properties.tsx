@@ -19,7 +19,8 @@ import {
   X,
   FileText,
   ClipboardList,
-  PenTool
+  PenTool,
+  MessageSquare
 } from 'lucide-react';
 import { database, type PropertyWithTenants, type DashboardData, type MonthlyStats } from '../../services/database/Database';
 import TenantsList from '../tenants/TenantsList';
@@ -27,6 +28,8 @@ import AddTenant from '../tenants/AddTenant';
 import Transcript from './Transcript';
 import Sheet from './Sheet';
 import TranscriptEditor from './TranscriptEditor';
+import { useAuth } from '../../components/auh/AuthWrapper';
+import SendSmsModal from '../sms/SendSmsModal';
 
 interface PropertyProps {
   propertyId: number;
@@ -73,6 +76,10 @@ const Property: React.FC<PropertyProps> = ({
   const [showTranscript, setShowTranscript] = useState(false);
   const [showSheet, setShowSheet] = useState(false);
   const [showTranscriptEditor, setShowTranscriptEditor] = useState(false);
+
+  const { user, company } = useAuth();
+  const [showSendSms, setShowSendSms] = useState(false);
+  const senderSignature = `${company?.name || user?.name || 'Property Manager'}, ${user?.phone || ''}`;
 
   useEffect(() => {
     loadPropertyData();
@@ -295,6 +302,11 @@ return (
                 <FileText className="w-4 h-4 mr-2" />
                 Transcript
               </button>
+
+              <button onClick={() => setShowSendSms(true)} className="...">
+                <MessageSquare className="w-4 h-4 mr-2" /> Send SMS
+              </button>
+
               <button
                 onClick={handleOpenSheet}
                 className="inline-flex items-center px-3 py-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-all"
@@ -337,6 +349,11 @@ return (
                 <FileText className="w-4 h-4 mr-3" />
                 Transcript
               </button>
+
+              <button onClick={() => setShowSendSms(true)} className="w-full flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 transition-all">
+                <MessageSquare className="w-4 h-4 mr-3" /> Send SMS
+              </button>
+
               <button
                 onClick={handleOpenSheet}
                 className="w-full flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 transition-all"
@@ -768,6 +785,15 @@ return (
           onSaved={handleTranscriptSaved}
         />
       )}
+
+      <SendSmsModal
+        isOpen={showSendSms}
+        onClose={() => setShowSendSms(false)}
+        userId={userId}
+        propertyId={propertyId}
+        recipients={property?.tenants?.map(t => ({ id: t.id, name: t.name, phone: t.phone })) ?? []}
+        senderSignature={senderSignature}
+      />
     </div>
   );
 };

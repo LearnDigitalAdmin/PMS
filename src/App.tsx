@@ -1,7 +1,7 @@
 // App.tsx - Updated with Enhanced User State Management, Sync Integration, and Exit Confirmation
 import React, { useState, useEffect, Suspense, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, NavLink } from 'react-router-dom';
-import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, DollarSign } from 'lucide-react';
+import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, DollarSign, MessageSquare } from 'lucide-react';
 import { database } from './services/database/Database';
 import { firebaseSyncService } from './services/database/FirebaseSync';
 import Dashboard from './pages/Dashboard';
@@ -15,6 +15,7 @@ import type { User } from './services/database/Database';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import AgentView from './pages/payments/Payments';
+import { useSmsTokens } from './hooks/useSmsTokens';
 
 // Loading component with skeleton animation
 const LoadingSpinner = () => (
@@ -72,6 +73,7 @@ const ExitConfirmationDialog = ({ isOpen, onConfirm, onCancel }: {
 // Enhanced Status Bar Component
 const StatusBar = () => {
   const { user } = useAuth();
+  const { tokens: smsCredits } = useSmsTokens(user!.id);
   const [syncStatus, setSyncStatus] = useState<{
     lastSync: string;
     isOnline: boolean;
@@ -137,6 +139,10 @@ const StatusBar = () => {
         <span className={`flex items-center space-x-1 ${getTierColor(user.tier)}`}>
           {getTierIcon(user.tier)}
           <span className="text-white font-medium capitalize">{user.tier} Plan</span>
+          <span className="flex items-center gap-1">
+            <MessageSquare className="w-3 h-3" />
+            {smsCredits ?? '—'} SMS credits
+          </span>
         </span>
         {!user.storage && user.tier !== 'business' && user.tier !== 'solo' && user.tier !== 'pro' && user.tier !== 'enterprise' && (
           <AlertCircle className="w-3 h-3 text-yellow-300" />

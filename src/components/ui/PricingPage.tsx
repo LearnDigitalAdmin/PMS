@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Check, X, Building, Users, Cloud, FileText, Shield, Star, Zap, Crown, ExternalLink, Phone, Mail, CreditCard, Database, Loader, RefreshCw } from 'lucide-react';
+import { Check, X, Building, Users, Cloud, FileText, Shield, Star, Zap, Crown, ExternalLink, Phone, Mail, CreditCard, Database, Loader, RefreshCw, MessageSquare } from 'lucide-react';
 import { Purchases, type PurchasesPackage } from '@revenuecat/purchases-capacitor';
 import { Capacitor } from '@capacitor/core';
 import { db } from '../../services/database/FirebaseSync';
 import { collection, getDocs } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import SmsPurchaseModal from '../../pages/sms/SmsPurchaseModal';
 
 interface PricingModalProps {
   isOpen: boolean;
@@ -462,6 +463,8 @@ const PricingModal: React.FC<PricingModalProps> = ({
   const [storagePackage, setStoragePackage] = useState<PurchasesPackage | null>(null);
   const [firestorePlans, setFirestorePlans] = useState<PlanData[]>([]);
   const [showWebPaymentModal, setShowWebPaymentModal] = useState(false);
+  const [showSmsPurchase, setShowSmsPurchase] = useState(false);
+
 
   // const isNativePlatform = Capacitor.isNativePlatform();
   // const isWeb = !isNativePlatform;
@@ -1070,6 +1073,10 @@ const PricingModal: React.FC<PricingModalProps> = ({
               )}
             </div>
 
+            <button onClick={() => setShowSmsPurchase(true)} className="...">
+              <MessageSquare className="w-4 h-4 mr-2" /> Buy SMS Credits
+            </button>
+
             <div className="mt-4 bg-white/20 backdrop-blur-lg rounded-lg p-3">
               <div className="flex items-center justify-center">
                 <Star className="w-4 h-4 mr-2 flex-shrink-0" />
@@ -1404,6 +1411,13 @@ const PricingModal: React.FC<PricingModalProps> = ({
           currentUser={currentUser}
         />
       )}
+
+      <SmsPurchaseModal
+        isOpen={showSmsPurchase}
+        onClose={() => setShowSmsPurchase(false)}
+        userId={currentUser.id}
+        userTier={currentPlan || 'free'}
+      />
     </>
   );
 };

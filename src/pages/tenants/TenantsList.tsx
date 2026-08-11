@@ -21,11 +21,14 @@ import {
   AlertTriangle,
   Activity,
   Target,
-  Award
+  Award,
+  MessageSquare
 } from 'lucide-react';
 import { database } from '../../services/database/Database';
 import type { TenantWithInvoices } from '../../services/database/Database';
 import AddTenant from './AddTenant';
+import { useAuth } from '../../components/auh/AuthWrapper';
+import SendSmsModal from '../sms/SendSmsModal';
 
 interface TenantsListProps {
   propertyId: number;
@@ -57,6 +60,11 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
   const [error, setError] = useState<string | null>(null);
   const [expandedTenant, setExpandedTenant] = useState<number | null>(null);
   const [deletingTenant, setDeletingTenant] = useState<number | null>(null);
+
+  const { user, company } = useAuth();
+  const [smsTarget, setSmsTarget] = useState<TenantWithInvoices | null>(null);
+  const senderSignature = `${company?.name || user?.name || 'Property Manager'}, ${user?.phone || ''}`;
+  // next to the Call/WhatsApp buttons:
   
   // Edit tenant state
   const [showEditTenant, setShowEditTenant] = useState(false);
@@ -654,6 +662,9 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
                                     >
                                       <MessageCircle className="h-3 w-3" />
                                     </button>
+                                    <button onClick={() => setSmsTarget(tenant)} className="p-1 text-blue-600 hover:bg-blue-100 rounded transition-colors" title="Send SMS">
+                                      <MessageSquare className="h-3 w-3" />
+                                    </button>
                                   </div>
                                 </div>
                               </div>
@@ -770,6 +781,16 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
                 </div>
               );
             })}
+
+            {smsTarget && (
+              <SendSmsModal
+                isOpen={!!smsTarget}
+                onClose={() => setSmsTarget(null)}
+                userId={userId}
+                recipients={[{ id: smsTarget.id, name: smsTarget.name, phone: smsTarget.phone }]}
+                senderSignature={senderSignature}
+              />
+            )}
           </div>
         )}
       </div>
