@@ -150,6 +150,214 @@ function normalizeSmsPhone(raw: string): string {
     return clean;
 }
 
+
+
+
+
+// ============================================================================
+// sendPnsSms — property-management tenant messaging (rename to sendPmsSms if
+// "pns" here was meant as PMS; the code is identical either way).
+//
+// Distinct from the generic sendSMS above: this one enforces a strict
+// whitelist (rejects, never silently strips), composes a mandatory
+// "Dear {name}, ... - {signature}" wrapper server-side, and prices tokens
+// on the FINAL composed message (greeting + body + signature), not the raw
+// typed text — the sender ID is global, so every message must be
+// traceable back to whoever sent it. Reuses normalizeSmsPhone and
+// sendHostPinnacleSms already defined above.
+// ============================================================================
+
+const SMS_CHARS_PER_TOKEN = 150;
+
+// Printable, GSM-safe basic Latin text only: letters, digits, spaces, and a
+// small set of everyday punctuation. No emoji, no symbols, no line breaks.
+const ALLOWED_SMS_BODY_REGEX = /^[A-Za-z0-9 .,'\-!?():\/]*$/;
+
+// Catches http(s)://, www., and bare domain-looking strings (e.g. "bit.ly").
+const LINK_PATTERN = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|co|ke|net|org|io|ly|me)\b)/i;
+
+function validateStrictSmsBody(raw: string): { valid: boolean; reason?: string } {
+  if (!raw || !raw.trim()) {
+    return { valid: false, reason: "Message cannot be empty." };
+  }
+  if (LINK_PATTERN.test(raw)) {
+    return { valid: false, reason: "Links are not allowed in SMS messages." };
+  }
+  if (!ALLOWED_SMS_BODY_REGEX.test(raw)) {
+    return {
+      valid: false,
+      reason: "Message contains characters that are not allowed (no emojis, symbols, or special characters).",
+    };
+  }
+  return { valid: true };
+}
+
+function tokensForMessage(fullMessage: string): number {
+  return Math.max(1, Math.ceil(fullMessage.length / SMS_CHARS_PER_TOKEN));
+}
+
+interface SendPmsSmsRecipient {
+  name: string;  // recipient name — used for the "Dear {name}," greeting
+  phone: string; // any raw format — normalised server-side
+}
+
+interface SendPmsSmsRequest {
+  recipients: SendPmsSmsRecipient[]; // one tenant, or every tenant in a property
+  message: string;                   // body ONLY — greeting + signature are added here, not by the client
+  propertyId?: string;               // optional, for the audit log
+}
+
+export const sendPmsSms = onCall({
+  timeoutSeconds: 60,
+  memory: "256MiB",
+  region: "africa-south1",
+  cors: true,
+}, async (request: CallableRequest<SendPmsSmsRequest>) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "You must be logged in to send SMS.");
+  }
+
+  const userId = request.auth.uid;
+  const { recipients, message, propertyId } = request.data;
+
+  if (!Array.isArray(recipients) || recipients.length === 0) {
+    throw new HttpsError("invalid-argument", "At least one recipient is required.");
+  }
+  if (recipients.length > 200) {
+    throw new HttpsError("invalid-argument", "Maximum 200 recipients per send.");
+  }
+  for (const r of recipients) {
+    if (!r?.phone || !r?.name) {
+      throw new HttpsError("invalid-argument", "Each recipient needs a name and a phone number.");
+    }
+  }
+
+  const bodyCheck = validateStrictSmsBody(message);
+  if (!bodyCheck.valid) {
+    throw new HttpsError("invalid-argument", bodyCheck.reason || "Invalid message.");
+  }
+
+  // ── Sender signature: company name if set, else the account name — plus their phone.
+  // The sender ID with HostPinnacle is a single shared/global ID, so this signature
+  // is the only way a recipient can tell who actually sent the message.
+  const userSnap = await db.collection("users").doc(userId).get();
+  if (!userSnap.exists) {
+    throw new HttpsError("not-found", "User not found.");
+  }
+  const userData = userSnap.data() || {};
+  const senderName = String(userData.company?.name || userData.name || "Property Manager");
+  const senderPhone = String(userData.phone || "");
+  const signature = senderPhone ? `${senderName}, ${senderPhone}` : senderName;
+
+  // ── Compose the final per-recipient message and validate the WHOLE thing —
+  // greeting + body + signature — since a tenant name with a stray character
+  // would otherwise slip through a body-only check.
+  const composed: Array<{ recipient: SendPmsSmsRecipient; mobile: string; fullMessage: string; tokensNeeded: number }> = [];
+
+  for (const r of recipients) {
+    const nameCheck = validateStrictSmsBody(r.name);
+    if (!nameCheck.valid) {
+      throw new HttpsError("invalid-argument", `Recipient name "${r.name}" contains disallowed characters.`);
+    }
+    const fullMessage = `Dear ${r.name}, ${message.trim()} - ${signature}`;
+    const finalCheck = validateStrictSmsBody(fullMessage);
+    if (!finalCheck.valid) {
+      throw new HttpsError("invalid-argument", finalCheck.reason || "Composed message is invalid.");
+    }
+    composed.push({
+      recipient: r,
+      mobile: normalizeSmsPhone(r.phone),
+      fullMessage,
+      tokensNeeded: tokensForMessage(fullMessage),
+    });
+  }
+
+  const totalTokensNeeded = composed.reduce((sum, c) => sum + c.tokensNeeded, 0);
+
+  // ── Reserve credits atomically up front, same pattern as sendSMS above ──
+  const userRef = db.collection("users").doc(userId);
+  const tokensAvailable: number = userData.tokens ?? 0;
+
+  if (tokensAvailable < totalTokensNeeded) {
+    throw new HttpsError(
+      "resource-exhausted",
+      `Insufficient SMS credits. Required: ${totalTokensNeeded}, available: ${tokensAvailable}.`
+    );
+  }
+
+  await userRef.update({
+    tokens: admin.firestore.FieldValue.increment(-totalTokensNeeded),
+  });
+
+  // ── Send to each recipient, refunding credits for any that fail ──
+  const results: Array<{ name: string; number: string; success: boolean; tokensUsed: number; error?: string }> = [];
+  let tokensToRefund = 0;
+
+  for (const c of composed) {
+    const result = await sendHostPinnacleSms({ mobile: c.mobile, message: c.fullMessage });
+    results.push({
+      name: c.recipient.name,
+      number: c.mobile,
+      success: result.success,
+      tokensUsed: result.success ? c.tokensNeeded : 0,
+      error: result.error,
+    });
+    if (!result.success) {
+      tokensToRefund += c.tokensNeeded;
+    }
+  }
+
+  if (tokensToRefund > 0) {
+    await userRef.update({
+      tokens: admin.firestore.FieldValue.increment(tokensToRefund),
+    });
+  }
+
+  // ── Audit log — purely Firestore, never touches the local SQLite database ──
+  await db.collection("users").doc(userId).collection("sms-sent-log").add({
+    propertyId: propertyId || null,
+    recipientCount: recipients.length,
+    tokensCharged: totalTokensNeeded - tokensToRefund,
+    successCount: results.filter((r) => r.success).length,
+    failCount: results.filter((r) => !r.success).length,
+    sentAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  const successCount = results.filter((r) => r.success).length;
+
+  return {
+    success: successCount > 0,
+    sent: successCount,
+    failed: results.length - successCount,
+    tokensCharged: totalTokensNeeded - tokensToRefund,
+    results,
+  };
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ─── TRANSACTIONAL SMS TEMPLATES ─────────────────────────────────────────────
 // Plain-text, max 300 chars, no emoji.
 // These mirror the 3 WhatsApp templates but adapted for SMS constraints.
