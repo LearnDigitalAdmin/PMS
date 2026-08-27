@@ -17,6 +17,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import AgentView from './pages/payments/Payments';
 import { useSmsTokens } from './hooks/useSmsTokens';
 import { useSubscriptionInfo } from './hooks/useSubscriptionInfo';
+import { getDaysRemaining } from './utils/trial';
 
 // Loading component with skeleton animation
 const LoadingSpinner = () => (
@@ -119,15 +120,15 @@ const StatusBar = () => {
 
   if (!user) return null;
 
-  const getTierColor = (tier: string) => {
+  const getTierBadgeClasses = (tier: string) => {
     switch (tier) {
-      case 'enterprise': return 'text-purple-600';
-      case 'pro': return 'text-blue-600';
-      case 'business': return 'text-blue-600';
-      case 'low': return 'text-green-600';
-      case 'solo': return 'text-indigo-600';
-      case 'free': return 'text-gray-600';
-      default: return 'text-gray-500';
+      case 'enterprise': return 'bg-purple-500/40';
+      case 'pro': return 'bg-blue-500/40';
+      case 'business': return 'bg-blue-500/40';
+      case 'low': return 'bg-green-500/40';
+      case 'solo': return 'bg-indigo-500/40';
+      case 'free': return 'bg-white/15';
+      default: return 'bg-white/15';
     }
   };
 
@@ -135,29 +136,38 @@ const StatusBar = () => {
     return tier !== 'free' ? <Crown className="w-3 h-3" /> : null;
   };
 
+  const daysRemaining = getDaysRemaining(info?.subscriptionExpiry);
+  const trialUrgent = info?.isTrial && daysRemaining !== null && daysRemaining <= 7;
+
   return (
-    <div className="fixed top-0 left-0 right-0 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-1 text-xs flex items-center justify-between z-50">
-      <div className="flex items-center space-x-2">
-        <span className={`flex items-center space-x-1 ${getTierColor(user.tier)}`}>
+    <div className="fixed top-0 left-0 right-0 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-3 py-1.5 text-xs flex flex-wrap items-center gap-x-3 gap-y-1 justify-between z-50">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium capitalize ${getTierBadgeClasses(user.tier)}`}>
           {getTierIcon(user.tier)}
-          <span className="text-white font-medium capitalize">{user.tier} Plan</span>
-          <span className="flex items-center gap-1">
-            <MessageSquare className="w-3 h-3" />
-            {smsCredits ?? '—'} SMS credits
-          </span>
+          {user.tier} Plan
         </span>
+
+        <span className="inline-flex items-center gap-1 opacity-90">
+          <MessageSquare className="w-3 h-3" />
+          {smsCredits ?? '—'} SMS credits
+        </span>
+
         {!user.storage && user.tier !== 'business' && user.tier !== 'solo' && user.tier !== 'pro' && user.tier !== 'enterprise' && (
-          <AlertCircle className="w-3 h-3 text-yellow-300" />
+          <AlertCircle className="w-3 h-3 text-yellow-300 flex-shrink-0" />
         )}
 
-        {info?.isTrial && info.subscriptionExpiry && (
-          <span>
-            Business tier trial — ends {new Date(info.subscriptionExpiry).toLocaleDateString()}
+        {info?.isTrial && daysRemaining !== null && (
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ${
+              trialUrgent ? 'bg-red-500/40 text-white' : 'bg-white/15'
+            }`}
+          >
+            Trial: {daysRemaining === 0 ? 'ends today' : `${daysRemaining} day${daysRemaining === 1 ? '' : 's'} left`}
           </span>
         )}
       </div>
       
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center gap-3 flex-shrink-0">
         {user.storage && (
           <>
             {syncStatus.syncInProgress ? (
@@ -469,7 +479,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <StatusBar />
       
       {/* Main content with top padding for status bar */}
-      <main className="pt-8 pb-20 min-h-screen">
+      <main className="pt-14 sm:pt-8 pb-20 min-h-screen">
         <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
           {children}
         </div>

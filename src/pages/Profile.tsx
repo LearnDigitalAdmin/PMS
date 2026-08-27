@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Phone, Mail, Building, Crown, CheckCircle, Star, ArrowRight, ExternalLink, Zap } from 'lucide-react';
 import { useAuth } from '../components/auh/AuthWrapper';
 import PricingModal from '../components/ui/PricingPage';
+import TrialStatsBanner from '../components/ui/TrialStatsBanner';
 
 // Auto-rotating marketing messages
 const marketingMessages = [
@@ -77,6 +78,8 @@ const Profile: React.FC = () => {
             <Crown className="w-5 h-5 ml-2 flex-shrink-0" />
           </div>
         </div>
+
+        <TrialStatsBanner userId={user?.id} className="mb-6" />
 
         {/* User Profile Card */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 mb-6">

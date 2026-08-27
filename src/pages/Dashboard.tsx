@@ -40,6 +40,7 @@ import {
 } from 'recharts';
 import { firebaseSyncService } from '../services/database/FirebaseSync';
 import { database, type Property, type DashboardData, type MonthlyStats, type InvoiceWithDetails } from '../services/database/Database';
+import TrialStatsBanner from '../components/ui/TrialStatsBanner';
 
 interface DashboardProps {userData: any;}
 
@@ -771,6 +772,8 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
           </button>
         </div>
       </div>
+
+      <TrialStatsBanner userId={userData?.id} />
 
       {/* Property Selector */}
       <PropertySelector

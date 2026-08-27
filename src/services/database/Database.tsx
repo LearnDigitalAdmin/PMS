@@ -1420,6 +1420,39 @@ async getDashboardData(userId: number, propertyId?: number, month?: string): Pro
   }
 }
 
+/**
+ * Lifetime (all-time, not month-scoped) read-only totals for the trial
+ * stats banner: total invoices ever created, total tenants, and total
+ * amount actually collected (paid invoices only). Pure SELECT — never
+ * writes to the local database. Safe to call frequently; the caller is
+ * expected to cache the result (e.g. in localStorage) for offline use.
+ */
+async getTrialStats(userId: number): Promise<{ totalInvoices: number; totalTenants: number; amountCollected: number }> {
+  try {
+    const query = `
+      SELECT
+        COUNT(DISTINCT CASE WHEN t.is_restricted = 0 THEN i.id END) as total_invoices,
+        COUNT(DISTINCT CASE WHEN t.is_restricted = 0 THEN t.id END) as total_tenants,
+        SUM(CASE WHEN i.is_paid = 1 AND t.is_restricted = 0 THEN i.total_amount ELSE 0 END) as amount_collected
+      FROM properties p
+      LEFT JOIN tenants t ON p.id = t.property_id
+      LEFT JOIN invoices i ON t.id = i.tenant_id
+      WHERE p.user_id = ? AND p.is_restricted = 0`;
+
+    const result = await this.db!.query(query, [userId]);
+    const row = result.values?.[0] || {};
+
+    return {
+      totalInvoices: row.total_invoices || 0,
+      totalTenants: row.total_tenants || 0,
+      amountCollected: row.amount_collected || 0,
+    };
+  } catch (error) {
+    console.error('Error getting trial stats:', error);
+    return { totalInvoices: 0, totalTenants: 0, amountCollected: 0 };
+  }
+}
+
 // 10. FIX: Secure createInvoice with validation
 async deleteInvoice(id: number, userId: number): Promise<void> {
   const invoice = await this.getInvoiceById(id);

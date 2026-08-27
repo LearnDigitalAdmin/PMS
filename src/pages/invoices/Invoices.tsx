@@ -20,6 +20,7 @@ import { generateInvoicePDF, sharePDF, generatePDFFilename } from '../../service
 import { shareInvoiceSummary, shareViaWhatsApp, shareViaEmail } from '../../services/sharing/ShareService';
 import AddInvoice from './AddInvoice';
 import AnInvoice from './AnInvoice';
+import TrialStatsBanner from '../../components/ui/TrialStatsBanner';
 
 interface InvoicesProps {
   onNavigate?: (page: string, params?: any) => void;
@@ -484,7 +485,9 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
       <div className="bg-white shadow-sm">
         <div className="px-4 py-6">
           <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
-          
+
+          <TrialStatsBanner userId={user?.id} compact className="mt-4" />
+
           {/* Summary Cards */}
           <div>
             <h2 className="text-lg font-semibold text-gray-900 mt-4">Summary Estimates</h2>

@@ -8,6 +8,7 @@ export interface SubscriptionInfo {
   isTrial: boolean;
   subscriptionExpiry: string | null; // ISO string
   tokens: number;
+  smsSentTotal: number; // lifetime count of successfully-sent SMS, incremented server-side
 }
 
 const CACHE_KEY = 'subscriptionInfo';
@@ -56,6 +57,7 @@ export function useSubscriptionInfo(userId: number | string | undefined) {
           isTrial: data.isTrial ?? false,
           subscriptionExpiry: data.subscriptionExpiry?.toDate?.().toISOString() ?? null,
           tokens: data.tokens ?? 0,
+          smsSentTotal: data.smsSentTotal ?? 0,
         };
         setInfo(parsed);
         writeCache(parsed);

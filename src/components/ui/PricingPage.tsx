@@ -1073,7 +1073,10 @@ const PricingModal: React.FC<PricingModalProps> = ({
               )}
             </div>
 
-            <button onClick={() => setShowSmsPurchase(true)} className="...">
+            <button
+              onClick={() => setShowSmsPurchase(true)}
+              className="mt-3 inline-flex items-center px-4 py-2 bg-white/15 hover:bg-white/25 active:bg-white/30 border border-white/40 rounded-lg text-white text-sm font-semibold backdrop-blur-sm transition-colors"
+            >
               <MessageSquare className="w-4 h-4 mr-2" /> Buy SMS Credits
             </button>
 

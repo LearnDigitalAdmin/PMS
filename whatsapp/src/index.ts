@@ -313,17 +313,25 @@ export const sendPmsSms = onCall({
     });
   }
 
+  const successCount = results.filter((r) => r.success).length;
+
   // ── Audit log — purely Firestore, never touches the local SQLite database ──
   await db.collection("users").doc(userId).collection("sms-sent-log").add({
     propertyId: propertyId || null,
     recipientCount: recipients.length,
     tokensCharged: totalTokensNeeded - tokensToRefund,
-    successCount: results.filter((r) => r.success).length,
-    failCount: results.filter((r) => !r.success).length,
+    successCount,
+    failCount: results.length - successCount,
     sentAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
-  const successCount = results.filter((r) => r.success).length;
+  // ── Lifetime counter for the trial-stats banner (users/{uid}.smsSentTotal).
+  // Cumulative across all time — never decremented, never touches SQLite.
+  if (successCount > 0) {
+    await userRef.update({
+      smsSentTotal: admin.firestore.FieldValue.increment(successCount),
+    });
+  }
 
   return {
     success: successCount > 0,

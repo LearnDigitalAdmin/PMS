@@ -19,6 +19,7 @@ import PropertyModal from './PropertyModal';
 import { USER_LIMITS } from '../../services/database/FirebaseSync';
 import PricingModal from '../../components/ui/PricingPage';
 import SummariesModal from './Summaries';
+import TrialStatsBanner from '../../components/ui/TrialStatsBanner';
 
 interface PropertyListProps {
   onNavigateToProperty: (property: PropertyWithUnits) => void;
@@ -680,6 +681,10 @@ const Properties: React.FC<PropertyListProps> = ({
             />
           </div>
         </div>
+      </div>
+
+      <div className="px-4 pt-4">
+        <TrialStatsBanner userId={currentUserId} compact />
       </div>
 
       {/* Content */}
