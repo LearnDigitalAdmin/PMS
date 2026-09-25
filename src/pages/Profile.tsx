@@ -3,6 +3,7 @@ import { User, Phone, Mail, Building, Crown, CheckCircle, Star, ArrowRight, Exte
 import { useAuth } from '../components/auh/AuthWrapper';
 import PricingModal from '../components/ui/PricingPage';
 import TrialStatsBanner from '../components/ui/TrialStatsBanner';
+import PaymentInstructionsSettings from '../components/settings/PaymentInstructionsSettings';
 
 // Auto-rotating marketing messages
 const marketingMessages = [
@@ -173,6 +174,9 @@ const Profile: React.FC = () => {
             Sign Out
           </button>
         </div>
+
+        {/* Global Payment Instructions Settings */}
+        <PaymentInstructionsSettings />
 
         {/* Company Branding Section */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 mb-6">

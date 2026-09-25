@@ -9,6 +9,7 @@ interface PropertyFormData {
   maxUnits: number;
   image: string;
   companyId?: number;
+  billingMode: 'rent_only' | 'full';
 }
 
 interface PropertyModalProps {
@@ -195,6 +196,45 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
               onChange={handleImageUpload}
               className="hidden"
             />
+          </div>
+
+          {/* Billing Mode */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Billing Type *
+            </label>
+            <div className="space-y-2">
+              <label className={`flex items-start gap-3 p-3 border rounded-xl cursor-pointer transition-all ${
+                formData.billingMode === 'full' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+              }`}>
+                <input
+                  type="radio"
+                  name="billingMode"
+                  checked={formData.billingMode === 'full'}
+                  onChange={() => handleInputChange('billingMode', 'full')}
+                  className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500"
+                />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Itemized billing</p>
+                  <p className="text-xs text-gray-500">Invoices can include water, power, and other charges alongside rent. Default.</p>
+                </div>
+              </label>
+              <label className={`flex items-start gap-3 p-3 border rounded-xl cursor-pointer transition-all ${
+                formData.billingMode === 'rent_only' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+              }`}>
+                <input
+                  type="radio"
+                  name="billingMode"
+                  checked={formData.billingMode === 'rent_only'}
+                  onChange={() => handleInputChange('billingMode', 'rent_only')}
+                  className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500"
+                />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Rent only</p>
+                  <p className="text-xs text-gray-500">No water, waste, or electric billing at this property. Invoices for every tenant can be generated automatically from their rent amount.</p>
+                </div>
+              </label>
+            </div>
           </div>
 
           {/* Agent Commission Rate */}

@@ -39,6 +39,7 @@ export interface Property {
   image?: string;
   agentCommissionRate: number;
   maxUnits: number;
+  billingMode: 'rent_only' | 'full'; // 'rent_only': invoices are rent-only, no water/power metering. 'full': itemized billing (default).
   isRestricted?: boolean; // Added for access control
   createdAt: string;
   updatedAt: string;
@@ -133,6 +134,7 @@ export interface PropertyInput {
   image?: string;
   agentCommissionRate?: number;
   maxUnits?: number;
+  billingMode?: 'rent_only' | 'full';
   isRestricted?: boolean; // Added for access control
 }
 
@@ -152,6 +154,7 @@ export interface PropertyWithUnits {
   image?: string; //extends Property  Base64 encoded image
   agentCommissionRate: number;
   maxUnits: number;
+  billingMode: 'rent_only' | 'full';
   createdAt: string;
   updatedAt: string;
   units: Unit[];
@@ -1632,6 +1635,72 @@ async createInvoice(invoice: InvoiceInput): Promise<Invoice> {
   return createdInvoice;
 }
 
+// Bulk-create rent invoices for every active tenant in a property in one go.
+// Used by the "All Tenants" invoice-creation flow: rent is forked from each
+// tenant's own rentAmount (never a shared amount), water/power metering is
+// never included, and otherCharges/otherChargesDescription (if provided) are
+// applied identically to every generated invoice (flat per tenant, not split).
+async createBulkRentInvoices(options: {
+  propertyId: number;
+  billingMonth: string;
+  dueDate?: string;
+  otherCharges?: number;
+  otherChargesDescription?: string;
+}): Promise<{ created: Invoice[]; skipped: { tenantId: number; name: string; reason: string }[] }> {
+  const property = await this.getPropertyById(options.propertyId);
+  if (!property) {
+    throw new Error('Property not found');
+  }
+  if (property.isRestricted) {
+    throw new Error('Cannot create invoices for restricted property. Upgrade your plan to access.');
+  }
+
+  const tenants = await this.getTenantsByProperty(options.propertyId);
+  const activeTenants = tenants.filter(t => t.isActive);
+
+  const created: Invoice[] = [];
+  const skipped: { tenantId: number; name: string; reason: string }[] = [];
+
+  for (const tenant of activeTenants) {
+    try {
+      const existingForMonth = await this.getInvoices({
+        tenantId: tenant.id,
+        billingMonth: options.billingMonth
+      });
+
+      if (existingForMonth.length > 0) {
+        skipped.push({
+          tenantId: tenant.id,
+          name: tenant.name,
+          reason: 'Invoice already exists for this billing month'
+        });
+        continue;
+      }
+
+      const invoice = await this.createInvoice({
+        id: tenant.id,
+        tenantId: tenant.id,
+        propertyId: options.propertyId,
+        billingMonth: options.billingMonth,
+        rentAmount: tenant.rentAmount, // Forked from this tenant's own record — never shared across tenants
+        otherCharges: options.otherCharges || 0,
+        otherChargesDescription: options.otherChargesDescription || '',
+        dueDate: options.dueDate
+      });
+
+      created.push(invoice);
+    } catch (error: any) {
+      skipped.push({
+        tenantId: tenant.id,
+        name: tenant.name,
+        reason: error?.message || 'Failed to create invoice'
+      });
+    }
+  }
+
+  return { created, skipped };
+}
+
 private async generateInvoiceId(): Promise<number> {
   const query = `SELECT MAX(id) as max_id FROM invoices WHERE id >= 1111111`;
   const result = await this.db!.query(query);
@@ -1760,6 +1829,10 @@ async updateProperty(id: number, property: Partial<PropertyInput>): Promise<void
   if (property.maxUnits !== undefined) {
     fields.push('max_units = ?');
     values.push(property.maxUnits);
+  }
+  if (property.billingMode !== undefined) {
+    fields.push('billing_mode = ?');
+    values.push(property.billingMode === 'rent_only' ? 'rent_only' : 'full');
   }
   
   fields.push('updated_at = CURRENT_TIMESTAMP');
@@ -2056,8 +2129,8 @@ async checkUserLimits(userId: number): Promise<{
     const newPropertyId = await this.generatePropertyId();
 
     const query = `
-      INSERT INTO properties (id, user_id, company_id, name, address, description, image, agent_commission_rate, max_units)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO properties (id, user_id, company_id, name, address, description, image, agent_commission_rate, max_units, billing_mode)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
     const result = await this.db!.run(query, [
@@ -2069,7 +2142,8 @@ async checkUserLimits(userId: number): Promise<{
       property.description || '',
       property.image || '',
       property.agentCommissionRate || 0,
-      property.maxUnits || 1
+      property.maxUnits || 1,
+      property.billingMode === 'rent_only' ? 'rent_only' : 'full'
     ]);
 
     const createdProperty = await this.getPropertyById(result.changes!.lastId!);
@@ -2481,6 +2555,7 @@ async refreshCurrentUser(id: number): Promise<User | null> {
       image: row.image,
       agentCommissionRate: row.agent_commission_rate,
       maxUnits: row.max_units || 1,
+      billingMode: row.billing_mode === 'rent_only' ? 'rent_only' : 'full',
       isRestricted: Boolean(row.is_restricted),
       createdAt: row.created_at,
       updatedAt: row.updated_at

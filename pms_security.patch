@@ -1,0 +1,181 @@
+diff --git a/.gitignore b/.gitignore
+index a547bf3..11c1626 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -22,3 +22,7 @@ dist-ssr
+ *.njsproj
+ *.sln
+ *.sw?
++
++# Firebase service account keys — never commit these
++SSKEY.json
++*serviceAccountKey*.json
+diff --git a/SSKEY.json b/SSKEY.json
+deleted file mode 100644
+index 6d5ec38..0000000
+--- a/SSKEY.json
++++ /dev/null
+@@ -1,13 +0,0 @@
+-{
+-  "type": "service_account",
+-  "project_id": "plot-9fd6e",
+-  "private_key_id": "d021f0ab35a0d7bbb58d2c9a84aa460a1f0e0024",
+-  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDBLX9OfBB+d+1K\nqxLMmQSUovxWqh9Zjxy0hUU52BhksInkt9VYMxI3r44JULK/KkoG7S6HYl2lZ7yf\nKY9fTDCLwZx8S+FeR85RJwpdNVDu7TE/eZ92JX0YV6lMRwnSegAIBQGEi6inXzXV\nxrsgZgyyVRy/pZl9LJWHIIwy8D6wPSCSX+2FIJh48EGe00036wr/0pc4SJN1TFQk\n2szom9u/45TS/SwCheWPZaxk74OUf88OPVvzJ0RYBHkMcviQ3rxPeMpUv9Y0a/2k\nuxc4d/nJ4qG8bYRLzm1p9girIaYZmoLNq5nzmqS4yu2Hg3BmEfqta1IAQT9IoeuV\nakcWcZ2rAgMBAAECggEAIBvdCGFvEmkCUZdsKVgZHqWVS3MSgT3cN8CGbaNsBox2\nFxoGmuw+OnBH1meJ67luktvTOzXlOowqxMp70LYRbva6+R6vB+SSjVhFDOdtm5EO\n+a3QYgBq3GQcY+0o258N/fHrEH9wLzBlpTICQiku3L4bPbBGT2aHjMLNsDJ7kP+w\nyYv/cnOSybp8AoxYlUioAgwFGhq/pjS8pcXXIiqBqa5kAnND6aJdL5umXemRanzi\nfR0GfaqdaMJUrk1T4Rxm3aVpqhG8X2RDhVFl70RbaYPQxdq6VlJZ+Jw3w98vfM+6\nMbtytIJ0/baXKiNapyqLt2eRlI8ADIpeK9cAfzkxEQKBgQDg+nJuEtS/8cIRnJsl\nBKcBkbnW5v6qKMA34DHCVLE/8roMMedyDOj2GcBcEs3sguPm5Rq1CO9WEKLeGoTu\nCi7V6AENnLHvQrMW1rrdJ/SzkBuyv+mgziCU6ItYeLVJNywRS9ll8Xff++cof+bd\nwvb1fo+YuJ16aB/SvFk43DemEQKBgQDb0IPpeumuOB3jTv4aRdt0XtEE0+ke2tku\nbyl/9QjqyKUW6WoWG+3EbQ9cy2HQgPwb0NyIz0Cm2sEPTZVcH3jZez69cqqGlVU0\nZijqrqLZ+7SmnnXao0Kyqnvy4P1a+iGKTTT4rF1+VjFGWacvOkBUrx+yXhjQKBAR\nvOeLgX4b+wKBgQCrq2+VvpjIvlkvxyg7XwlwkRoVeb3paZ8DA/f0KVv3R+ffVlUd\nGezJnWzC1TZ8uoPctAVlDqRSL++XOvUkDnEemCH1mRPNVkABtWhxSQPX4KbCBt7m\n7WK/PZLWt4TdkVP2/sGsoEywhS8mIDKyFQsM2L4J8xV3Sey+iSor0R5FgQKBgQCy\nq5xtbYEAIZD5sL2OcXXd8ywGtpDoiY661ZRv86ZZ4Nl/9B5M9kqfvN4d2RsatZ02\npuB7O6sbdPg0DiX3iYVbkXf/2XKOjleBjgB4MZchhBzkyiyVmNqgCz9QvlxxVJtq\npTMHZmNgS4Ml4b2o/7pGm0oyW5XjrIzTPi8fEBSHfQKBgQDCSR16mjiCU/1Of37Q\nmYP23FgLjT1WDHRpzq1gejrgtSPNpWyT/qnhAIZ0ENQ9B4Iel2W7hM3Nowx6eIWD\ngwCoXdY2QZ1zAX6lOUseM+w/SfcC03aAOqeUnlf6TzFRvvEgK+/MhrFbU9FP+i/7\nz3YJjloGQIXVSVzG/H9dL6PT1g==\n-----END PRIVATE KEY-----\n",
+-  "client_email": "firebase-adminsdk-fbsvc@plot-9fd6e.iam.gserviceaccount.com",
+-  "client_id": "117523068636198921425",
+-  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+-  "token_uri": "https://oauth2.googleapis.com/token",
+-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+-  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40plot-9fd6e.iam.gserviceaccount.com",
+-  "universe_domain": "googleapis.com"
+-}
+diff --git a/whatsapp/.env b/whatsapp/.env
+deleted file mode 100644
+index 8b13789..0000000
+--- a/whatsapp/.env
++++ /dev/null
+@@ -1 +0,0 @@
+-
+diff --git a/src/components/auh/AuthWrapper.tsx b/src/components/auh/AuthWrapper.tsx
+index 066da0e..a871776 100644
+--- a/src/components/auh/AuthWrapper.tsx
++++ b/src/components/auh/AuthWrapper.tsx
+@@ -29,7 +29,7 @@ import HeroSection from './HeroSection';
+ 
+ // Firebase Configuration
+ const firebaseConfig = {
+-  apiKey: "AIzaSyD1hg7YLv08vyR2kSWi2ymxSu2pYCRwPq8",
++  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+   authDomain: "plot-9fd6e.firebaseapp.com",
+   projectId: "plot-9fd6e",
+   storageBucket: "plot-9fd6e.firebasestorage.app",
+diff --git a/src/components/ui/PricingPage.tsx b/src/components/ui/PricingPage.tsx
+index e5f6bad..64c8c1d 100644
+--- a/src/components/ui/PricingPage.tsx
++++ b/src/components/ui/PricingPage.tsx
+@@ -74,7 +74,7 @@ interface WebPaymentModalProps {
+ }
+ 
+ const firebaseConfig = {
+-  apiKey: "AIzaSyD1hg7YLv08vyR2kSWi2ymxSu2pYCRwPq8",
++  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+   authDomain: "plot-9fd6e.firebaseapp.com",
+   projectId: "plot-9fd6e",
+   storageBucket: "plot-9fd6e.firebasestorage.app",
+diff --git a/src/pages/payments/Firebase.tsx b/src/pages/payments/Firebase.tsx
+index 800ede6..f8cea4c 100644
+--- a/src/pages/payments/Firebase.tsx
++++ b/src/pages/payments/Firebase.tsx
+@@ -29,7 +29,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
+ 
+ // Firebase config
+ const firebaseConfig = {
+-  apiKey: "AIzaSyD1hg7YLv08vyR2kSWi2ymxSu2pYCRwPq8",
++  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+   authDomain: "plot-9fd6e.firebaseapp.com",
+   projectId: "plot-9fd6e",
+   storageBucket: "plot-9fd6e.firebasestorage.app",
+diff --git a/src/services/database/FirebaseSync.tsx b/src/services/database/FirebaseSync.tsx
+index 373e499..19e1aa9 100644
+--- a/src/services/database/FirebaseSync.tsx
++++ b/src/services/database/FirebaseSync.tsx
+@@ -31,7 +31,7 @@ import { getFunctions } from 'firebase/functions';
+ 
+ // Firebase config
+ const firebaseConfig = {
+-  apiKey: "AIzaSyD1hg7YLv08vyR2kSWi2ymxSu2pYCRwPq8",
++  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+   authDomain: "plot-9fd6e.firebaseapp.com",
+   projectId: "plot-9fd6e",
+   storageBucket: "plot-9fd6e.firebasestorage.app",
+diff --git a/src/services/screening/TenantScreeningService.tsx b/src/services/screening/TenantScreeningService.tsx
+index 77e8aa7..6792bf9 100644
+--- a/src/services/screening/TenantScreeningService.tsx
++++ b/src/services/screening/TenantScreeningService.tsx
+@@ -12,7 +12,7 @@ import { initializeApp } from 'firebase/app';
+ import { firebaseSyncService } from '../database/FirebaseSync';
+ 
+ const firebaseConfig = {
+-  apiKey: "AIzaSyD1hg7YLv08vyR2kSWi2ymxSu2pYCRwPq8",
++  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+   authDomain: "plot-9fd6e.firebaseapp.com",
+   projectId: "plot-9fd6e",
+   storageBucket: "plot-9fd6e.firebasestorage.app",
+diff --git a/whatsapp/src/index.ts b/whatsapp/src/index.ts
+index 39fadf2..6855ad7 100644
+--- a/whatsapp/src/index.ts
++++ b/whatsapp/src/index.ts
+@@ -99,12 +99,16 @@ interface ProcessWebSubscriptionRequest {
+ //   All other functions in your file are UNCHANGED.
+ // ============================================================
+ 
++// HostPinnacle credentials now come from Secret Manager instead of a committed
++// .env file. sendPmsSms and sendSMS below (the only two exported functions that
++// reach sendHostPinnacleSms) each list these four in their `secrets: [...]` array.
++const HP_SMS_USERID   = defineSecret("HP_SMS_USERID");
++const HP_SMS_PASSWORD = defineSecret("HP_SMS_PASSWORD");
++const HP_SMS_APIKEY   = defineSecret("HP_SMS_APIKEY");
++const HP_SMS_SENDERID = defineSecret("HP_SMS_SENDERID");
++
+ const SMS_CONFIG = {
+     API_URL:   "https://smsportal.hostpinnacle.co.ke/SMSApi/send",
+-    USERID:    process.env.HP_SMS_USERID    || "",   // set in .env / functions config
+-    PASSWORD:  process.env.HP_SMS_PASSWORD  || "",
+-    APIKEY:    process.env.HP_SMS_APIKEY    || "",
+-    SENDER_ID: process.env.HP_SMS_SENDERID  || "",   // your approved sender ID
+     MAX_LENGTH: 400,
+ };
+ 
+@@ -212,6 +216,7 @@ export const sendPmsSms = onCall({
+   memory: "256MiB",
+   region: "africa-south1",
+   cors: true,
++  secrets: [HP_SMS_USERID, HP_SMS_PASSWORD, HP_SMS_APIKEY, HP_SMS_SENDERID],
+ }, async (request: CallableRequest<SendPmsSmsRequest>) => {
+   if (!request.auth) {
+     throw new HttpsError("unauthenticated", "You must be logged in to send SMS.");
+@@ -431,18 +436,23 @@ interface SmsSendResult {
+  */
+ async function sendHostPinnacleSms(opts: SmsSendOptions): Promise<SmsSendResult> {
+     try {
+-        if (!SMS_CONFIG.USERID || !SMS_CONFIG.APIKEY) {
++        const userid   = HP_SMS_USERID.value();
++        const password = HP_SMS_PASSWORD.value();
++        const apikey   = HP_SMS_APIKEY.value();
++        const senderId = opts.senderId || HP_SMS_SENDERID.value();
++
++        if (!userid || !apikey) {
+             console.warn("HostPinnacle SMS credentials not configured — skipping SMS.");
+             return { success: false, error: "SMS credentials not configured" };
+         }
+ 
+         const params = new URLSearchParams({
+-            userid:         SMS_CONFIG.USERID,
+-            password:       SMS_CONFIG.PASSWORD,
++            userid,
++            password,
+             sendMethod:     "quick",
+             mobile:         opts.mobile,
+             msg:            opts.message,
+-            senderid:       opts.senderId || SMS_CONFIG.SENDER_ID,
++            senderid:       senderId,
+             msgType:        "text",
+             duplicatecheck: opts.duplicateCheck === false ? "false" : "true",
+             output:         "json",
+@@ -453,7 +463,7 @@ async function sendHostPinnacleSms(opts: SmsSendOptions): Promise<SmsSendResult>
+             params.toString(),
+             {
+                 headers: {
+-                    "apikey":       SMS_CONFIG.APIKEY,
++                    "apikey":       apikey,
+                     "Content-Type": "application/x-www-form-urlencoded",
+                 },
+                 timeout: 10_000,
+@@ -936,6 +946,7 @@ export const sendSMS = onCall({
+     memory: "256MiB",
+     region: "africa-south1",
+     cors: true,
++    secrets: [HP_SMS_USERID, HP_SMS_PASSWORD, HP_SMS_APIKEY, HP_SMS_SENDERID],
+ }, async (request: CallableRequest<SendSmsRequest>) => {
+     // Auth required
+     if (!request.auth) {

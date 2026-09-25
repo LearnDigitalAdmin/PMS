@@ -534,7 +534,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
                 </a>
                 
                 <a 
-                  href="https://admin.cogvana.co.ke/"
+                  href="https://plot.myregister.co.ke/"
                   className="block mt-2 text-xs text-purple-600 hover:text-purple-700 font-medium transition-colors"
                 >
                   Use website →

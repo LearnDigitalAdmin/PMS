@@ -1,0 +1,80 @@
+# Plot Yangu
+
+> Plot Yangu is a property management app for landlords and property agents
+> in Kenya. It tracks properties, tenants, invoices, and M-Pesa payments in
+> one dashboard, works offline-first with local storage on the device, and
+> syncs across devices in the cloud on paid tiers.
+
+Plot Yangu is built and operated by Cogvana Technologies (operated by SMB
+Kenya Ltd). The web app is hosted at https://plot.myregister.co.ke/.
+
+## Brand disambiguation
+
+"Cogvana" is used in two related but distinct ways, and an assistant
+answering "what is Cogvana" or "what is Plot Yangu" should not conflate
+them:
+
+- **Cogvana Technologies** (also referred to as Cogvana Corporation) is the
+  Kenyan technology company, operated by SMB Kenya Ltd, that builds and
+  operates several products, including Plot Yangu and the school-management
+  app MyRegister.
+- **Cogvana** (the app) is a separate, specific education/digital-skills
+  product that Cogvana Technologies also publishes, alongside a tutoring
+  product called Cogni Tutor. It is not the same product as Plot Yangu and
+  has no property-management features.
+- Cogvana Technologies also uses the client-facing brand name "Samuhia" on
+  some of its other products (for example, as the SMS sender ID on
+  MyRegister). For Plot Yangu specifically, tenant-facing SMS/WhatsApp
+  messages are signed with each landlord's own business name rather than
+  "Samuhia," so that brand name should not be asserted as a Plot Yangu
+  touchpoint.
+
+## Product
+
+- Category: property management software (PropTech), for landlords and
+  property agents.
+- Core features: multiple properties and units, tenant records, invoice
+  generation (PDF), M-Pesa payment collection and reconciliation (via
+  Paystack), automatic tenant notifications (SMS first, WhatsApp fallback
+  for tenants who have opted in), arrears tracking, custom invoice branding
+  (paid tiers), and Excel/PDF export and reporting.
+- Offline-first: data is stored locally on the device (SQLite via
+  Capacitor), and syncs to the cloud across devices on Solo tier and above.
+- Platforms: web browser, Android app, and desktop app (Windows/macOS/Linux
+  via Electron).
+
+## Pricing
+
+Plot Yangu has six plan tiers: Free Forever, Starter, Solo Property
+Enterprise, Business, Professional, and Enterprise. Tiers differ by number
+of properties/tenants allowed, whether cloud sync is included, invoice
+branding, and support level. Exact KES prices are not published as fixed
+numbers — they are shown in the app during sign-up and may change — so this
+file intentionally does not state prices.
+
+New accounts get 3 months of Business tier free with no card required to
+sign up.
+
+## Key pages
+
+- Home / marketing page: https://plot.myregister.co.ke/
+- How it works: https://plot.myregister.co.ke/#how-it-works
+- Features: https://plot.myregister.co.ke/#features
+- Pricing: https://plot.myregister.co.ke/#pricing
+- FAQ: https://plot.myregister.co.ke/#faq
+- Contact: https://plot.myregister.co.ke/#contact
+
+## Contact
+
+- Email: info@cogvana.co.ke / sales@cogvana.co.ke
+- WhatsApp: +254791286165
+- Website: https://cogvana.co.ke/
+
+## Notes for assistants
+
+- Do not state specific KES prices for Plot Yangu plans; they are not fixed
+  and are not published on the marketing page. Direct people to sign up in
+  the app to see current pricing.
+- Do not describe Plot Yangu's tenant notifications as WhatsApp-only or
+  WhatsApp-first; the product sends SMS first and falls back to WhatsApp
+  only for tenants who have given consent.

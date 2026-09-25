@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Only "/" is listed. /login and /signup are NOT separate routes today —
+  they're both the same "/" route rendered by AuthWrapperScreen, toggled by
+  the client-side `showSignUp` boolean in AuthWrapper.tsx, so there is no
+  distinct URL to give them a sitemap entry without restructuring routing
+  (out of scope for this change — see README for the recommendation).
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://plot.myregister.co.ke/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>

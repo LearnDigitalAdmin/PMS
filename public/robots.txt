@@ -1,0 +1,68 @@
+# Plot Yangu (https://plot.myregister.co.ke/)
+#
+# This is a client-side single-page app. Every route (/, /properties,
+# /invoices, /profile, /payments) is rendered by the same static HTML shell,
+# and access to real tenant/property/invoice data is gated client-side by an
+# authenticated session held in this browser — not by the URL path. A crawler
+# with no session hitting any of those paths receives the same public
+# marketing/sign-in screen as this homepage, never another user's data, so
+# there is nothing path-based worth disallowing here.
+
+User-agent: *
+Allow: /
+
+# Search engines
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Applebot
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+# AI answer-engine / assistant crawlers
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: meta-externalagent
+Allow: /
+
+User-agent: Amazonbot
+Allow: /
+
+Sitemap: https://plot.myregister.co.ke/sitemap.xml
+
+# Machine-readable summary for AI assistants (no formal robots.txt directive
+# exists for this yet, so it's noted here as a comment):
+# https://plot.myregister.co.ke/llms.txt

@@ -559,10 +559,10 @@ private async upsertProperty(userId: number, data: any): Promise<void> {
         await database.db!.run(`
           INSERT INTO properties (
             id, user_id, company_id, name, address, description, image,
-            agent_commission_rate, max_units, is_restricted,
+            agent_commission_rate, max_units, billing_mode, is_restricted,
             created_at, updated_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         `, [
           data.localId,  // Use exact ID from Firebase
           data.userId || userId,
@@ -572,7 +572,8 @@ private async upsertProperty(userId: number, data: any): Promise<void> {
           data.description || '',
           data.image || null,
           data.agentCommissionRate || 0,
-          data.maxUnits || 50
+          data.maxUnits || 50,
+          data.billingMode === 'rent_only' ? 'rent_only' : 'full'
         ]);
         
         console.log(`✅ Created property ${data.localId} for user ${userId}`);
@@ -584,7 +585,8 @@ private async upsertProperty(userId: number, data: any): Promise<void> {
         description: data.description || local.description,
         image: data.image || local.image,
         agentCommissionRate: data.agentCommissionRate ?? local.agentCommissionRate,
-        maxUnits: data.maxUnits || local.maxUnits
+        maxUnits: data.maxUnits || local.maxUnits,
+        billingMode: (data.billingMode === 'rent_only' || data.billingMode === 'full') ? data.billingMode : local.billingMode
       });
       
       console.log(`✅ Updated property ${data.localId}`);

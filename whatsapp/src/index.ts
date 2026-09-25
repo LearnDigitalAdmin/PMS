@@ -571,7 +571,71 @@ async function sendSmsWithWhatsAppFallback(opts: {
     }
 
     console.log(`Sending WhatsApp fallback to ${phone} for user ${userId}`);
-    return sendWhatsApp();
+    return sendWhatsAppWithCredits(userId, sendWhatsApp);
+}
+
+// ─── WHATSAPP CREDIT BILLING ──────────────────────────────────────────────────
+// WhatsApp messages were previously sent for free as an SMS fallback. They are
+// now metered the same way SMS tokens are: reserved before sending, refunded
+// if the send fails. Pro/Enterprise tiers pay 2 credits per WhatsApp message;
+// every other tier pays 3. SMS pricing (tokensRequired above) is unchanged.
+function creditsPerWhatsAppMessage(tier: string): number {
+    return (tier === "pro" || tier === "enterprise") ? 2 : 3;
+}
+
+async function sendWhatsAppWithCredits(
+    userId: string,
+    sendWhatsApp: () => Promise<boolean>
+): Promise<boolean> {
+    const userRef = db.collection("users").doc(userId);
+    let creditsReserved = 0;
+
+    try {
+        const reservation = await db.runTransaction(async (tx) => {
+            const snap = await tx.get(userRef);
+            if (!snap.exists) {
+                return { ok: false, credits: 0 };
+            }
+
+            const data = snap.data() || {};
+            const tier: string = data.tier || "free";
+            const available: number = data.tokens ?? 0;
+            const credits = creditsPerWhatsAppMessage(tier);
+
+            if (available < credits) {
+                console.log(
+                    `User ${userId} has ${available} credit(s) but WhatsApp needs ${credits} ` +
+                    `(tier=${tier}) — skipping WhatsApp send.`
+                );
+                return { ok: false, credits: 0 };
+            }
+
+            tx.update(userRef, { tokens: admin.firestore.FieldValue.increment(-credits) });
+            return { ok: true, credits };
+        });
+
+        if (!reservation.ok) {
+            return false;
+        }
+        creditsReserved = reservation.credits;
+
+        const success = await sendWhatsApp();
+
+        if (success) {
+            console.log(`WhatsApp message sent for user ${userId} — deducted ${creditsReserved} credit(s).`);
+        } else if (creditsReserved > 0) {
+            console.warn(`WhatsApp send failed for user ${userId}, refunding ${creditsReserved} credit(s).`);
+            await userRef.update({ tokens: admin.firestore.FieldValue.increment(creditsReserved) });
+        }
+
+        return success;
+    } catch (err) {
+        console.error("WhatsApp credit transaction error:", err);
+        if (creditsReserved > 0) {
+            userRef.update({ tokens: admin.firestore.FieldValue.increment(creditsReserved) }).catch(() => {});
+        }
+        return false;
+    }
 }
 // async function sendSmsWithWhatsAppFallback(opts: {
 //     phone:          string;
@@ -2695,7 +2759,9 @@ export const processInvoiceNotifications = onDocumentWritten({
         
         if (shouldSendNewNotification) {
             console.log(`Attempting new invoice notification for invoice ${invoiceId}`);
+            
             const success = await sendNewInvoiceNotification(invoice, invoiceId);
+
             if (success) {
                 notificationsSent++;
                 console.log(`New invoice notification sent successfully`);

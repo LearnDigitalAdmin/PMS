@@ -35,6 +35,7 @@ interface PropertyFormData {
   maxUnits: number;
   image: string;
   companyId?: number;
+  billingMode: 'rent_only' | 'full';
 }
 
 interface EnhancedProperty extends PropertyWithUnits {
@@ -70,7 +71,8 @@ const Properties: React.FC<PropertyListProps> = ({
     agentCommissionRate: 0,
     maxUnits: 12,
     image: '',
-    companyId: undefined
+    companyId: undefined,
+    billingMode: 'full'
   });
   const [formErrors, setFormErrors] = useState<Partial<PropertyFormData>>({});
   
@@ -183,7 +185,8 @@ const Properties: React.FC<PropertyListProps> = ({
       agentCommissionRate: 0,
       maxUnits: 12,
       image: '',
-      companyId: undefined
+      companyId: undefined,
+      billingMode: 'full'
     });
     setFormErrors({});
     setImagePreview('');
@@ -256,7 +259,8 @@ const Properties: React.FC<PropertyListProps> = ({
         description: formData.description.trim() || undefined,
         image: formData.image || undefined,
         agentCommissionRate: formData.agentCommissionRate,
-        maxUnits: formData.maxUnits
+        maxUnits: formData.maxUnits,
+        billingMode: formData.billingMode
       };
 
       await database.createProperty(propertyInput);
@@ -280,7 +284,8 @@ const Properties: React.FC<PropertyListProps> = ({
         description: formData.description.trim() || undefined,
         image: formData.image || undefined,
         agentCommissionRate: formData.agentCommissionRate,
-        maxUnits: formData.maxUnits
+        maxUnits: formData.maxUnits,
+        billingMode: formData.billingMode
       });
 
       await loadProperties();
@@ -314,7 +319,8 @@ const Properties: React.FC<PropertyListProps> = ({
       agentCommissionRate: property.agentCommissionRate,
       maxUnits: property.maxUnits,
       image: property.image || '',
-      companyId: property.companyId
+      companyId: property.companyId,
+      billingMode: property.billingMode || 'full'
     });
     setImagePreview(property.image || '');
     setShowEditModal(true);
@@ -395,7 +401,14 @@ const Properties: React.FC<PropertyListProps> = ({
           </div>
           <div className="absolute bottom-4 left-4 text-white">
             <Building2 className="w-8 h-8 mb-2 opacity-80" />
-            <h3 className="text-xl font-bold truncate max-w-[250px]">{property.name}</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-xl font-bold truncate max-w-[250px]">{property.name}</h3>
+              {property.billingMode === 'rent_only' && (
+                <span className="text-[10px] font-semibold uppercase tracking-wide bg-white/20 backdrop-blur-sm px-2 py-0.5 rounded-full">
+                  Rent only
+                </span>
+              )}
+            </div>
             {property.address && (
               <div className="flex items-center mt-1 opacity-90">
                 <MapPin className="w-3 h-3 mr-1 flex-shrink-0" />

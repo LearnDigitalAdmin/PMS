@@ -1,0 +1,250 @@
+diff --git a/index.html b/index.html
+index 0dd424e..052bb7e 100644
+--- a/index.html
++++ b/index.html
+@@ -5,7 +5,12 @@
+     
+     <!-- PWA Meta Tags -->
+     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+-    <meta name="description" content="Complete property management solution for landlords and property managers. Manage properties, tenants, invoices, and payments offline-first." />
++    <meta name="description" content="Plot Yangu is property management software for landlords and agents in Kenya. Track properties and tenants, generate invoices, collect M-Pesa payments, and notify tenants automatically — offline-first, with 3 months of Business tier free." />
++    <meta name="keywords" content="property management software Kenya, landlord app Kenya, rental property management, tenant management software, rent collection M-Pesa, invoice software for landlords, property agent software Kenya, Plot Yangu, Cogvana" />
++    <meta name="robots" content="index, follow" />
++    <link rel="canonical" href="https://plot.myregister.co.ke/" />
++    <link rel="alternate" hreflang="en-KE" href="https://plot.myregister.co.ke/" />
++    <link rel="alternate" hreflang="x-default" href="https://plot.myregister.co.ke/" />
+     <meta name="theme-color" content="#2563eb" />
+     <meta name="apple-mobile-web-app-capable" content="yes" />
+     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+@@ -79,7 +84,180 @@
+     <meta name="msapplication-TileColor" content="#2563eb" />
+     <meta name="msapplication-TileImage" content="/icons/manifest-icon-512.maskable.png" />
+     
+-    <title>Plot Yangu - Property Management</title>
++    <title>Plot Yangu — Property Management Software for Landlords in Kenya | Cogvana</title>
++
++    <!-- Open Graph -->
++    <meta property="og:type" content="website" />
++    <meta property="og:site_name" content="Plot Yangu" />
++    <meta property="og:title" content="Plot Yangu — Property Management Software for Landlords in Kenya" />
++    <meta property="og:description" content="Track properties and tenants, generate invoices, collect M-Pesa payments, and notify tenants automatically — offline-first, with 3 months of Business tier free." />
++    <meta property="og:url" content="https://plot.myregister.co.ke/" />
++    <meta property="og:image" content="https://plot.myregister.co.ke/social/og-image.jpg" />
++    <meta property="og:image:width" content="1200" />
++    <meta property="og:image:height" content="630" />
++    <meta property="og:image:alt" content="Plot Yangu — property management software for landlords in Kenya" />
++    <meta property="og:locale" content="en_KE" />
++
++    <!-- Twitter Card -->
++    <meta name="twitter:card" content="summary_large_image" />
++    <meta name="twitter:title" content="Plot Yangu — Property Management Software for Landlords in Kenya" />
++    <meta name="twitter:description" content="Track properties and tenants, generate invoices, collect M-Pesa payments, and notify tenants automatically — offline-first, with 3 months of Business tier free." />
++    <meta name="twitter:image" content="https://plot.myregister.co.ke/social/og-image.jpg" />
++    <meta name="twitter:image:alt" content="Plot Yangu — property management software for landlords in Kenya" />
++
++    <!-- Structured data (JSON-LD) -->
++    <!--
++      Encodes the Cogvana Technologies / SMB Kenya Ltd relationship per the
++      "Powered by: SMB KENYA LTD and Cogvana Technologies" footer line in
++      SignUpScreen.tsx / SignInScreen.tsx: Cogvana Technologies as the
++      publicly-known operating name (schema.org `name`), SMB Kenya Ltd as
++      the registered legal entity (`legalName`). This is a best-effort
++      encoding of a single footer line, not independently verified against
++      a certificate of incorporation — see README for the caveat.
++
++      The FAQPage entity below must be kept in sync by hand with
++      src/components/marketing/marketingContent.ts (FAQS) — see the note at
++      the top of that file for why this can't be generated automatically.
++    -->
++    <script type="application/ld+json">
++    {
++      "@context": "https://schema.org",
++      "@graph": [
++        {
++          "@type": "Organization",
++          "@id": "https://plot.myregister.co.ke/#organization",
++          "name": "Cogvana Technologies",
++          "legalName": "SMB Kenya Ltd",
++          "alternateName": ["Cogvana", "Cogvana Corporation"],
++          "url": "https://cogvana.co.ke/",
++          "logo": "https://plot.myregister.co.ke/icons/manifest-icon-512.maskable.png",
++          "sameAs": [
++            "https://cogvana.co.ke/",
++            "https://plot.myregister.co.ke/"
++          ],
++          "contactPoint": [
++            {
++              "@type": "ContactPoint",
++              "email": "info@cogvana.co.ke",
++              "contactType": "customer service",
++              "areaServed": "KE"
++            },
++            {
++              "@type": "ContactPoint",
++              "email": "sales@cogvana.co.ke",
++              "contactType": "sales",
++              "areaServed": "KE"
++            }
++          ]
++        },
++        {
++          "@type": "WebSite",
++          "@id": "https://plot.myregister.co.ke/#website",
++          "url": "https://plot.myregister.co.ke/",
++          "name": "Plot Yangu",
++          "inLanguage": "en-KE",
++          "publisher": { "@id": "https://plot.myregister.co.ke/#organization" }
++        },
++        {
++          "@type": "SoftwareApplication",
++          "@id": "https://plot.myregister.co.ke/#software",
++          "name": "Plot Yangu",
++          "url": "https://plot.myregister.co.ke/",
++          "applicationCategory": "BusinessApplication",
++          "applicationSubCategory": "Property Management Software",
++          "operatingSystem": "Web, Android, Windows, macOS, Linux",
++          "description": "Property management software for landlords and property agents in Kenya. Tracks properties, tenants, invoices, and M-Pesa payments, works offline-first, and syncs across devices in the cloud.",
++          "publisher": { "@id": "https://plot.myregister.co.ke/#organization" },
++          "creator": { "@id": "https://plot.myregister.co.ke/#organization" },
++          "image": "https://plot.myregister.co.ke/social/og-image.jpg",
++          "screenshot": [
++            "https://plot.myregister.co.ke/screenshots/dashboard.png",
++            "https://plot.myregister.co.ke/screenshots/mobile-dashboard.png"
++          ],
++          "featureList": [
++            "Offline-first property and tenant records",
++            "Invoice generation (PDF)",
++            "M-Pesa payment collection and reconciliation",
++            "Automatic SMS notifications with WhatsApp fallback",
++            "Arrears tracking",
++            "Custom invoice branding",
++            "Excel/PDF export and reporting",
++            "Multi-device cloud sync"
++          ],
++          "offers": {
++            "@type": "Offer",
++            "name": "Free Forever plan",
++            "price": "0",
++            "priceCurrency": "KES",
++            "category": "Free",
++            "url": "https://plot.myregister.co.ke/#pricing"
++          }
++        },
++        {
++          "@type": "FAQPage",
++          "@id": "https://plot.myregister.co.ke/#faq",
++          "mainEntity": [
++            {
++              "@type": "Question",
++              "name": "What is Plot Yangu?",
++              "acceptedAnswer": {
++                "@type": "Answer",
++                "text": "Plot Yangu is a property management app for landlords and property agents. It keeps properties, tenants, invoices, and payments in one dashboard, and works offline-first with local storage on your device."
++              }
++            },
++            {
++              "@type": "Question",
++              "name": "Who's behind Plot Yangu?",
++              "acceptedAnswer": {
++                "@type": "Answer",
++                "text": "Plot Yangu is built and operated by Cogvana Technologies (operated by SMB Kenya Ltd). Cogvana also builds other Kenyan software products, including the school-management app MyRegister. Note: \"Cogvana\" is also the name of a separate education app that Cogvana Technologies publishes — that app is a different product from Plot Yangu."
++              }
++            },
++            {
++              "@type": "Question",
++              "name": "Does Plot Yangu work offline?",
++              "acceptedAnswer": {
++                "@type": "Answer",
++                "text": "Yes. Properties, tenants, and invoices are stored locally on your device first, so you can keep working without a connection. On Solo tier and above, your data also syncs to the cloud across your devices whenever you're back online."
++              }
++            },
++            {
++              "@type": "Question",
++              "name": "What does the free trial actually include?",
++              "acceptedAnswer": {
++                "@type": "Answer",
++                "text": "New accounts get 3 months of Business tier free, with no card required to sign up — that includes multi-device cloud sync, your own logo on invoices, arrears tracking, and Excel/PDF export for the length of the trial."
++              }
++            },
++            {
++              "@type": "Question",
++              "name": "How does billing and payment work?",
++              "acceptedAnswer": {
++                "@type": "Answer",
++                "text": "Subscriptions and SMS credit top-ups are paid by M-Pesa, processed through Paystack. You'll get an M-Pesa prompt on your phone to enter your PIN and confirm."
++              }
++            },
++            {
++              "@type": "Question",
++              "name": "Does Plot Yangu notify my tenants automatically?",
++              "acceptedAnswer": {
++                "@type": "Answer",
++                "text": "Yes — new invoices, payment confirmations, and overdue reminders are sent automatically, by SMS first and WhatsApp as a fallback for tenants who've opted in to WhatsApp messages."
++              }
++            },
++            {
++              "@type": "Question",
++              "name": "Is Plot Yangu available on mobile and desktop?",
++              "acceptedAnswer": {
++                "@type": "Answer",
++                "text": "Yes. Plot Yangu runs in the browser, as an Android app, and as a desktop app, in addition to the web dashboard."
++              }
++            }
++          ]
++        }
++      ]
++    }
++    </script>
+     
+     <!-- Inline critical CSS to prevent FOUC -->
+     <style>
+diff --git a/src/components/auh/AuthWrapper.tsx b/src/components/auh/AuthWrapper.tsx
+index 066da0e..9792eb3 100644
+--- a/src/components/auh/AuthWrapper.tsx
++++ b/src/components/auh/AuthWrapper.tsx
+@@ -26,6 +26,13 @@ import { initializeApp, type FirebaseApp } from 'firebase/app';
+ import { argon2Verify, argon2id } from 'hash-wasm';
+ import { httpsCallable } from 'firebase/functions';
+ import HeroSection from './HeroSection';
++import MarketingNav from '../marketing/MarketingNav';
++import HowItWorksSection from '../marketing/HowItWorksSection';
++import FeaturesSection from '../marketing/FeaturesSection';
++import PricingSection from '../marketing/PricingSection';
++import FaqSection from '../marketing/FaqSection';
++import ContactSection from '../marketing/ContactSection';
++import MarketingFooter from '../marketing/MarketingFooter';
+ 
+ // Firebase Configuration
+ const firebaseConfig = {
+@@ -106,11 +113,22 @@ const AuthWrapperScreen = () => {
+ 
+   return (
+     <div className="bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-800">
++      <MarketingNav
++        onGetStarted={() => goToAuth(true)}
++        onSignIn={() => goToAuth(false)}
++      />
++
+       <HeroSection
+         onGetStarted={() => goToAuth(true)}
+         onSignIn={() => goToAuth(false)}
+       />
+ 
++      <HowItWorksSection />
++      <FeaturesSection />
++      <PricingSection onGetStarted={() => goToAuth(true)} />
++      <FaqSection />
++      <ContactSection />
++
+       <div ref={authSectionRef}>
+         {showSignUp ? (
+           <SignUpScreen onSwitchToSignIn={() => setShowSignUp(false)} />
+@@ -118,6 +136,8 @@ const AuthWrapperScreen = () => {
+           <SignInScreen onSwitchToSignUp={() => setShowSignUp(true)} />
+         )}
+       </div>
++
++      <MarketingFooter />
+     </div>
+   );
+ };

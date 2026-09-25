@@ -26,6 +26,13 @@ import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { argon2Verify, argon2id } from 'hash-wasm';
 import { httpsCallable } from 'firebase/functions';
 import HeroSection from './HeroSection';
+import MarketingNav from '../marketing/MarketingNav';
+import HowItWorksSection from '../marketing/HowItWorksSection';
+import FeaturesSection from '../marketing/FeaturesSection';
+import PricingSection from '../marketing/PricingSection';
+import FaqSection from '../marketing/FaqSection';
+import ContactSection from '../marketing/ContactSection';
+import MarketingFooter from '../marketing/MarketingFooter';
 
 // Firebase Configuration
 const firebaseConfig = {
@@ -106,10 +113,21 @@ const AuthWrapperScreen = () => {
 
   return (
     <div className="bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-800">
+      <MarketingNav
+        onGetStarted={() => goToAuth(true)}
+        onSignIn={() => goToAuth(false)}
+      />
+
       <HeroSection
         onGetStarted={() => goToAuth(true)}
         onSignIn={() => goToAuth(false)}
       />
+
+      <HowItWorksSection />
+      <FeaturesSection />
+      <PricingSection onGetStarted={() => goToAuth(true)} />
+      <FaqSection />
+      <ContactSection />
 
       <div ref={authSectionRef}>
         {showSignUp ? (
@@ -118,6 +136,8 @@ const AuthWrapperScreen = () => {
           <SignInScreen onSwitchToSignUp={() => setShowSignUp(true)} />
         )}
       </div>
+
+      <MarketingFooter />
     </div>
   );
 };
