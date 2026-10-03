@@ -193,25 +193,25 @@ const Sheet: React.FC<SheetProps> = ({
   const showShareOptions = (): Promise<'whatsapp' | 'general' | null> => {
     return new Promise((resolve) => {
       const options = document.createElement('div');
-      options.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+      options.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
       options.innerHTML = `
         <div class="bg-white rounded-xl p-6 max-w-sm w-full mx-4">
-          <h3 class="text-lg font-bold text-gray-900 mb-4">Share Report</h3>
+          <h3 class="text-lg font-bold text-ink mb-4">Share Report</h3>
           <p class="text-gray-600 mb-6">How would you like to share this rent record sheet?</p>
           <div class="flex flex-col gap-3">
-            <button id="whatsapp-share" class="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+            <button id="whatsapp-share" class="flex items-center gap-3 p-3 border border-line rounded-lg hover:bg-surface-muted transition-colors">
               <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
                 <span class="text-white text-sm font-bold">W</span>
               </div>
               <span class="text-gray-900">Share via WhatsApp</span>
             </button>
-            <button id="general-share" class="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+            <button id="general-share" class="flex items-center gap-3 p-3 border border-line rounded-lg hover:bg-surface-muted transition-colors">
               <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
                 <span class="text-white text-sm font-bold">📤</span>
               </div>
               <span class="text-gray-900">Share via Other Apps</span>
             </button>
-            <button id="cancel-share" class="mt-2 px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors">
+            <button id="cancel-share" class="mt-2 px-4 py-2 text-ink-muted hover:text-ink transition-colors">
               Cancel
             </button>
           </div>
@@ -320,10 +320,10 @@ const Sheet: React.FC<SheetProps> = ({
 
   const getPaymentStatusColor = (status: string) => {
     switch (status) {
-      case 'paid': return 'text-green-600 bg-green-50';
-      case 'partial': return 'text-orange-600 bg-orange-50';
-      case 'overpaid': return 'text-purple-600 bg-purple-50';
-      default: return 'text-red-600 bg-red-50';
+      case 'paid': return 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10';
+      case 'partial': return 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-500/10';
+      case 'overpaid': return 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-500/10';
+      default: return 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10';
     }
   };
 
@@ -338,13 +338,13 @@ const Sheet: React.FC<SheetProps> = ({
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4">
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-surface rounded-2xl p-8 max-w-md w-full mx-4">
           <div className="animate-pulse">
-            <div className="h-6 bg-gray-200 rounded mb-4"></div>
-            <div className="h-4 bg-gray-200 rounded mb-2"></div>
-            <div className="h-4 bg-gray-200 rounded mb-2"></div>
-            <div className="h-4 bg-gray-200 rounded"></div>
+            <div className="h-6 bg-track rounded mb-4"></div>
+            <div className="h-4 bg-track rounded mb-2"></div>
+            <div className="h-4 bg-track rounded mb-2"></div>
+            <div className="h-4 bg-track rounded"></div>
           </div>
         </div>
       </div>
@@ -352,10 +352,10 @@ const Sheet: React.FC<SheetProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="bg-gradient-to-r from-green-600 to-teal-600 text-white p-6 flex-shrink-0">
+        <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-6 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <ClipboardList className="w-8 h-8" />
@@ -400,14 +400,14 @@ const Sheet: React.FC<SheetProps> = ({
           {error ? (
             <div className="p-8 text-center">
               <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Error Loading Sheet</h3>
-              <p className="text-gray-600">{error}</p>
+              <h3 className="text-lg font-semibold text-ink mb-2">Error Loading Sheet</h3>
+              <p className="text-ink-muted">{error}</p>
             </div>
           ) : !rentRecord ? (
             <div className="p-8 text-center">
-              <ClipboardList className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Record Available</h3>
-              <p className="text-gray-600 mb-4">
+              <ClipboardList className="w-16 h-16 text-ink-faint mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-ink mb-2">No Record Available</h3>
+              <p className="text-ink-muted mb-4">
                 No rent record sheet is available for {getMonthName(currentMonth)}.
               </p>
               <button
@@ -422,134 +422,134 @@ const Sheet: React.FC<SheetProps> = ({
               {/* Property Information & Summary Stats */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Property Info */}
-                <div className="lg:col-span-1 bg-gray-50 rounded-xl p-6">
-                  <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <div className="lg:col-span-1 bg-surface-muted rounded-xl p-6">
+                  <h3 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
                     <Building2 className="w-5 h-5" />
                     Property Details
                   </h3>
                   <div className="space-y-3">
                     <div>
-                      <span className="font-medium text-gray-700">Property:</span>
-                      <div className="text-gray-900">{rentRecord.property.name}</div>
+                      <span className="font-medium text-ink-soft">Property:</span>
+                      <div className="text-ink">{rentRecord.property.name}</div>
                     </div>
                     <div>
-                      <span className="font-medium text-gray-700">Period:</span>
-                      <div className="text-gray-900">{getMonthName(rentRecord.billingMonth)}</div>
+                      <span className="font-medium text-ink-soft">Period:</span>
+                      <div className="text-ink">{getMonthName(rentRecord.billingMonth)}</div>
                     </div>
                     <div>
-                      <span className="font-medium text-gray-700">Total Units:</span>
-                      <div className="text-gray-900">{rentRecord.totalUnits}</div>
+                      <span className="font-medium text-ink-soft">Total Units:</span>
+                      <div className="text-ink">{rentRecord.totalUnits}</div>
                     </div>
                     <div>
-                      <span className="font-medium text-gray-700">Occupied:</span>
-                      <div className="text-gray-900">{rentRecord.occupiedUnits}</div>
+                      <span className="font-medium text-ink-soft">Occupied:</span>
+                      <div className="text-ink">{rentRecord.occupiedUnits}</div>
                     </div>
                   </div>
                 </div>
 
                 {/* Summary Stats */}
                 <div className="lg:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="bg-blue-50 rounded-xl p-4 text-center">
+                  <div className="bg-blue-50 dark:bg-blue-500/10 rounded-xl p-4 text-center">
                     <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center mx-auto mb-2">
                       <DollarSign className="w-5 h-5 text-white" />
                     </div>
-                    <div className="text-lg font-bold text-blue-600">
+                    <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
                       ${rentRecord.totalRentExpected.toLocaleString()}
                     </div>
-                    <div className="text-sm text-gray-600">Expected</div>
+                    <div className="text-sm text-ink-muted">Expected</div>
                   </div>
 
-                  <div className="bg-green-50 rounded-xl p-4 text-center">
+                  <div className="bg-green-50 dark:bg-green-500/10 rounded-xl p-4 text-center">
                     <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center mx-auto mb-2">
                       <CheckCircle className="w-5 h-5 text-white" />
                     </div>
-                    <div className="text-lg font-bold text-green-600">
+                    <div className="text-lg font-bold text-green-600 dark:text-green-400">
                       ${rentRecord.totalRentCollected.toLocaleString()}
                     </div>
-                    <div className="text-sm text-gray-600">Collected</div>
+                    <div className="text-sm text-ink-muted">Collected</div>
                   </div>
 
-                  <div className="bg-red-50 rounded-xl p-4 text-center">
+                  <div className="bg-red-50 dark:bg-red-500/10 rounded-xl p-4 text-center">
                     <div className="w-10 h-10 bg-red-600 rounded-lg flex items-center justify-center mx-auto mb-2">
                       <AlertCircle className="w-5 h-5 text-white" />
                     </div>
-                    <div className="text-lg font-bold text-red-600">
+                    <div className="text-lg font-bold text-red-600 dark:text-red-400">
                       ${rentRecord.totalArrears.toLocaleString()}
                     </div>
-                    <div className="text-sm text-gray-600">Arrears</div>
+                    <div className="text-sm text-ink-muted">Arrears</div>
                   </div>
 
-                  <div className="bg-purple-50 rounded-xl p-4 text-center">
+                  <div className="bg-purple-50 dark:bg-purple-500/10 rounded-xl p-4 text-center">
                     <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center mx-auto mb-2">
                       <TrendingUp className="w-5 h-5 text-white" />
                     </div>
-                    <div className="text-lg font-bold text-purple-600">
+                    <div className="text-lg font-bold text-purple-600 dark:text-purple-400">
                       {rentRecord.collectionRate.toFixed(1)}%
                     </div>
-                    <div className="text-sm text-gray-600">Rate</div>
+                    <div className="text-sm text-ink-muted">Rate</div>
                   </div>
                 </div>
               </div>
 
               {/* Performance Metrics */}
-              <div className="bg-gray-50 rounded-xl p-6">
-                <h3 className="text-lg font-bold text-gray-900 mb-4">Performance Metrics</h3>
+              <div className="bg-surface-muted rounded-xl p-6">
+                <h3 className="text-lg font-bold text-ink mb-4">Performance Metrics</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-green-600">{rentRecord.summary.onTimePayments}</div>
-                    <div className="text-sm text-gray-600">On-Time Payments</div>
+                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">{rentRecord.summary.onTimePayments}</div>
+                    <div className="text-sm text-ink-muted">On-Time Payments</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-orange-600">{rentRecord.summary.latePayments}</div>
-                    <div className="text-sm text-gray-600">Late Payments</div>
+                    <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">{rentRecord.summary.latePayments}</div>
+                    <div className="text-sm text-ink-muted">Late Payments</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-red-600">{rentRecord.summary.defaulters}</div>
-                    <div className="text-sm text-gray-600">Defaulters</div>
+                    <div className="text-2xl font-bold text-red-600 dark:text-red-400">{rentRecord.summary.defaulters}</div>
+                    <div className="text-sm text-ink-muted">Defaulters</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600">{rentRecord.summary.averageCollectionDays}</div>
-                    <div className="text-sm text-gray-600">Avg. Collection Days</div>
+                    <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{rentRecord.summary.averageCollectionDays}</div>
+                    <div className="text-sm text-ink-muted">Avg. Collection Days</div>
                   </div>
                 </div>
               </div>
 
               {/* Tenant Records Table */}
-              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <div className="bg-surface border border-line rounded-xl overflow-hidden">
                 <div className="bg-gray-800 text-white p-4">
                   <h3 className="text-lg font-bold">Detailed Tenant Records</h3>
                 </div>
 
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-200">
+                    <thead className="bg-surface-muted border-b border-line">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Tenant</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Unit</th>
-                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Rent</th>
-                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Water</th>
-                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Power</th>
-                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Other</th>
-                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Total Due</th>
-                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Paid</th>
-                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Balance</th>
-                        <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Status</th>
-                        <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Date</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-ink-soft">Tenant</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-ink-soft">Unit</th>
+                        <th className="px-4 py-3 text-right text-sm font-medium text-ink-soft">Rent</th>
+                        <th className="px-4 py-3 text-right text-sm font-medium text-ink-soft">Water</th>
+                        <th className="px-4 py-3 text-right text-sm font-medium text-ink-soft">Power</th>
+                        <th className="px-4 py-3 text-right text-sm font-medium text-ink-soft">Other</th>
+                        <th className="px-4 py-3 text-right text-sm font-medium text-ink-soft">Total Due</th>
+                        <th className="px-4 py-3 text-right text-sm font-medium text-ink-soft">Paid</th>
+                        <th className="px-4 py-3 text-right text-sm font-medium text-ink-soft">Balance</th>
+                        <th className="px-4 py-3 text-center text-sm font-medium text-ink-soft">Status</th>
+                        <th className="px-4 py-3 text-center text-sm font-medium text-ink-soft">Date</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-line-soft">
                       {rentRecord.entries.map((entry) => (
-                        <tr key={entry.id} className="hover:bg-gray-50">
+                        <tr key={entry.id} className="hover:bg-surface-muted">
                           <td className="px-4 py-4">
                             <div className="flex items-center gap-2">
-                              <User className="w-4 h-4 text-gray-400" />
-                              <span className="font-medium text-gray-900">{entry.tenantName}</span>
+                              <User className="w-4 h-4 text-ink-faint" />
+                              <span className="font-medium text-ink">{entry.tenantName}</span>
                             </div>
                           </td>
                           <td className="px-4 py-4">
                             <div className="flex items-center gap-2">
-                              <Home className="w-4 h-4 text-gray-400" />
-                              <span className="text-gray-900">{entry.unitNumber || 'N/A'}</span>
+                              <Home className="w-4 h-4 text-ink-faint" />
+                              <span className="text-ink">{entry.unitNumber || 'N/A'}</span>
                             </div>
                           </td>
                           <td className="px-4 py-4 text-right font-mono text-sm">
@@ -571,8 +571,8 @@ const Sheet: React.FC<SheetProps> = ({
                             ${entry.amountPaid.toLocaleString()}
                           </td>
                           <td className={`px-4 py-4 text-right font-mono text-sm font-semibold ${
-                            entry.balance > 0 ? 'text-red-600' : 
-                            entry.balance < 0 ? 'text-purple-600' : 'text-green-600'
+                            entry.balance > 0 ? 'text-red-600 dark:text-red-400' : 
+                            entry.balance < 0 ? 'text-purple-600 dark:text-purple-400' : 'text-green-600 dark:text-green-400'
                           }`}>
                             ${Math.abs(entry.balance).toLocaleString()}
                           </td>
@@ -584,7 +584,7 @@ const Sheet: React.FC<SheetProps> = ({
                               {entry.paymentStatus.charAt(0).toUpperCase() + entry.paymentStatus.slice(1)}
                             </span>
                           </td>
-                          <td className="px-4 py-4 text-center text-sm text-gray-600">
+                          <td className="px-4 py-4 text-center text-sm text-ink-muted">
                             {entry.paymentDate ? 
                               new Date(entry.paymentDate).toLocaleDateString('en-US', { 
                                 month: 'short', 
@@ -601,27 +601,27 @@ const Sheet: React.FC<SheetProps> = ({
                 <div className="bg-gray-800 text-white p-4">
                   <div className="grid grid-cols-3 md:grid-cols-6 gap-4 text-sm">
                     <div>
-                      <span className="text-gray-300">Total Expected:</span>
+                      <span className="text-ink-faint">Total Expected:</span>
                       <div className="font-bold">${rentRecord.totalRentExpected.toLocaleString()}</div>
                     </div>
                     <div>
-                      <span className="text-gray-300">Total Collected:</span>
+                      <span className="text-ink-faint">Total Collected:</span>
                       <div className="font-bold text-green-400">${rentRecord.totalRentCollected.toLocaleString()}</div>
                     </div>
                     <div>
-                      <span className="text-gray-300">Total Arrears:</span>
+                      <span className="text-ink-faint">Total Arrears:</span>
                       <div className="font-bold text-red-400">${rentRecord.totalArrears.toLocaleString()}</div>
                     </div>
                     <div>
-                      <span className="text-gray-300">Collection Rate:</span>
+                      <span className="text-ink-faint">Collection Rate:</span>
                       <div className="font-bold text-blue-400">{rentRecord.collectionRate.toFixed(1)}%</div>
                     </div>
                     <div>
-                      <span className="text-gray-300">Occupied Units:</span>
+                      <span className="text-ink-faint">Occupied Units:</span>
                       <div className="font-bold">{rentRecord.occupiedUnits} / {rentRecord.totalUnits}</div>
                     </div>
                     <div>
-                      <span className="text-gray-300">Status:</span>
+                      <span className="text-ink-faint">Status:</span>
                       <div className={`font-bold ${
                         rentRecord.status === 'current' ? 'text-green-400' : 'text-yellow-400'
                       }`}>
@@ -637,15 +637,15 @@ const Sheet: React.FC<SheetProps> = ({
 
         {/* Footer Actions */}
         {rentRecord && (
-          <div className="bg-gray-50 p-6 flex-shrink-0">
+          <div className="bg-surface-muted p-6 flex-shrink-0">
             <div className="flex flex-wrap gap-3 justify-end">
               <button
                 onClick={handleDownload}
                 disabled={isProcessing}
-                className={`flex items-center gap-2 px-4 py-2 text-blue-700 bg-blue-50 border border-blue-200 rounded-lg transition-colors ${
+                className={`flex items-center gap-2 px-4 py-2 text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/25 rounded-lg transition-colors ${
                   isProcessing 
                     ? 'opacity-50 cursor-not-allowed' 
-                    : 'hover:bg-blue-100'
+                    : 'hover:bg-blue-100 dark:hover:bg-blue-500/15'
                 }`}
               >
                 <Download className="w-4 h-4" />
@@ -655,10 +655,10 @@ const Sheet: React.FC<SheetProps> = ({
               <button
                 onClick={handleSave}
                 disabled={isProcessing}
-                className={`flex items-center gap-2 px-4 py-2 text-green-700 bg-green-50 border border-green-200 rounded-lg transition-colors ${
+                className={`flex items-center gap-2 px-4 py-2 text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/25 rounded-lg transition-colors ${
                   isProcessing 
                     ? 'opacity-50 cursor-not-allowed' 
-                    : 'hover:bg-green-100'
+                    : 'hover:bg-green-100 dark:hover:bg-green-500/15'
                 }`}
               >
                 <Save className="w-4 h-4" />

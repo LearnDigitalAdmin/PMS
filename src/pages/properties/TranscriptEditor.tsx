@@ -407,13 +407,13 @@ const handleSave = async () => {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4">
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-surface rounded-2xl p-8 max-w-md w-full mx-4">
           <div className="animate-pulse">
-            <div className="h-6 bg-gray-200 rounded mb-4"></div>
-            <div className="h-4 bg-gray-200 rounded mb-2"></div>
-            <div className="h-4 bg-gray-200 rounded mb-2"></div>
-            <div className="h-4 bg-gray-200 rounded"></div>
+            <div className="h-6 bg-track rounded mb-4"></div>
+            <div className="h-4 bg-track rounded mb-2"></div>
+            <div className="h-4 bg-track rounded mb-2"></div>
+            <div className="h-4 bg-track rounded"></div>
           </div>
         </div>
       </div>
@@ -421,10 +421,10 @@ const handleSave = async () => {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-6 flex-shrink-0">
+        <div className="bg-gradient-to-r from-brand-600 to-indigo-700 text-white p-6 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Edit3 className="w-8 h-8" />
@@ -470,41 +470,41 @@ const handleSave = async () => {
         <div className="flex-1 overflow-y-auto p-8 space-y-8">
           {/* General Error */}
           {errors.general && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-3">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
-              <p className="text-red-800">{errors.general}</p>
+            <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/25 rounded-lg p-4 flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0" />
+              <p className="text-red-800 dark:text-red-300">{errors.general}</p>
             </div>
           )}
 
           {/* Property Information */}
           {property && (
-            <div className="bg-blue-50 rounded-xl p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <div className="bg-blue-50 dark:bg-blue-500/10 rounded-xl p-6">
+              <h3 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
                 <Building2 className="w-5 h-5" />
                 Property Information
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <span className="font-medium text-gray-700">Property Name:</span>
-                  <div className="text-gray-900">{property.name}</div>
+                  <span className="font-medium text-ink-soft">Property Name:</span>
+                  <div className="text-ink">{property.name}</div>
                 </div>
                 <div>
-                  <span className="font-medium text-gray-700">Commission Rate:</span>
-                  <div className="text-gray-900">{property.agentCommissionRate}%</div>
+                  <span className="font-medium text-ink-soft">Commission Rate:</span>
+                  <div className="text-ink">{property.agentCommissionRate}%</div>
                 </div>
                 <div>
-                  <span className="font-medium text-gray-700">Billing Period:</span>
-                  <div className="text-gray-900">{getMonthName(currentMonth)}</div>
+                  <span className="font-medium text-ink-soft">Billing Period:</span>
+                  <div className="text-ink">{getMonthName(currentMonth)}</div>
                 </div>
                 <div>
-                  <span className="font-medium text-gray-700">Status:</span>
+                  <span className="font-medium text-ink-soft">Status:</span>
                   <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
                     transcript 
-                      ? transcript.status === 'draft' ? 'bg-yellow-100 text-yellow-800' :
-                        transcript.status === 'finalized' ? 'bg-blue-100 text-blue-800' :
-                        transcript.status === 'sent' ? 'bg-green-100 text-green-800' :
-                        'bg-gray-100 text-gray-800'
-                      : 'bg-gray-100 text-gray-800'
+                      ? transcript.status === 'draft' ? 'bg-yellow-100 dark:bg-yellow-500/15 text-yellow-800 dark:text-yellow-300' :
+                        transcript.status === 'finalized' ? 'bg-blue-100 dark:bg-blue-500/15 text-blue-800 dark:text-blue-300' :
+                        transcript.status === 'sent' ? 'bg-green-100 dark:bg-green-500/15 text-green-800 dark:text-green-300' :
+                        'bg-surface-sunken text-ink'
+                      : 'bg-surface-sunken text-ink'
                   }`}>
                     {transcript ? (
                       <>
@@ -524,15 +524,15 @@ const handleSave = async () => {
           )}
 
           {/* Landlord Information */}
-          <div className="bg-white border border-gray-200 rounded-xl p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+          <div className="bg-surface border border-line rounded-xl p-6">
+            <h3 className="text-lg font-bold text-ink mb-6 flex items-center gap-2">
               <User className="w-5 h-5" />
               Landlord Information
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-ink-soft mb-2">
                   Landlord Name *
                 </label>
                 <input
@@ -540,7 +540,7 @@ const handleSave = async () => {
                   value={formData.landlordName}
                   onChange={(e) => setFormData({ ...formData, landlordName: e.target.value })}
                   className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all ${
-                    errors.landlordName ? 'border-red-500' : 'border-gray-200'
+                    errors.landlordName ? 'border-red-500' : 'border-line'
                   }`}
                   placeholder="Enter landlord's full name"
                 />
@@ -550,16 +550,16 @@ const handleSave = async () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-ink-soft mb-2">
                   Contact Information
                 </label>
                 <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-ink-faint" />
                   <input
                     type="text"
                     value={formData.landlordContact}
                     onChange={(e) => setFormData({ ...formData, landlordContact: e.target.value })}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                    className="w-full pl-10 pr-4 py-3 border border-line rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
                     placeholder="Phone number or email"
                   />
                 </div>
@@ -568,17 +568,17 @@ const handleSave = async () => {
           </div>
 
           {/* Utility Items */}
-          <div className="bg-white border border-gray-200 rounded-xl p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+          <div className="bg-surface border border-line rounded-xl p-6">
+            <h3 className="text-lg font-bold text-ink mb-6 flex items-center gap-2">
               <Droplets className="w-5 h-5" />
               Utility Charges
             </h3>
             
             {utilityItems.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
+              <div className="text-center py-8 text-ink-subtle">
                 <div className="flex justify-center gap-2 mb-4">
-                  <Droplets className="w-12 h-12 text-gray-300" />
-                  <Zap className="w-12 h-12 text-gray-300" />
+                  <Droplets className="w-12 h-12 text-ink-faint" />
+                  <Zap className="w-12 h-12 text-ink-faint" />
                 </div>
                 <p className="text-lg font-medium mb-2">No Utility Charges</p>
                 <p className="text-sm">No water or power charges found for this billing period.</p>
@@ -586,19 +586,19 @@ const handleSave = async () => {
             ) : (
               <div className="space-y-4">
                 {utilityItems.map((item) => (
-                  <div key={item.id} className="bg-gray-50 rounded-lg p-4">
+                  <div key={item.id} className="bg-surface-muted rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-4">
                       {item.type === 'water' ? (
-                        <Droplets className="w-5 h-5 text-blue-600" />
+                        <Droplets className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                       ) : (
-                        <Zap className="w-5 h-5 text-yellow-600" />
+                        <Zap className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
                       )}
-                      <span className="font-medium text-gray-900 capitalize">{item.type} Charges</span>
+                      <span className="font-medium text-ink capitalize">{item.type} Charges</span>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                       <div className="md:col-span-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label className="block text-sm font-medium text-ink-soft mb-2">
                           Description *
                         </label>
                         <input
@@ -606,7 +606,7 @@ const handleSave = async () => {
                           value={item.description}
                           onChange={(e) => updateUtilityItem(item.id, { description: e.target.value })}
                           className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all ${
-                            errors[`utility-${item.id}-description`] ? 'border-red-500' : 'border-gray-200'
+                            errors[`utility-${item.id}-description`] ? 'border-red-500' : 'border-line'
                           }`}
                           placeholder={`${item.type.charAt(0).toUpperCase() + item.type.slice(1)} Charges`}
                         />
@@ -616,7 +616,7 @@ const handleSave = async () => {
                       </div>
 
                       <div className="md:col-span-3">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label className="block text-sm font-medium text-ink-soft mb-2">
                           Amount *
                         </label>
                         <input
@@ -624,7 +624,7 @@ const handleSave = async () => {
                           value={item.amount}
                           onChange={(e) => updateUtilityItem(item.id, { amount: Number(e.target.value) })}
                           className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all ${
-                            errors[`utility-${item.id}-amount`] ? 'border-red-500' : 'border-gray-200'
+                            errors[`utility-${item.id}-amount`] ? 'border-red-500' : 'border-line'
                           }`}
                           placeholder="0.00"
                           min="0"
@@ -636,7 +636,7 @@ const handleSave = async () => {
                       </div>
 
                       <div className="md:col-span-5">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label className="block text-sm font-medium text-ink-soft mb-2">
                           Payment Responsibility
                         </label>
                         <div className="flex items-center gap-4">
@@ -646,7 +646,7 @@ const handleSave = async () => {
                               name={`utility-${item.id}-responsibility`}
                               checked={item.isRemittedToLandlord}
                               onChange={() => updateUtilityItem(item.id, { isRemittedToLandlord: true })}
-                              className="text-purple-600 focus:ring-purple-500"
+                              className="text-purple-600 dark:text-purple-400 focus:ring-purple-500"
                             />
                             <span className="text-sm">Remit to Landlord</span>
                           </label>
@@ -656,12 +656,12 @@ const handleSave = async () => {
                               name={`utility-${item.id}-responsibility`}
                               checked={!item.isRemittedToLandlord}
                               onChange={() => updateUtilityItem(item.id, { isRemittedToLandlord: false })}
-                              className="text-purple-600 focus:ring-purple-500"
+                              className="text-purple-600 dark:text-purple-400 focus:ring-purple-500"
                             />
                             <span className="text-sm">Agent Pays</span>
                           </label>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-ink-subtle mt-1">
                           {item.isRemittedToLandlord 
                             ? 'This amount will be added to landlord payment' 
                             : 'This amount will be deducted as agent expense'
@@ -676,9 +676,9 @@ const handleSave = async () => {
           </div>
 
           {/* Custom Items */}
-          <div className="bg-white border border-gray-200 rounded-xl p-6">
+          <div className="bg-surface border border-line rounded-xl p-6">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <h3 className="text-lg font-bold text-ink flex items-center gap-2">
                 <DollarSign className="w-5 h-5" />
                 Custom Items & Deductions
               </h3>
@@ -692,21 +692,21 @@ const handleSave = async () => {
             </div>
 
             {customItems.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">
-                <DollarSign className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <div className="text-center py-12 text-ink-subtle">
+                <DollarSign className="w-16 h-16 text-ink-faint mx-auto mb-4" />
                 <p className="text-lg font-medium mb-2">No Custom Items</p>
                 <p className="text-sm">Add deductions, expenses, or other custom items to the transcript.</p>
               </div>
             ) : (
               <div className="space-y-4">
                 {customItems.map((item, index) => (
-                  <div key={item.id} className="bg-gray-50 rounded-lg p-4">
+                  <div key={item.id} className="bg-surface-muted rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-4">
-                      <GripVertical className="w-4 h-4 text-gray-400" />
-                      <span className="font-medium text-gray-900">Item {index + 1}</span>
+                      <GripVertical className="w-4 h-4 text-ink-faint" />
+                      <span className="font-medium text-ink">Item {index + 1}</span>
                       <button
                         onClick={() => removeCustomItem(item.id)}
-                        className="ml-auto p-1 text-red-600 hover:bg-red-100 rounded"
+                        className="ml-auto p-1 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-500/15 rounded"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -714,7 +714,7 @@ const handleSave = async () => {
 
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                       <div className="md:col-span-5">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label className="block text-sm font-medium text-ink-soft mb-2">
                           Description *
                         </label>
                         <input
@@ -722,7 +722,7 @@ const handleSave = async () => {
                           value={item.description}
                           onChange={(e) => updateCustomItem(item.id, { description: e.target.value })}
                           className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all ${
-                            errors[`item-${item.id}-description`] ? 'border-red-500' : 'border-gray-200'
+                            errors[`item-${item.id}-description`] ? 'border-red-500' : 'border-line'
                           }`}
                           placeholder="e.g., Maintenance, Repairs, etc."
                         />
@@ -732,7 +732,7 @@ const handleSave = async () => {
                       </div>
 
                       <div className="md:col-span-3">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label className="block text-sm font-medium text-ink-soft mb-2">
                           Amount *
                         </label>
                         <input
@@ -740,7 +740,7 @@ const handleSave = async () => {
                           value={item.amount}
                           onChange={(e) => updateCustomItem(item.id, { amount: Number(e.target.value) })}
                           className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all ${
-                            errors[`item-${item.id}-amount`] ? 'border-red-500' : 'border-gray-200'
+                            errors[`item-${item.id}-amount`] ? 'border-red-500' : 'border-line'
                           }`}
                           placeholder="0.00"
                           min="0"
@@ -752,7 +752,7 @@ const handleSave = async () => {
                       </div>
 
                       <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label className="block text-sm font-medium text-ink-soft mb-2">
                           Type
                         </label>
                         <select
@@ -761,7 +761,7 @@ const handleSave = async () => {
                             type: e.target.value as 'deductible' | 'income',
                             isDeductible: e.target.value === 'deductible'
                           })}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                          className="w-full px-3 py-2 border border-line rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
                         >
                           <option value="deductible">Deduction</option>
                           <option value="income">Income</option>
@@ -769,27 +769,27 @@ const handleSave = async () => {
                       </div>
 
                       <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label className="block text-sm font-medium text-ink-soft mb-2">
                           Category
                         </label>
                         <input
                           type="text"
                           value={item.category}
                           onChange={(e) => updateCustomItem(item.id, { category: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                          className="w-full px-3 py-2 border border-line rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
                           placeholder="Optional"
                         />
                       </div>
                     </div>
                     
                     {/* Type explanation */}
-                    <div className="mt-2 text-xs text-gray-500">
+                    <div className="mt-2 text-xs text-ink-subtle">
                       {item.type === 'deductible' ? (
-                        <span className="text-red-600">
+                        <span className="text-red-600 dark:text-red-400">
                           ⚠️ This amount will be deducted from the landlord payment
                         </span>
                       ) : (
-                        <span className="text-green-600">
+                        <span className="text-green-600 dark:text-green-400">
                           ✓ This amount will be added to the landlord payment
                         </span>
                       )}
@@ -801,8 +801,8 @@ const handleSave = async () => {
           </div>
 
           {/* Notes */}
-          <div className="bg-white border border-gray-200 rounded-xl p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <div className="bg-surface border border-line rounded-xl p-6">
+            <h3 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
               <Calendar className="w-5 h-5" />
               Additional Notes
             </h3>
@@ -810,19 +810,19 @@ const handleSave = async () => {
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               rows={4}
-              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all resize-none"
+              className="w-full px-4 py-3 border border-line rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all resize-none"
               placeholder="Add any additional notes or comments for the landlord..."
             />
           </div>
         </div>
 
         {/* Footer */}
-        <div className="bg-gray-50 p-6 flex-shrink-0">
+        <div className="bg-surface-muted p-6 flex-shrink-0">
           <div className="flex flex-wrap gap-3 justify-end">
             <button
               onClick={onClose}
               disabled={saving}
-              className="px-6 py-3 text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+              className="px-6 py-3 text-ink-soft bg-surface border border-line rounded-lg hover:bg-surface-muted transition-colors disabled:opacity-50"
             >
               Cancel
             </button>

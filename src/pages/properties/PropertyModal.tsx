@@ -50,14 +50,14 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
   };
 
   return (
-    <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg transform transition-all max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl">
+    <div className="ui-sheet-backdrop">
+      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-lg transform transition-all max-h-[90vh] overflow-y-auto">
+        <div className="p-6 border-b border-line-soft sticky top-0 bg-surface rounded-t-2xl">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+            <h2 className="text-xl font-bold text-ink">{title}</h2>
             <button
               onClick={onClose}
-              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
+              className="p-2 text-ink-faint hover:text-ink-muted hover:bg-surface-sunken rounded-lg transition-all"
             >
               <X className="w-5 h-5" />
             </button>
@@ -68,13 +68,13 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
           {/* Company Selection */}
           {companies && companies.length > 0 && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-ink-soft mb-2">
                 Company (Optional)
               </label>
               <select
                 value={formData.companyId || ''}
                 onChange={(e) => handleInputChange('companyId', e.target.value ? Number(e.target.value) : undefined)}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full px-4 py-3 border border-line rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               >
                 <option value="">Select Company (Optional)</option>
                 {companies.map((company: any) => (
@@ -88,7 +88,7 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
 
           {/* Property Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-ink-soft mb-2">
               Property Name *
             </label>
             <input
@@ -96,7 +96,7 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
               value={formData.name}
               onChange={(e) => handleInputChange('name', e.target.value)}
               className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
-                formErrors.name ? 'border-red-500' : 'border-gray-200'
+                formErrors.name ? 'border-red-500' : 'border-line'
               }`}
               placeholder="Enter property name"
               autoComplete="off"
@@ -108,14 +108,14 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
 
           {/* Address */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-ink-soft mb-2">
               Address
             </label>
             <input
               type="text"
               value={formData.address}
               onChange={(e) => handleInputChange('address', e.target.value)}
-              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              className="w-full px-4 py-3 border border-line rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               placeholder="Enter property address"
               autoComplete="off"
             />
@@ -123,21 +123,21 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-ink-soft mb-2">
               Description
             </label>
             <textarea
               value={formData.description}
               onChange={(e) => handleInputChange('description', e.target.value)}
               rows={3}
-              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
+              className="w-full px-4 py-3 border border-line rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
               placeholder="Enter property description"
             />
           </div>
 
           {/* Max Units */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-ink-soft mb-2">
               Maximum Units *
             </label>
             <input
@@ -147,19 +147,19 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
               min="1"
               max={MAX_FREE_UNITS}
               className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
-                formErrors.maxUnits ? 'border-red-500' : 'border-gray-200'
+                formErrors.maxUnits ? 'border-red-500' : 'border-line'
               }`}
               placeholder="1"
             />
             {formErrors.maxUnits && (
               <p className="text-red-500 text-sm mt-1">{formErrors.maxUnits}</p>
             )}
-            <p className="text-gray-500 text-xs mt-1">Maximum {MAX_FREE_UNITS} units allowed</p>
+            <p className="text-ink-subtle text-xs mt-1">Maximum {MAX_FREE_UNITS} units allowed</p>
           </div>
 
           {/* Image Upload */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-ink-soft mb-2">
               Property Image
             </label>
             
@@ -168,7 +168,7 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
                 <img 
                   src={imagePreview} 
                   alt="Property preview"
-                  className="w-full h-48 object-cover rounded-xl border border-gray-200"
+                  className="w-full h-48 object-cover rounded-xl border border-line"
                 />
                 <button
                   type="button"
@@ -181,11 +181,11 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
             ) : (
               <div 
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full h-48 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all"
+                className="w-full h-48 border-2 border-dashed border-line-strong rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all"
               >
-                <ImageIcon className="w-12 h-12 text-gray-400 mb-2" />
-                <p className="text-gray-500 text-sm font-medium">Click to upload image</p>
-                <p className="text-gray-400 text-xs mt-1">Max 2MB • JPG, PNG, GIF</p>
+                <ImageIcon className="w-12 h-12 text-ink-faint mb-2" />
+                <p className="text-ink-subtle text-sm font-medium">Click to upload image</p>
+                <p className="text-ink-faint text-xs mt-1">Max 2MB • JPG, PNG, GIF</p>
               </div>
             )}
             
@@ -200,38 +200,38 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
 
           {/* Billing Mode */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-ink-soft mb-2">
               Billing Type *
             </label>
             <div className="space-y-2">
               <label className={`flex items-start gap-3 p-3 border rounded-xl cursor-pointer transition-all ${
-                formData.billingMode === 'full' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                formData.billingMode === 'full' ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/10' : 'border-line'
               }`}>
                 <input
                   type="radio"
                   name="billingMode"
                   checked={formData.billingMode === 'full'}
                   onChange={() => handleInputChange('billingMode', 'full')}
-                  className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  className="mt-1 w-4 h-4 text-blue-600 dark:text-blue-400 focus:ring-blue-500"
                 />
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Itemized billing</p>
-                  <p className="text-xs text-gray-500">Invoices can include water, power, and other charges alongside rent. Default.</p>
+                  <p className="text-sm font-medium text-ink">Itemized billing</p>
+                  <p className="text-xs text-ink-subtle">Invoices can include water, power, and other charges alongside rent. Default.</p>
                 </div>
               </label>
               <label className={`flex items-start gap-3 p-3 border rounded-xl cursor-pointer transition-all ${
-                formData.billingMode === 'rent_only' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                formData.billingMode === 'rent_only' ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/10' : 'border-line'
               }`}>
                 <input
                   type="radio"
                   name="billingMode"
                   checked={formData.billingMode === 'rent_only'}
                   onChange={() => handleInputChange('billingMode', 'rent_only')}
-                  className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  className="mt-1 w-4 h-4 text-blue-600 dark:text-blue-400 focus:ring-blue-500"
                 />
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Rent only</p>
-                  <p className="text-xs text-gray-500">No water, waste, or electric billing at this property. Invoices for every tenant can be generated automatically from their rent amount.</p>
+                  <p className="text-sm font-medium text-ink">Rent only</p>
+                  <p className="text-xs text-ink-subtle">No water, waste, or electric billing at this property. Invoices for every tenant can be generated automatically from their rent amount.</p>
                 </div>
               </label>
             </div>
@@ -239,7 +239,7 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
 
           {/* Agent Commission Rate */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-ink-soft mb-2">
               Agent Commission Rate (%)
             </label>
             <input
@@ -250,7 +250,7 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
               max="50"
               step="0.1"
               className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
-                formErrors.agentCommissionRate ? 'border-red-500' : 'border-gray-200'
+                formErrors.agentCommissionRate ? 'border-red-500' : 'border-line'
               }`}
               placeholder="0"
             />
@@ -260,10 +260,10 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
           </div>
         </div>
 
-        <div className="p-6 bg-gray-50 rounded-b-2xl flex gap-3 sticky bottom-0">
+        <div className="p-6 bg-surface-muted rounded-b-2xl flex gap-3 sticky bottom-0">
           <button
             onClick={onClose}
-            className="flex-1 px-4 py-3 text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-all font-medium"
+            className="flex-1 px-4 py-3 text-ink-soft bg-surface border border-line rounded-xl hover:bg-surface-muted transition-all font-medium"
           >
             Cancel
           </button>

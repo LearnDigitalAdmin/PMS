@@ -278,14 +278,14 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
   };
 
   const getStatusColor = () => {
-    if (!invoice) return 'text-gray-500 bg-gray-50';
-    if (invoice.isPaid) return 'text-green-600 bg-green-50';
+    if (!invoice) return 'text-ink-subtle bg-surface-muted';
+    if (invoice.isPaid) return 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10';
     
     const dueDate = new Date(invoice.dueDate || invoice.createdAt);
     const today = new Date();
     
-    if (dueDate < today) return 'text-red-600 bg-red-50';
-    return 'text-yellow-600 bg-yellow-50';
+    if (dueDate < today) return 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10';
+    return 'text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-500/10';
   };
 
   const getStatusIcon = () => {
@@ -303,13 +303,13 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
 
   if (loading) {
     return (
-      <div className={isModal ? "fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5" : "min-h-screen bg-gray-50 p-4"}>
+      <div className={isModal ? "ui-page-overlay" : "min-h-screen bg-surface-muted p-4"}>
         <div className="animate-pulse p-6">
-          <div className="bg-gray-200 rounded-xl p-6 shadow-sm mb-4">
-            <div className="h-8 bg-gray-300 rounded w-1/2 mb-4"></div>
+          <div className="bg-track rounded-xl p-6 shadow-sm mb-4">
+            <div className="h-8 bg-line-strong rounded w-1/2 mb-4"></div>
             <div className="space-y-3">
               {[1, 2, 3, 4, 5].map(i => (
-                <div key={i} className="h-4 bg-gray-300 rounded"></div>
+                <div key={i} className="h-4 bg-line-strong rounded"></div>
               ))}
             </div>
           </div>
@@ -320,11 +320,11 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
 
   if (!invoice) {
     return (
-      <div className={isModal ? "fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5" : "min-h-screen bg-gray-50 flex items-center justify-center p-4"}>
+      <div className={isModal ? "ui-page-overlay" : "min-h-screen bg-surface-muted flex items-center justify-center p-4"}>
         <div className="text-center">
-          <AlertTriangle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Invoice not found</h3>
-          <p className="text-gray-500 mb-6">The requested invoice could not be loaded</p>
+          <AlertTriangle className="w-12 h-12 text-ink-faint mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-ink mb-2">Invoice not found</h3>
+          <p className="text-ink-subtle mb-6">The requested invoice could not be loaded</p>
           <button
             onClick={onBack}
             className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
@@ -338,8 +338,8 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
 
   // Updated container classes for modal
     const containerClass = isModal 
-      ? "fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5" 
-      : "min-h-screen bg-gray-50";
+      ? "ui-page-overlay" 
+      : "min-h-screen bg-surface-muted";
       
     const contentClass = isModal 
       ? "flex-1 overflow-y-auto pb-safe" 
@@ -348,17 +348,17 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
     return (
       <div className={containerClass}>
         {/* Fixed Header */}
-        <div className="bg-white shadow-sm sticky top-0 z-30 border-b border-gray-200 flex-shrink-0">
-          <div className="flex items-center justify-between p-4">
+        <div className="bg-surface shadow-sm sticky top-0 z-30 border-b border-line flex-shrink-0">
+          <div className="flex items-center justify-between p-4 md:mx-auto md:max-w-3xl md:px-6">
             <div className="flex items-center space-x-3 flex-1 min-w-0">
               <button
                 onClick={onBack}
-                className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex-shrink-0"
+                className="p-2 text-ink-muted hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-colors flex-shrink-0"
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div className="min-w-0">
-                <h1 className="text-lg font-semibold text-gray-900 truncate">
+                <h1 className="text-lg font-semibold text-ink truncate">
                   #{invoice.invoiceNumber}
                 </h1>
                 <div className={`inline-flex items-center space-x-2 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor()}`}>
@@ -371,17 +371,17 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
             <div className="flex space-x-2 flex-shrink-0">
               <button
                 onClick={() => setShowShareModal(true)}
-                className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                className="p-2 text-ink-muted hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-colors"
               >
                 <Share className="w-5 h-5" />
               </button>
               <button
                 onClick={handleDownloadPDF}
                 disabled={processingPDF}
-                className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center"
+                className="p-2 text-ink-muted hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center"
               >
                 {processingPDF ? (
-                  <div className="w-5 h-5 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
+                  <div className="w-5 h-5 border-2 border-line-strong border-t-blue-600 rounded-full animate-spin"></div>
                 ) : (
                   <Download className="w-5 h-5" />
                 )}
@@ -392,13 +392,13 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
   
         {/* Scrollable Content */}
         <div className={`${contentClass} ${isModal ? 'flex-1' : 'pb-24'} overflow-y-auto`}>
-          <div className="p-4 space-y-6">
+          <div className="p-4 space-y-6 md:mx-auto md:max-w-3xl md:p-6">
             {/* Invoice Header */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <div className="text-center border-b border-gray-100 pb-6 mb-6">
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">RENTAL INVOICE</h2>
-                <p className="text-gray-600">#{invoice.invoiceNumber}</p>
-                <p className="text-sm text-gray-500 mt-2">
+            <div className="bg-surface rounded-xl shadow-sm p-6">
+              <div className="text-center border-b border-line-soft pb-6 mb-6">
+                <h2 className="text-2xl font-bold text-ink mb-2">RENTAL INVOICE</h2>
+                <p className="text-ink-muted">#{invoice.invoiceNumber}</p>
+                <p className="text-sm text-ink-subtle mt-2">
                   Billing Period: {invoice.billingMonth}
                 </p>
               </div>
@@ -406,7 +406,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Property Details */}
                 <div>
-                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center">
+                  <h3 className="font-semibold text-ink mb-3 flex items-center">
                     <MapPin className="w-4 h-4 mr-2" />
                     Property Details
                   </h3>
@@ -421,7 +421,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
                 
                 {/* Tenant Details */}
                 <div>
-                  <h3 className="font-semibold text-gray-900 mb-3">Tenant Details</h3>
+                  <h3 className="font-semibold text-ink mb-3">Tenant Details</h3>
                   <div className="space-y-2 text-sm">
                     <p><span className="font-medium">Name:</span> {invoice.tenantName}</p>
                     {invoice.tenantPhone && (
@@ -442,13 +442,13 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
             </div>
   
             {/* Billing Details */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h3 className="font-semibold text-gray-900 mb-4">Billing Details</h3>
+            <div className="bg-surface rounded-xl shadow-sm p-6">
+              <h3 className="font-semibold text-ink mb-4">Billing Details</h3>
               
               <div className="space-y-4">
                 {/* Rent */}
-                <div className="flex justify-between py-2 border-b border-gray-100">
-                  <span className="text-gray-600">Monthly Rent</span>
+                <div className="flex justify-between py-2 border-b border-line-soft">
+                  <span className="text-ink-muted">Monthly Rent</span>
                   <span className="font-medium">{formatCurrency(invoice.rentAmount)}</span>
                 </div>
                 
@@ -456,10 +456,10 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
                 {(invoice.waterCurrentReading > 0 || invoice.waterStandingFee > 0) && (
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-gray-600">Water Charges</span>
+                      <span className="text-ink-muted">Water Charges</span>
                       <span className="font-medium">{formatCurrency(totals.waterTotal)}</span>
                     </div>
-                    <div className="pl-4 space-y-1 text-sm text-gray-500">
+                    <div className="pl-4 space-y-1 text-sm text-ink-subtle">
                       <div className="flex justify-between">
                         <span>Previous Reading: {invoice.waterPreviousReading} units</span>
                       </div>
@@ -475,7 +475,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
                         </div>
                       )}
                     </div>
-                    <div className="border-b border-gray-100"></div>
+                    <div className="border-b border-line-soft"></div>
                   </div>
                 )}
                 
@@ -483,10 +483,10 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
                 {invoice.powerCurrentReading > 0 && (
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-gray-600">Power Charges</span>
+                      <span className="text-ink-muted">Power Charges</span>
                       <span className="font-medium">{formatCurrency(totals.powerTotal)}</span>
                     </div>
-                    <div className="pl-4 space-y-1 text-sm text-gray-500">
+                    <div className="pl-4 space-y-1 text-sm text-ink-subtle">
                       <div className="flex justify-between">
                         <span>Previous Reading: {invoice.powerPreviousReading} kWh</span>
                       </div>
@@ -497,17 +497,17 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
                         <span>Usage: {invoice.powerCurrentReading - invoice.powerPreviousReading} kWh @ {formatCurrency(invoice.powerUnitPrice)}/kWh</span>
                       </div>
                     </div>
-                    <div className="border-b border-gray-100"></div>
+                    <div className="border-b border-line-soft"></div>
                   </div>
                 )}
                 
                 {/* Other Charges */}
                 {invoice.otherCharges > 0 && (
-                  <div className="flex justify-between py-2 border-b border-gray-100">
+                  <div className="flex justify-between py-2 border-b border-line-soft">
                     <div>
-                      <span className="text-gray-600">Other Charges</span>
+                      <span className="text-ink-muted">Other Charges</span>
                       {invoice.otherChargesDescription && (
-                        <p className="text-sm text-gray-500">{invoice.otherChargesDescription}</p>
+                        <p className="text-sm text-ink-subtle">{invoice.otherChargesDescription}</p>
                       )}
                     </div>
                     <span className="font-medium">{formatCurrency(invoice.otherCharges)}</span>
@@ -516,22 +516,22 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
                 
                 {/* Previous Arrears */}
                 {invoice.arrears > 0 && (
-                  <div className="flex justify-between py-2 border-b border-gray-100 text-red-600">
+                  <div className="flex justify-between py-2 border-b border-line-soft text-red-600 dark:text-red-400">
                     <span>Previous Arrears</span>
                     <span className="font-medium">{formatCurrency(invoice.arrears)}</span>
                   </div>
                 )}
                 
                 {/* Total */}
-                <div className="flex justify-between py-3 text-lg font-bold text-gray-900 bg-gray-50 px-4 rounded-lg">
+                <div className="flex justify-between py-3 text-lg font-bold text-ink bg-surface-muted px-4 rounded-lg">
                   <span>Total Amount</span>
                   <span>{formatCurrency(invoice.totalAmount)}</span>
                 </div>
                 
                 {/* Payment Status */}
                 {invoice.isPaid && (
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <div className="flex items-center space-x-2 text-green-700">
+                  <div className="bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/25 rounded-lg p-4">
+                    <div className="flex items-center space-x-2 text-green-700 dark:text-green-300">
                       <CheckCircle className="w-5 h-5" />
                       <span className="font-medium">Payment Received</span>
                     </div>
@@ -548,23 +548,23 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
   
             {/* Payment History */}
             {payments.length > 0 && (
-              <div className="bg-white rounded-xl shadow-sm p-6">
-                <h3 className="font-semibold text-gray-900 mb-4 flex items-center">
+              <div className="bg-surface rounded-xl shadow-sm p-6">
+                <h3 className="font-semibold text-ink mb-4 flex items-center">
                   <CreditCard className="w-4 h-4 mr-2" />
                   Payment History
                 </h3>
                 
                 <div className="space-y-3">
                   {payments.map((payment) => (
-                    <div key={payment.id} className="flex justify-between items-center py-3 border-b border-gray-100 last:border-b-0">
+                    <div key={payment.id} className="flex justify-between items-center py-3 border-b border-line-soft last:border-b-0">
                       <div>
-                        <p className="font-medium text-gray-900">{formatCurrency(payment.amount)}</p>
-                        <p className="text-sm text-gray-500">{formatDate(payment.paymentDate)}</p>
+                        <p className="font-medium text-ink">{formatCurrency(payment.amount)}</p>
+                        <p className="text-sm text-ink-subtle">{formatDate(payment.paymentDate)}</p>
                         {payment.paymentMethod && (
-                          <p className="text-xs text-gray-400">{payment.paymentMethod}</p>
+                          <p className="text-xs text-ink-faint">{payment.paymentMethod}</p>
                         )}
                         {payment.notes && (
-                          <p className="text-xs text-gray-500 mt-1">{payment.notes}</p>
+                          <p className="text-xs text-ink-subtle mt-1">{payment.notes}</p>
                         )}
                       </div>
                       <CheckCircle className="w-5 h-5 text-green-500" />
@@ -577,8 +577,8 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
         </div>
   
         {/* Fixed Bottom Actions */}
-        <div className="bg-white border-t border-gray-200 p-4 flex-shrink-0">
-          <div className="grid grid-cols-1 gap-3">
+        <div className="bg-surface border-t border-line p-4 flex-shrink-0">
+          <div className="grid grid-cols-1 gap-3 md:mx-auto md:max-w-3xl md:grid-cols-2">
             {!invoice.isPaid ? (
               <button
                 onClick={() => setShowPaymentModal(true)}
@@ -599,7 +599,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
             
             <button
               onClick={() => setShowDeleteModal(true)}
-              className="bg-red-50 text-red-600 py-3 px-4 rounded-lg font-medium hover:bg-red-100 transition-colors flex items-center justify-center space-x-2 w-full"
+              className="bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 py-3 px-4 rounded-lg font-medium hover:bg-red-100 dark:hover:bg-red-500/15 transition-colors flex items-center justify-center space-x-2 w-full"
             >
               <Trash2 className="w-4 h-4" />
               <span>Delete Invoice</span>
@@ -609,14 +609,14 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
   
         {/* Payment Modal - Updated positioning */}
         {showPaymentModal && (
-          <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
-            <div className="bg-white rounded-t-2xl w-full p-6 space-y-4 max-h-[85vh] overflow-y-auto">
-              <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
+          <div className="ui-sheet-backdrop">
+            <div className="bg-surface rounded-t-2xl w-full ui-sheet-panel p-6 space-y-4 max-h-[85vh] overflow-y-auto">
+              <div className="w-12 h-1 bg-line-strong rounded-full mx-auto mb-4"></div>
               <h3 className="text-lg font-semibold text-center">Record Payment</h3>
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-ink-soft mb-2">
                     Amount Paid *
                   </label>
                   <input
@@ -624,12 +624,12 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
                     value={paymentAmount}
                     onChange={(e) => setPaymentAmount(e.target.value)}
                     placeholder="Enter amount paid"
-                    className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full p-3 border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-ink-soft mb-2">
                     Arrears (if any)
                   </label>
                   <input
@@ -637,30 +637,30 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
                     value={arrears}
                     onChange={(e) => setArrears(e.target.value)}
                     placeholder="Enter arrears amount"
-                    className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full p-3 border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-ink-soft mb-2">
                     Payment Date *
                   </label>
                   <input
                     type="date"
                     value={paymentDate}
                     onChange={(e) => setPaymentDate(e.target.value)}
-                    className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full p-3 border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-ink-soft mb-2">
                     Payment Method
                   </label>
                   <select
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full p-3 border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Select method</option>
                     <option value="Cash">Cash</option>
@@ -672,7 +672,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-ink-soft mb-2">
                     Notes (Optional)
                   </label>
                   <textarea
@@ -680,7 +680,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="Add any payment notes"
                     rows={3}
-                    className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full p-3 border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
@@ -688,7 +688,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
               <div className="flex space-x-3 pt-4">
                 <button
                   onClick={() => setShowPaymentModal(false)}
-                  className="flex-1 bg-gray-100 text-gray-700 py-3 px-4 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                  className="flex-1 bg-surface-sunken text-ink-soft py-3 px-4 rounded-lg font-medium hover:bg-track transition-colors"
                 >
                   Cancel
                 </button>
@@ -706,14 +706,14 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
   
         {/* Delete Modal - Updated positioning */}
         {showDeleteModal && (
-          <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
-            <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
+          <div className="ui-sheet-backdrop">
+            <div className="bg-surface rounded-2xl w-full max-w-sm p-6 space-y-4">
               <div className="text-center">
-                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Trash2 className="w-6 h-6 text-red-600" />
+                <div className="w-12 h-12 bg-red-100 dark:bg-red-500/15 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Trash2 className="w-6 h-6 text-red-600 dark:text-red-400" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Invoice</h3>
-                <p className="text-sm text-gray-600">
+                <h3 className="text-lg font-semibold text-ink mb-2">Delete Invoice</h3>
+                <p className="text-sm text-ink-muted">
                   Are you sure you want to delete this invoice? This action cannot be undone.
                 </p>
               </div>
@@ -721,7 +721,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
               <div className="flex space-x-3">
                 <button
                   onClick={() => setShowDeleteModal(false)}
-                  className="flex-1 bg-gray-100 text-gray-700 py-2 px-4 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                  className="flex-1 bg-surface-sunken text-ink-soft py-2 px-4 rounded-lg font-medium hover:bg-track transition-colors"
                 >
                   Cancel
                 </button>
@@ -738,15 +738,15 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
   
         {/* Share Modal - Updated positioning */}
         {showShareModal && (
-          <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
-            <div className="bg-white rounded-t-2xl w-full p-6 space-y-4">
-              <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
+          <div className="ui-sheet-backdrop">
+            <div className="bg-surface rounded-t-2xl w-full ui-sheet-panel p-6 space-y-4">
+              <div className="w-12 h-1 bg-line-strong rounded-full mx-auto mb-4"></div>
               <h3 className="text-lg font-semibold text-center">Share Invoice</h3>
               
               <div className="space-y-3">
                 <button
                   onClick={() => handleShare('whatsapp')}
-                  className="w-full bg-green-50 text-green-600 py-3 px-4 rounded-lg font-medium hover:bg-green-100 transition-colors text-left flex items-center space-x-3"
+                  className="w-full bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 py-3 px-4 rounded-lg font-medium hover:bg-green-100 dark:hover:bg-green-500/15 transition-colors text-left flex items-center space-x-3"
                 >
                   <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
                     <span className="text-white text-sm font-bold">W</span>
@@ -756,7 +756,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
                 
                 <button
                   onClick={() => handleShare('email')}
-                  className="w-full bg-blue-50 text-blue-600 py-3 px-4 rounded-lg font-medium hover:bg-blue-100 transition-colors text-left flex items-center space-x-3"
+                  className="w-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 py-3 px-4 rounded-lg font-medium hover:bg-blue-100 dark:hover:bg-blue-500/15 transition-colors text-left flex items-center space-x-3"
                 >
                   <Mail className="w-5 h-5" />
                   <span>Share via Email</span>
@@ -764,7 +764,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
                 
                 <button
                   onClick={() => handleShare('pdf')}
-                  className="w-full bg-gray-50 text-gray-600 py-3 px-4 rounded-lg font-medium hover:bg-gray-100 transition-colors text-left flex items-center space-x-3"
+                  className="w-full bg-surface-muted text-ink-muted py-3 px-4 rounded-lg font-medium hover:bg-surface-sunken transition-colors text-left flex items-center space-x-3"
                 >
                   <Share className="w-5 h-5" />
                   <span>More Options</span>
@@ -773,7 +773,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
               
               <button
                 onClick={() => setShowShareModal(false)}
-                className="w-full bg-gray-100 text-gray-700 py-3 px-4 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                className="w-full bg-surface-sunken text-ink-soft py-3 px-4 rounded-lg font-medium hover:bg-track transition-colors"
               >
                 Cancel
               </button>

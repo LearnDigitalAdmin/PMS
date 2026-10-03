@@ -469,14 +469,14 @@ const handleSave = async () => {
         return (
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-ink-soft mb-2">
                 Property *
               </label>
               <select
                 value={formData.propertyId || ''}
                 onChange={(e) => updateFormData('propertyId', parseInt(e.target.value))}
                 className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                  errors.propertyId ? 'border-red-500' : 'border-gray-300'
+                  errors.propertyId ? 'border-red-500' : 'border-line-strong'
                 }`}
                 disabled={!!initialPropertyId}
               >
@@ -493,14 +493,14 @@ const handleSave = async () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-ink-soft mb-2">
                 Tenant *
               </label>
               <select
                 value={formData.tenantId || ''}
                 onChange={(e) => updateFormData('tenantId', parseInt(e.target.value))}
                 className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                  errors.tenantId ? 'border-red-500' : 'border-gray-300'
+                  errors.tenantId ? 'border-red-500' : 'border-line-strong'
                 }`}
                 disabled={!formData.propertyId || !!initialTenantId || isRentOnlyProperty}
               >
@@ -516,19 +516,19 @@ const handleSave = async () => {
                 <p className="text-red-500 text-sm mt-1">{errors.tenantId}</p>
               )}
               {isRentOnlyProperty && (
-                <p className="text-gray-500 text-xs mt-1">
+                <p className="text-ink-subtle text-xs mt-1">
                   This property is billed as rent only, so invoices are always generated for all tenants at once.
                 </p>
               )}
             </div>
 
             {isBulkMode && (
-              <div className="bg-purple-50 p-4 rounded-lg">
+              <div className="bg-purple-50 dark:bg-purple-500/10 p-4 rounded-lg">
                 <div className="flex items-start gap-2">
                   <Users className="w-5 h-5 text-purple-500 mt-0.5 flex-shrink-0" />
                   <div>
-                    <h4 className="font-medium text-purple-900 mb-1">Creating invoices for all tenants</h4>
-                    <p className="text-purple-700 text-sm">
+                    <h4 className="font-medium text-purple-900 dark:text-purple-300 mb-1">Creating invoices for all tenants</h4>
+                    <p className="text-purple-700 dark:text-purple-300 text-sm">
                       One invoice will be generated per active tenant. Each invoice uses that tenant's own rent
                       amount — water and power metering are skipped. Tenants who already have an invoice for
                       this billing month will be skipped automatically.
@@ -539,7 +539,7 @@ const handleSave = async () => {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-ink-soft mb-2">
                 Billing Month *
               </label>
               <input
@@ -547,7 +547,7 @@ const handleSave = async () => {
                 value={formData.billingMonth}
                 onChange={(e) => updateFormData('billingMonth', e.target.value)}
                 className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                  errors.billingMonth ? 'border-red-500' : 'border-gray-300'
+                  errors.billingMonth ? 'border-red-500' : 'border-line-strong'
                 }`}
               />
               {errors.billingMonth && (
@@ -556,11 +556,11 @@ const handleSave = async () => {
             </div>
 
             {selectedProperty && selectedTenant && (
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <h4 className="font-medium text-blue-900 mb-2">Selected Details</h4>
-                <p className="text-blue-700 text-sm">Property: {selectedProperty.name}</p>
-                <p className="text-blue-700 text-sm">Tenant: {selectedTenant.name}</p>
-                <p className="text-blue-700 text-sm">Month: {new Date(formData.billingMonth).toLocaleString('default', { month: 'long', year: 'numeric' })}</p>
+              <div className="bg-blue-50 dark:bg-blue-500/10 p-4 rounded-lg">
+                <h4 className="font-medium text-blue-900 dark:text-blue-300 mb-2">Selected Details</h4>
+                <p className="text-blue-700 dark:text-blue-300 text-sm">Property: {selectedProperty.name}</p>
+                <p className="text-blue-700 dark:text-blue-300 text-sm">Tenant: {selectedTenant.name}</p>
+                <p className="text-blue-700 dark:text-blue-300 text-sm">Month: {new Date(formData.billingMonth).toLocaleString('default', { month: 'long', year: 'numeric' })}</p>
               </div>
             )}
           </div>
@@ -570,17 +570,17 @@ const handleSave = async () => {
         return (
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-ink-soft mb-2">
                 Monthly Rent *
               </label>
               <div className="relative">
-                <span className="absolute left-3 top-2 text-gray-500">KES</span>
+                <span className="absolute left-3 top-2 text-ink-subtle">KES</span>
                 <input
                   type="number"
                   value={formData.rentAmount}
                   onChange={(e) => updateFormData('rentAmount', parseFloat(e.target.value) || 0)}
                   className={`w-full pl-12 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                    errors.rentAmount ? 'border-red-500' : 'border-gray-300'
+                    errors.rentAmount ? 'border-red-500' : 'border-line-strong'
                   }`}
                   placeholder="0.00"
                 />
@@ -591,29 +591,29 @@ const handleSave = async () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-ink-soft mb-2">
                 Standing Fees
               </label>
               <div className="relative">
-                <span className="absolute left-3 top-2 text-gray-500">KES</span>
+                <span className="absolute left-3 top-2 text-ink-subtle">KES</span>
                 <input
                   type="number"
                   value={formData.standingFees}
                   onChange={(e) => updateFormData('standingFees', parseFloat(e.target.value) || 0)}
-                  className="w-full pl-12 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full pl-12 pr-3 py-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="0.00"
                 />
               </div>
-              <p className="text-gray-500 text-sm mt-1">Additional monthly charges</p>
+              <p className="text-ink-subtle text-sm mt-1">Additional monthly charges</p>
             </div>
 
             {selectedTenant && (
-              <div className="bg-green-50 p-4 rounded-lg">
-                <h4 className="font-medium text-green-900 mb-2">Tenant Information</h4>
-                <p className="text-green-700 text-sm">Default Rent: KES {selectedTenant.rentAmount.toLocaleString()}</p>
-                <p className="text-green-700 text-sm">Standing Fees: KES {selectedTenant.standingFees.toLocaleString()}</p>
+              <div className="bg-green-50 dark:bg-green-500/10 p-4 rounded-lg">
+                <h4 className="font-medium text-green-900 dark:text-green-300 mb-2">Tenant Information</h4>
+                <p className="text-green-700 dark:text-green-300 text-sm">Default Rent: KES {selectedTenant.rentAmount.toLocaleString()}</p>
+                <p className="text-green-700 dark:text-green-300 text-sm">Standing Fees: KES {selectedTenant.standingFees.toLocaleString()}</p>
                 {selectedTenant.leaseStart && (
-                  <p className="text-green-700 text-sm">Lease Start: {new Date(selectedTenant.leaseStart).toLocaleDateString()}</p>
+                  <p className="text-green-700 dark:text-green-300 text-sm">Lease Start: {new Date(selectedTenant.leaseStart).toLocaleDateString()}</p>
                 )}
               </div>
             )}
@@ -630,20 +630,20 @@ const handleSave = async () => {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-ink-soft mb-2">
                   Previous Reading
                 </label>
                 <input
                   type="number"
                   value={formData.waterPreviousReading}
                   onChange={(e) => updateFormData('waterPreviousReading', parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="0"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-ink-soft mb-2">
                   Current Reading *
                 </label>
                 <input
@@ -651,7 +651,7 @@ const handleSave = async () => {
                   value={formData.waterCurrentReading}
                   onChange={(e) => updateFormData('waterCurrentReading', parseFloat(e.target.value) || 0)}
                   className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                    errors.waterCurrentReading ? 'border-red-500' : 'border-gray-300'
+                    errors.waterCurrentReading ? 'border-red-500' : 'border-line-strong'
                   }`}
                   placeholder="0"
                 />
@@ -662,7 +662,7 @@ const handleSave = async () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-ink-soft mb-2">
                 Unit Price (KES per unit)
               </label>
               <input
@@ -671,7 +671,7 @@ const handleSave = async () => {
                 value={formData.waterUnitPrice}
                 onChange={(e) => updateFormData('waterUnitPrice', parseFloat(e.target.value) || 0)}
                 className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                  errors.waterUnitPrice ? 'border-red-500' : 'border-gray-300'
+                  errors.waterUnitPrice ? 'border-red-500' : 'border-line-strong'
                 }`}
                 placeholder="0.00"
               />
@@ -686,32 +686,32 @@ const handleSave = async () => {
                 id="includeWaterStanding"
                 checked={formData.includeWaterStanding}
                 onChange={(e) => updateFormData('includeWaterStanding', e.target.checked)}
-                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                className="w-4 h-4 text-blue-600 dark:text-blue-400 rounded focus:ring-blue-500"
               />
-              <label htmlFor="includeWaterStanding" className="text-sm font-medium text-gray-700">
+              <label htmlFor="includeWaterStanding" className="text-sm font-medium text-ink-soft">
                 Include standing fee
               </label>
             </div>
 
             {formData.includeWaterStanding && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-ink-soft mb-2">
                   Standing Fee (KES)
                 </label>
                 <input
                   type="number"
                   value={formData.waterStandingFee}
                   onChange={(e) => updateFormData('waterStandingFee', parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="0.00"
                 />
               </div>
             )}
 
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <h4 className="font-medium text-blue-900 mb-2">Water Bill Calculation</h4>
-              <p className="text-blue-700 text-sm">Consumption: {totals.waterConsumption} units</p>
-              <p className="text-blue-700 text-sm">Amount: KES {totals.waterAmount.toLocaleString()}</p>
+            <div className="bg-blue-50 dark:bg-blue-500/10 p-4 rounded-lg">
+              <h4 className="font-medium text-blue-900 dark:text-blue-300 mb-2">Water Bill Calculation</h4>
+              <p className="text-blue-700 dark:text-blue-300 text-sm">Consumption: {totals.waterConsumption} units</p>
+              <p className="text-blue-700 dark:text-blue-300 text-sm">Amount: KES {totals.waterAmount.toLocaleString()}</p>
             </div>
           </div>
         );
@@ -730,9 +730,9 @@ const handleSave = async () => {
                 id="includePower"
                 checked={formData.includePower}
                 onChange={(e) => updateFormData('includePower', e.target.checked)}
-                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                className="w-4 h-4 text-blue-600 dark:text-blue-400 rounded focus:ring-blue-500"
               />
-              <label htmlFor="includePower" className="text-sm font-medium text-gray-700">
+              <label htmlFor="includePower" className="text-sm font-medium text-ink-soft">
                 Include power billing
               </label>
             </div>
@@ -741,20 +741,20 @@ const handleSave = async () => {
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-ink-soft mb-2">
                       Previous Reading
                     </label>
                     <input
                       type="number"
                       value={formData.powerPreviousReading}
                       onChange={(e) => updateFormData('powerPreviousReading', parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-3 py-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       placeholder="0"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-ink-soft mb-2">
                       Current Reading *
                     </label>
                     <input
@@ -762,7 +762,7 @@ const handleSave = async () => {
                       value={formData.powerCurrentReading}
                       onChange={(e) => updateFormData('powerCurrentReading', parseFloat(e.target.value) || 0)}
                       className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                        errors.powerCurrentReading ? 'border-red-500' : 'border-gray-300'
+                        errors.powerCurrentReading ? 'border-red-500' : 'border-line-strong'
                       }`}
                       placeholder="0"
                     />
@@ -773,7 +773,7 @@ const handleSave = async () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-ink-soft mb-2">
                     Unit Price (KES per kWh) *
                   </label>
                   <input
@@ -782,7 +782,7 @@ const handleSave = async () => {
                     value={formData.powerUnitPrice}
                     onChange={(e) => updateFormData('powerUnitPrice', parseFloat(e.target.value) || 0)}
                     className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                      errors.powerUnitPrice ? 'border-red-500' : 'border-gray-300'
+                      errors.powerUnitPrice ? 'border-red-500' : 'border-line-strong'
                     }`}
                     placeholder="0.00"
                   />
@@ -791,17 +791,17 @@ const handleSave = async () => {
                   )}
                 </div>
 
-                <div className="bg-yellow-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-yellow-900 mb-2">Power Bill Calculation</h4>
-                  <p className="text-yellow-700 text-sm">Consumption: {totals.powerConsumption} kWh</p>
-                  <p className="text-yellow-700 text-sm">Amount: KES {totals.powerAmount.toLocaleString()}</p>
+                <div className="bg-yellow-50 dark:bg-yellow-500/10 p-4 rounded-lg">
+                  <h4 className="font-medium text-yellow-900 dark:text-yellow-300 mb-2">Power Bill Calculation</h4>
+                  <p className="text-yellow-700 dark:text-yellow-300 text-sm">Consumption: {totals.powerConsumption} kWh</p>
+                  <p className="text-yellow-700 dark:text-yellow-300 text-sm">Amount: KES {totals.powerAmount.toLocaleString()}</p>
                 </div>
               </>
             )}
 
             {!formData.includePower && (
-              <div className="text-center py-8 text-gray-500">
-                <Zap className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+              <div className="text-center py-8 text-ink-subtle">
+                <Zap className="w-12 h-12 mx-auto mb-2 text-ink-faint" />
                 <p>Power billing is optional for this invoice</p>
               </div>
             )}
@@ -817,7 +817,7 @@ const handleSave = async () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-ink-soft mb-2">
                 Amount (KES)
               </label>
               <input
@@ -825,7 +825,7 @@ const handleSave = async () => {
                 value={formData.otherCharges}
                 onChange={(e) => updateFormData('otherCharges', parseFloat(e.target.value) || 0)}
                 className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                  errors.otherCharges ? 'border-red-500' : 'border-gray-300'
+                  errors.otherCharges ? 'border-red-500' : 'border-line-strong'
                 }`}
                 placeholder="0.00"
               />
@@ -835,20 +835,20 @@ const handleSave = async () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-ink-soft mb-2">
                 Description
               </label>
               <textarea
                 value={formData.otherChargesDescription}
                 onChange={(e) => updateFormData('otherChargesDescription', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                className="w-full px-3 py-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
                 rows={3}
                 placeholder="e.g., Late payment fee, Maintenance charge, etc."
               />
             </div>
 
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h4 className="font-medium text-gray-700 mb-2">Common Charges</h4>
+            <div className="bg-surface-muted p-4 rounded-lg">
+              <h4 className="font-medium text-ink-soft mb-2">Common Charges</h4>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <button
                   type="button"
@@ -856,7 +856,7 @@ const handleSave = async () => {
                     updateFormData('otherCharges', 500);
                     updateFormData('otherChargesDescription', 'Late payment fee');
                   }}
-                  className="text-left p-2 hover:bg-gray-100 rounded"
+                  className="text-left p-2 hover:bg-surface-sunken rounded"
                 >
                   Late payment fee (KES 500)
                 </button>
@@ -866,7 +866,7 @@ const handleSave = async () => {
                     updateFormData('otherCharges', 1000);
                     updateFormData('otherChargesDescription', 'Maintenance charge');
                   }}
-                  className="text-left p-2 hover:bg-gray-100 rounded"
+                  className="text-left p-2 hover:bg-surface-sunken rounded"
                 >
                   Maintenance (KES 1,000)
                 </button>
@@ -876,7 +876,7 @@ const handleSave = async () => {
                     updateFormData('otherCharges', 200);
                     updateFormData('otherChargesDescription', 'Security fee');
                   }}
-                  className="text-left p-2 hover:bg-gray-100 rounded"
+                  className="text-left p-2 hover:bg-surface-sunken rounded"
                 >
                   Security fee (KES 200)
                 </button>
@@ -886,7 +886,7 @@ const handleSave = async () => {
                     updateFormData('otherCharges', 300);
                     updateFormData('otherChargesDescription', 'Garbage collection');
                   }}
-                  className="text-left p-2 hover:bg-gray-100 rounded"
+                  className="text-left p-2 hover:bg-surface-sunken rounded"
                 >
                   Garbage (KES 300)
                 </button>
@@ -894,14 +894,14 @@ const handleSave = async () => {
             </div>
 
             {formData.otherCharges > 0 && (
-              <div className="bg-green-50 p-4 rounded-lg">
-                <h4 className="font-medium text-green-900 mb-2">Additional Charges</h4>
-                <p className="text-green-700 text-sm">Amount: KES {formData.otherCharges.toLocaleString()}</p>
+              <div className="bg-green-50 dark:bg-green-500/10 p-4 rounded-lg">
+                <h4 className="font-medium text-green-900 dark:text-green-300 mb-2">Additional Charges</h4>
+                <p className="text-green-700 dark:text-green-300 text-sm">Amount: KES {formData.otherCharges.toLocaleString()}</p>
                 {formData.otherChargesDescription && (
-                  <p className="text-green-700 text-sm">Description: {formData.otherChargesDescription}</p>
+                  <p className="text-green-700 dark:text-green-300 text-sm">Description: {formData.otherChargesDescription}</p>
                 )}
                 {isBulkMode && (
-                  <p className="text-green-700 text-xs mt-2">
+                  <p className="text-green-700 dark:text-green-300 text-xs mt-2">
                     This amount will be added to every tenant's invoice — it is not split between tenants.
                   </p>
                 )}
@@ -918,12 +918,12 @@ const handleSave = async () => {
               <h3 className="text-lg font-medium">Payment Instructions</h3>
             </div>
 
-            <div className="bg-blue-50 p-4 rounded-lg">
+            <div className="bg-blue-50 dark:bg-blue-500/10 p-4 rounded-lg">
               <div className="flex items-start gap-2">
                 <Info className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
                 <div>
-                  <h4 className="font-medium text-blue-900 mb-1">Managed in Settings</h4>
-                  <p className="text-blue-700 text-sm">
+                  <h4 className="font-medium text-blue-900 dark:text-blue-300 mb-1">Managed in Settings</h4>
+                  <p className="text-blue-700 dark:text-blue-300 text-sm">
                     Payment instructions are set once in your Profile and automatically included on every
                     invoice you create. To change them, update your Profile settings — not this invoice.
                   </p>
@@ -932,9 +932,9 @@ const handleSave = async () => {
             </div>
 
             {hasAnyPaymentInstructions(formData.paymentInstructions) ? (
-              <div className="bg-purple-50 p-4 rounded-lg">
-                <h4 className="font-medium text-purple-900 mb-2">This invoice will include:</h4>
-                <div className="text-purple-700 text-sm space-y-1">
+              <div className="bg-purple-50 dark:bg-purple-500/10 p-4 rounded-lg">
+                <h4 className="font-medium text-purple-900 dark:text-purple-300 mb-2">This invoice will include:</h4>
+                <div className="text-purple-700 dark:text-purple-300 text-sm space-y-1">
                   {formData.paymentInstructions.mpesaTillNumber && (
                     <p>• M-Pesa Till Number: {formData.paymentInstructions.mpesaTillNumber}</p>
                   )}
@@ -947,11 +947,11 @@ const handleSave = async () => {
                 </div>
               </div>
             ) : (
-              <div className="bg-gray-50 p-4 rounded-lg flex items-start gap-2">
-                <Settings className="w-5 h-5 text-gray-400 mt-0.5 flex-shrink-0" />
+              <div className="bg-surface-muted p-4 rounded-lg flex items-start gap-2">
+                <Settings className="w-5 h-5 text-ink-faint mt-0.5 flex-shrink-0" />
                 <div>
-                  <h4 className="font-medium text-gray-700 mb-1">No payment instructions set yet</h4>
-                  <p className="text-gray-500 text-sm">
+                  <h4 className="font-medium text-ink-soft mb-1">No payment instructions set yet</h4>
+                  <p className="text-ink-subtle text-sm">
                     This invoice will be created without payment details. Add them in Profile settings and
                     they'll automatically apply to future invoices.
                   </p>
@@ -960,17 +960,17 @@ const handleSave = async () => {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-ink-soft mb-2">
                 Due Date *
               </label>
               <div className="relative">
-                <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-ink-faint" />
                 <input
                   type="date"
                   value={formData.dueDate}
                   onChange={(e) => updateFormData('dueDate', e.target.value)}
                   className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                    errors.dueDate ? 'border-red-500' : 'border-gray-300'
+                    errors.dueDate ? 'border-red-500' : 'border-line-strong'
                   }`}
                 />
               </div>
@@ -989,23 +989,23 @@ const handleSave = async () => {
               <h3 className="text-lg font-medium">Invoice Summary</h3>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-              <div className="bg-gray-50 px-4 py-3 border-b">
-                <h4 className="font-medium text-gray-900">Invoice Details</h4>
+            <div className="bg-surface border border-line rounded-lg overflow-hidden">
+              <div className="bg-surface-muted px-4 py-3 border-b">
+                <h4 className="font-medium text-ink">Invoice Details</h4>
               </div>
               <div className="p-4 space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Property:</span>
+                  <span className="text-ink-muted">Property:</span>
                   <span className="font-medium">{selectedProperty?.name}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Tenant:</span>
+                  <span className="text-ink-muted">Tenant:</span>
                   <span className="font-medium">
                     {isBulkMode ? `All active tenants (${tenants.filter(t => t.isActive).length})` : selectedTenant?.name}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Billing Month:</span>
+                  <span className="text-ink-muted">Billing Month:</span>
                   <span className="font-medium">
                     {new Date(formData.billingMonth).toLocaleString('default', { month: 'long', year: 'numeric' })}
                   </span>
@@ -1013,48 +1013,48 @@ const handleSave = async () => {
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-              <div className="bg-gray-50 px-4 py-3 border-b">
-                <h4 className="font-medium text-gray-900">Charges Breakdown</h4>
+            <div className="bg-surface border border-line rounded-lg overflow-hidden">
+              <div className="bg-surface-muted px-4 py-3 border-b">
+                <h4 className="font-medium text-ink">Charges Breakdown</h4>
               </div>
               <div className="p-4 space-y-3">
                 {isBulkMode ? (
                   <>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Monthly Rent:</span>
+                      <span className="text-ink-muted">Monthly Rent:</span>
                       <span className="font-medium">Each tenant's own rent amount</span>
                     </div>
                     {formData.otherCharges > 0 && (
                       <div>
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Other Charges (per tenant):</span>
+                          <span className="text-ink-muted">Other Charges (per tenant):</span>
                           <span className="font-medium">KES {formData.otherCharges.toLocaleString()}</span>
                         </div>
                         {formData.otherChargesDescription && (
-                          <div className="text-xs text-gray-500 ml-4">
+                          <div className="text-xs text-ink-subtle ml-4">
                             {formData.otherChargesDescription}
                           </div>
                         )}
                       </div>
                     )}
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-ink-subtle">
                       Each tenant's invoice total is their own rent{formData.otherCharges > 0 ? ' plus the other charges above' : ''}. Water and power are not included.
                     </p>
                   </>
                 ) : (
                   <>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Monthly Rent:</span>
+                      <span className="text-ink-muted">Monthly Rent:</span>
                       <span className="font-medium">KES {formData.rentAmount.toLocaleString()}</span>
                     </div>
 
                     {totals.waterAmount > 0 && (
                       <div>
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Water Bill:</span>
+                          <span className="text-ink-muted">Water Bill:</span>
                           <span className="font-medium">KES {totals.waterAmount.toLocaleString()}</span>
                         </div>
-                        <div className="text-xs text-gray-500 ml-4">
+                        <div className="text-xs text-ink-subtle ml-4">
                           {totals.waterConsumption} units @ KES {formData.waterUnitPrice}
                           {formData.includeWaterStanding && ` + KES ${formData.waterStandingFee} standing fee`}
                         </div>
@@ -1064,10 +1064,10 @@ const handleSave = async () => {
                     {formData.includePower && totals.powerAmount > 0 && (
                       <div>
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Power Bill:</span>
+                          <span className="text-ink-muted">Power Bill:</span>
                           <span className="font-medium">KES {totals.powerAmount.toLocaleString()}</span>
                         </div>
-                        <div className="text-xs text-gray-500 ml-4">
+                        <div className="text-xs text-ink-subtle ml-4">
                           {totals.powerConsumption} kWh @ KES {formData.powerUnitPrice}
                         </div>
                       </div>
@@ -1076,11 +1076,11 @@ const handleSave = async () => {
                     {formData.otherCharges > 0 && (
                       <div>
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Other Charges:</span>
+                          <span className="text-ink-muted">Other Charges:</span>
                           <span className="font-medium">KES {formData.otherCharges.toLocaleString()}</span>
                         </div>
                         {formData.otherChargesDescription && (
-                          <div className="text-xs text-gray-500 ml-4">
+                          <div className="text-xs text-ink-subtle ml-4">
                             {formData.otherChargesDescription}
                           </div>
                         )}
@@ -1090,7 +1090,7 @@ const handleSave = async () => {
                     <div className="border-t pt-3">
                       <div className="flex justify-between text-lg font-semibold">
                         <span>Total Amount:</span>
-                        <span className="text-blue-600">KES {totals.totalAmount.toLocaleString()}</span>
+                        <span className="text-blue-600 dark:text-blue-400">KES {totals.totalAmount.toLocaleString()}</span>
                       </div>
                     </div>
                   </>
@@ -1099,9 +1099,9 @@ const handleSave = async () => {
             </div>
 
             {hasAnyPaymentInstructions(formData.paymentInstructions) && (
-              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                <div className="bg-gray-50 px-4 py-3 border-b">
-                  <h4 className="font-medium text-gray-900">Payment Instructions</h4>
+              <div className="bg-surface border border-line rounded-lg overflow-hidden">
+                <div className="bg-surface-muted px-4 py-3 border-b">
+                  <h4 className="font-medium text-ink">Payment Instructions</h4>
                 </div>
                 <div className="p-4 space-y-2 text-sm">
                   {formData.paymentInstructions.mpesaTillNumber && (
@@ -1117,12 +1117,12 @@ const handleSave = async () => {
               </div>
             )}
 
-            <div className="bg-blue-50 p-4 rounded-lg">
+            <div className="bg-blue-50 dark:bg-blue-500/10 p-4 rounded-lg">
               <div className="flex items-start gap-2">
                 <Info className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
                 <div>
-                  <h4 className="font-medium text-blue-900 mb-1">Ready to Create {isBulkMode ? 'Invoices' : 'Invoice'}</h4>
-                  <p className="text-blue-700 text-sm">
+                  <h4 className="font-medium text-blue-900 dark:text-blue-300 mb-1">Ready to Create {isBulkMode ? 'Invoices' : 'Invoice'}</h4>
+                  <p className="text-blue-700 dark:text-blue-300 text-sm">
                     {isBulkMode
                       ? 'Review the details above. One invoice will be created for each active tenant using their own rent amount.'
                       : 'Review all details above. Once saved, you can edit the invoice later if needed. The tenant will be able to view and pay this invoice.'}
@@ -1140,10 +1140,10 @@ const handleSave = async () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-surface-muted flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <p className="mt-4 text-ink-muted">Loading...</p>
         </div>
       </div>
     );
@@ -1152,24 +1152,24 @@ const handleSave = async () => {
   // Replace the main return statement with this conditional layout:
 return (
   <div className={isModal 
-      ? "fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5" 
-      : "min-h-screen bg-gray-50"}>
+      ? "ui-page-overlay" 
+      : "min-h-screen bg-surface-muted"}>
     {/* Header */}
-    <div className={`bg-white shadow-sm ${isModal ? 'flex-shrink-0' : ''}`}>
+    <div className={`bg-surface shadow-sm ${isModal ? 'flex-shrink-0' : ''}`}>
       <div className="max-w-4xl mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setShowDiscardDialog(true)}
-              className="p-2 hover:bg-gray-100 rounded-lg"
+              className="p-2 hover:bg-surface-sunken rounded-lg"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
-            <h1 className="text-xl font-semibold text-gray-900">
+            <h1 className="text-xl font-semibold text-ink">
               {invoiceId ? 'Edit Invoice' : 'Create New Invoice'}
             </h1>
           </div>
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-ink-subtle">
             Step {currentStep + 1} of {steps.length}
           </div>
         </div>
@@ -1177,7 +1177,7 @@ return (
     </div>
 
     {/* Progress Bar */}
-    <div className={`bg-white border-b ${isModal ? 'flex-shrink-0' : ''}`}>
+    <div className={`bg-surface border-b ${isModal ? 'flex-shrink-0' : ''}`}>
       <div className="max-w-4xl mx-auto px-4 py-4">
         <div className="flex items-center justify-between mb-2">
           {steps.map((step, index) => (
@@ -1186,7 +1186,7 @@ return (
                 className={`flex items-center justify-center w-8 h-8 rounded-full ${
                   index <= currentStep
                     ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 text-gray-500'
+                    : 'bg-track text-ink-subtle'
                 }`}
               >
                 {index < currentStep ? (
@@ -1198,16 +1198,16 @@ return (
               {index < steps.length - 1 && (
                 <div
                   className={`w-full h-1 mx-2 ${
-                    index < currentStep ? 'bg-blue-600' : 'bg-gray-200'
+                    index < currentStep ? 'bg-blue-600' : 'bg-track'
                   }`}
                 />
               )}
             </div>
           ))}
         </div>
-        <div className="flex justify-between text-xs text-gray-500">
+        <div className="flex justify-between text-xs text-ink-subtle">
           {steps.map((step, index) => (
-            <span key={index} className={index <= currentStep ? 'text-blue-600' : ''}>
+            <span key={index} className={index <= currentStep ? 'text-blue-600 dark:text-blue-400' : ''}>
               {step.title}
             </span>
           ))}
@@ -1218,14 +1218,14 @@ return (
     {/* Content */}
     <div className={`${isModal ? 'flex-1 overflow-y-auto' : 'flex-grow'}`}>
       <div className="max-w-2xl mx-auto px-4 py-8">
-        <div className="bg-white rounded-lg shadow-sm p-6">
+        <div className="bg-surface rounded-lg shadow-sm p-6">
           {renderStep()}
         </div>
       </div>
     </div>
 
     {/* Navigation */}
-    <div className={`bg-white border-t shadow-lg ${isModal ? 'flex-shrink-0' : 'fixed bottom-0 left-0 right-0'}`}>
+    <div className={`bg-surface border-t shadow-lg ${isModal ? 'flex-shrink-0' : 'fixed bottom-0 left-0 right-0'}`}>
       <div className="max-w-2xl mx-auto px-4 py-4">
         <div className="flex justify-between">
           <button
@@ -1233,8 +1233,8 @@ return (
             disabled={currentStep === 0}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
               currentStep === 0
-                ? 'text-gray-400 cursor-not-allowed'
-                : 'text-gray-600 hover:bg-gray-50'
+                ? 'text-ink-faint cursor-not-allowed'
+                : 'text-ink-muted hover:bg-surface-muted'
             }`}
           >
             <ChevronLeft className="w-4 h-4" />
@@ -1265,22 +1265,22 @@ return (
 
     {/* Discard Dialog */}
     {showDiscardDialog && (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg max-w-md w-full">
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-surface rounded-lg max-w-md w-full">
           <div className="p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                <AlertCircle className="w-5 h-5 text-red-600" />
+              <div className="w-10 h-10 bg-red-100 dark:bg-red-500/15 rounded-full flex items-center justify-center">
+                <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
               </div>
               <h3 className="text-lg font-semibold">Discard Changes?</h3>
             </div>
-            <p className="text-gray-600 mb-6">
+            <p className="text-ink-muted mb-6">
               Are you sure you want to discard this invoice? All entered data will be lost.
             </p>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowDiscardDialog(false)}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                className="flex-1 px-4 py-2 border border-line-strong text-ink-soft rounded-lg hover:bg-surface-muted"
               >
                 Continue Editing
               </button>

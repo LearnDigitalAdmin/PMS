@@ -129,22 +129,22 @@ const WebPaymentModal: React.FC<WebPaymentModalProps> = ({
 
   return (
   <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-    <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-auto max-h-[90vh] overflow-y-auto">
+    <div className="bg-surface rounded-2xl shadow-2xl max-w-2xl w-full mx-auto max-h-[90vh] overflow-y-auto">
       {/* Header */}
       <div className={`${plan.headerColor} px-6 py-5 sticky top-0 z-10`}>
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-xl font-bold text-gray-900 flex items-center">
-              <Crown className="w-6 h-6 mr-2 text-yellow-600" />
+            <h3 className="text-xl font-bold text-ink flex items-center">
+              <Crown className="w-6 h-6 mr-2 text-yellow-600 dark:text-yellow-400" />
               Confirm Subscription
             </h3>
-            <p className="text-sm text-gray-600 mt-1">
+            <p className="text-sm text-ink-muted mt-1">
               Pay with M-Pesa
             </p>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/50 transition-colors"
+            className="text-ink-faint hover:text-ink-muted text-2xl font-bold w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface/50 transition-colors"
           >
             ×
           </button>
@@ -154,19 +154,19 @@ const WebPaymentModal: React.FC<WebPaymentModalProps> = ({
       {/* Content */}
       <div className="px-6 py-6 space-y-6">
         {/* Plan and Pricing Summary */}
-        <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6 border border-gray-200">
+        <div className="bg-gradient-to-br from-surface-muted to-surface-sunken rounded-xl p-6 border border-line">
           <div className="flex items-center justify-between">
             <div>
-              <h4 className="text-2xl font-bold text-gray-900">{plan.name}</h4>
-              <p className="text-sm text-gray-600 mt-1">
+              <h4 className="text-2xl font-bold text-ink">{plan.name}</h4>
+              <p className="text-sm text-ink-muted mt-1">
                 {billingCycle === 'monthly' ? 'Monthly' : 'Annual'} Subscription
               </p>
             </div>
             <div className="text-right">
-              <div className="text-3xl font-bold text-gray-900">
+              <div className="text-3xl font-bold text-ink">
                 KES {price?.toLocaleString()}
               </div>
-              <div className="text-sm text-gray-600 mt-1">
+              <div className="text-sm text-ink-muted mt-1">
                 /{billingCycle === 'monthly' ? 'month' : 'year'}
               </div>
             </div>
@@ -178,40 +178,40 @@ const WebPaymentModal: React.FC<WebPaymentModalProps> = ({
           {/* Left Column - Account Info & Phone Input */}
           <div className="space-y-6">
             {/* Account Information */}
-            <div className="bg-gray-50 rounded-xl p-5 border border-gray-200">
-              <h5 className="font-semibold text-gray-900 mb-4 flex items-center">
+            <div className="bg-surface-muted rounded-xl p-5 border border-line">
+              <h5 className="font-semibold text-ink mb-4 flex items-center">
                 <Users className="w-4 h-4 mr-2" />
                 Account Information
               </h5>
               <div className="space-y-3 text-sm">
-                <div className="flex justify-between items-center py-2 border-b border-gray-200">
-                  <span className="text-gray-600">Name:</span>
-                  <span className="font-medium text-gray-900">{currentUser?.name || 'N/A'}</span>
+                <div className="flex justify-between items-center py-2 border-b border-line">
+                  <span className="text-ink-muted">Name:</span>
+                  <span className="font-medium text-ink">{currentUser?.name || 'N/A'}</span>
                 </div>
-                <div className="flex justify-between items-center py-2 border-b border-gray-200">
-                  <span className="text-gray-600">Email:</span>
-                  <span className="font-medium text-gray-900 truncate ml-2">{currentUser?.email || 'N/A'}</span>
+                <div className="flex justify-between items-center py-2 border-b border-line">
+                  <span className="text-ink-muted">Email:</span>
+                  <span className="font-medium text-ink truncate ml-2">{currentUser?.email || 'N/A'}</span>
                 </div>
                 <div className="flex justify-between items-center py-2">
-                  <span className="text-gray-600">User ID:</span>
-                  <span className="font-medium text-gray-900">{currentUser?.id || 'N/A'}</span>
+                  <span className="text-ink-muted">User ID:</span>
+                  <span className="font-medium text-ink">{currentUser?.id || 'N/A'}</span>
                 </div>
               </div>
             </div>
 
             {/* Phone Number Input */}
-            <div className="bg-white rounded-xl p-5 border-2 border-gray-200">
-              <label className="block text-sm font-semibold text-gray-900 mb-3">
+            <div className="bg-surface rounded-xl p-5 border-2 border-line">
+              <label className="block text-sm font-semibold text-ink mb-3">
                 M-Pesa Phone Number *
               </label>
               <div className="relative">
-                <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-ink-faint" />
                 <input
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className={`w-full pl-10 pr-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all ${
-                    phoneError ? 'border-red-500' : 'border-gray-300'
+                    phoneError ? 'border-red-500' : 'border-line-strong'
                   }`}
                   placeholder="0712345678 or 254712345678"
                 />
@@ -222,7 +222,7 @@ const WebPaymentModal: React.FC<WebPaymentModalProps> = ({
                   {phoneError}
                 </p>
               )}
-              <p className="text-xs text-gray-500 mt-2 flex items-center">
+              <p className="text-xs text-ink-subtle mt-2 flex items-center">
                 <Phone className="w-3 h-3 mr-1" />
                 This number will receive the M-Pesa payment prompt
               </p>
@@ -231,17 +231,17 @@ const WebPaymentModal: React.FC<WebPaymentModalProps> = ({
 
           {/* Right Column - Features */}
           <div className="space-y-6">
-            <div className="bg-gray-50 rounded-xl p-5 border border-gray-200">
-              <h5 className="font-semibold text-gray-900 mb-4 flex items-center">
-                <Check className="w-4 h-4 mr-2 text-green-600" />
+            <div className="bg-surface-muted rounded-xl p-5 border border-line">
+              <h5 className="font-semibold text-ink mb-4 flex items-center">
+                <Check className="w-4 h-4 mr-2 text-green-600 dark:text-green-400" />
                 What's Included
               </h5>
               <div className="space-y-3">
                 {plan.features.slice(0, 8).map((feature, index) => (
                   feature.included && (
                     <div key={index} className="flex items-start">
-                      <Check className="h-4 w-4 text-green-600 mr-3 mt-0.5 flex-shrink-0" />
-                      <span className="text-sm text-gray-700">{feature.name}</span>
+                      <Check className="h-4 w-4 text-green-600 dark:text-green-400 mr-3 mt-0.5 flex-shrink-0" />
+                      <span className="text-sm text-ink-soft">{feature.name}</span>
                     </div>
                   )
                 ))}
@@ -249,12 +249,12 @@ const WebPaymentModal: React.FC<WebPaymentModalProps> = ({
             </div>
 
             {/* Payment Info Box */}
-            <div className="bg-green-50 rounded-xl p-5 border border-green-200">
+            <div className="bg-green-50 dark:bg-green-500/10 rounded-xl p-5 border border-green-200 dark:border-green-500/25">
               <div className="flex items-center mb-3">
-                <Phone className="h-5 w-5 text-green-600 mr-2" />
-                <span className="font-semibold text-green-900">M-Pesa Payment</span>
+                <Phone className="h-5 w-5 text-green-600 dark:text-green-400 mr-2" />
+                <span className="font-semibold text-green-900 dark:text-green-300">M-Pesa Payment</span>
               </div>
-              <p className="text-sm text-green-700 leading-relaxed">
+              <p className="text-sm text-green-700 dark:text-green-300 leading-relaxed">
                 You'll receive an M-Pesa prompt on your phone. Enter your M-Pesa PIN to complete the payment.
                 Subscription starts immediately after payment confirmation.
               </p>
@@ -263,7 +263,7 @@ const WebPaymentModal: React.FC<WebPaymentModalProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="space-y-3 pt-4 border-t border-gray-200">
+        <div className="space-y-3 pt-4 border-t border-line">
           <button
             onClick={handlePurchase}
             disabled={isLoading || !phone}
@@ -281,7 +281,7 @@ const WebPaymentModal: React.FC<WebPaymentModalProps> = ({
             )}
           </button>
 
-          <p className="text-xs text-gray-500 text-center leading-relaxed px-4">
+          <p className="text-xs text-ink-subtle text-center leading-relaxed px-4">
             By continuing, you agree to our Terms of Service and Privacy Policy.
             <br />
             No automatic renewals - you control when to pay next.
@@ -327,21 +327,21 @@ const PurchaseConfirmationModal: React.FC<PurchaseConfirmationProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+      <div className="bg-surface rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
         <div className={`${plan.headerColor} px-6 py-4`}>
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-bold text-gray-900 flex items-center">
-                <Crown className="w-5 h-5 mr-2 text-yellow-600" />
+              <h3 className="text-lg font-bold text-ink flex items-center">
+                <Crown className="w-5 h-5 mr-2 text-yellow-600 dark:text-yellow-400" />
                 Confirm Purchase
               </h3>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-sm text-ink-muted mt-1">
                 You're about to subscribe to {plan.name}
               </p>
             </div>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 text-xl font-bold w-6 h-6 flex items-center justify-center"
+              className="text-ink-faint hover:text-ink-muted text-xl font-bold w-6 h-6 flex items-center justify-center"
             >
               ×
             </button>
@@ -352,20 +352,20 @@ const PurchaseConfirmationModal: React.FC<PurchaseConfirmationProps> = ({
           <div className="mb-6">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h4 className="text-xl font-bold text-gray-900">{plan.name}</h4>
-                <p className="text-sm text-gray-600">
+                <h4 className="text-xl font-bold text-ink">{plan.name}</h4>
+                <p className="text-sm text-ink-muted">
                   {billingCycle === 'monthly' ? 'Monthly' : 'Annual'} Subscription
                 </p>
               </div>
               <div className="text-right">
-                <div className="text-2xl font-bold text-gray-900">
+                <div className="text-2xl font-bold text-ink">
                   {currentPackage?.product.priceString || 'Loading...'}
                 </div>
-                <div className="text-sm text-gray-600">
+                <div className="text-sm text-ink-muted">
                   /{billingCycle === 'monthly' ? 'month' : 'year'}
                 </div>
                 {billingCycle === 'annual' && monthlyPackage && (
-                  <div className="text-xs text-gray-500 line-through">
+                  <div className="text-xs text-ink-subtle line-through">
                     Was {monthlyPackage.product.currencyCode} {
                       ((typeof monthlyPackage.product.price === 'string' 
                         ? parseFloat(monthlyPackage.product.price) 
@@ -374,21 +374,21 @@ const PurchaseConfirmationModal: React.FC<PurchaseConfirmationProps> = ({
                   </div>
                 )}
                 {discount > 0 && (
-                  <div className="text-xs text-green-600 font-medium">
+                  <div className="text-xs text-green-600 dark:text-green-400 font-medium">
                     Save {discount}% annually!
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h5 className="font-semibold text-gray-900 mb-3 text-sm">What's included:</h5>
+            <div className="bg-surface-muted rounded-lg p-4">
+              <h5 className="font-semibold text-ink mb-3 text-sm">What's included:</h5>
               <div className="space-y-2">
                 {plan.features.slice(0, 6).map((feature, index) => (
                   feature.included && (
                     <div key={index} className="flex items-start">
-                      <Check className="h-4 w-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
-                      <span className="text-sm text-gray-700">{feature.name}</span>
+                      <Check className="h-4 w-4 text-green-600 dark:text-green-400 mr-2 mt-0.5 flex-shrink-0" />
+                      <span className="text-sm text-ink-soft">{feature.name}</span>
                     </div>
                   )
                 ))}
@@ -396,12 +396,12 @@ const PurchaseConfirmationModal: React.FC<PurchaseConfirmationProps> = ({
             </div>
           </div>
 
-          <div className="bg-blue-50 rounded-lg p-4 mb-6">
+          <div className="bg-blue-50 dark:bg-blue-500/10 rounded-lg p-4 mb-6">
             <div className="flex items-center mb-2">
-              <Zap className="h-5 w-5 text-blue-600 mr-2" />
-              <span className="font-semibold text-blue-900 text-sm">30-Day Free Trial</span>
+              <Zap className="h-5 w-5 text-blue-600 dark:text-blue-400 mr-2" />
+              <span className="font-semibold text-blue-900 dark:text-blue-300 text-sm">30-Day Free Trial</span>
             </div>
-            <p className="text-xs text-blue-700">
+            <p className="text-xs text-blue-700 dark:text-blue-300">
               Start your free trial now. You won't be charged until the trial period ends. 
               Cancel anytime during the trial at no cost.
             </p>
@@ -427,14 +427,14 @@ const PurchaseConfirmationModal: React.FC<PurchaseConfirmationProps> = ({
             
             <button
               onClick={onContactSales}
-              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 px-4 rounded-lg font-medium transition-all duration-200 flex items-center justify-center space-x-2"
+              className="w-full bg-surface-sunken hover:bg-track text-ink-soft py-3 px-4 rounded-lg font-medium transition-all duration-200 flex items-center justify-center space-x-2"
             >
               <Phone className="w-5 h-5" />
               <span>Contact Sales Team</span>
             </button>
           </div>
 
-          <p className="text-xs text-gray-500 mt-4 text-center">
+          <p className="text-xs text-ink-subtle mt-4 text-center">
             By continuing, you agree to our Terms of Service and Privacy Policy.
             You can cancel your subscription anytime.
           </p>
@@ -486,8 +486,8 @@ const PricingModal: React.FC<PricingModalProps> = ({
       id: 'solo',
       name: 'Solo Property Enterprise',
       popular: true,
-      color: 'bg-yellow-50 border-yellow-300',
-      headerColor: 'bg-yellow-100',
+      color: 'bg-yellow-50 dark:bg-yellow-500/10 border-yellow-300 dark:border-yellow-500/40',
+      headerColor: 'bg-yellow-100 dark:bg-yellow-500/15',
       buttonColor: 'bg-yellow-600 hover:bg-yellow-700',
       offeringId: 'solo',
       limits: {
@@ -514,8 +514,8 @@ const PricingModal: React.FC<PricingModalProps> = ({
       id: 'free',
       name: 'Free Forever',
       popular: false,
-      color: 'bg-gray-50 border-gray-200',
-      headerColor: 'bg-gray-100',
+      color: 'bg-surface-muted border-line',
+      headerColor: 'bg-surface-sunken',
       buttonColor: 'bg-gray-600 hover:bg-gray-700',
       offeringId: null,
       limits: {
@@ -541,8 +541,8 @@ const PricingModal: React.FC<PricingModalProps> = ({
       id: 'starter',
       name: 'Starter',
       popular: false,
-      color: 'bg-blue-50 border-blue-200',
-      headerColor: 'bg-blue-100',
+      color: 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/25',
+      headerColor: 'bg-blue-100 dark:bg-blue-500/15',
       buttonColor: 'bg-blue-600 hover:bg-blue-700',
       offeringId: 'starter',
       limits: {
@@ -568,8 +568,8 @@ const PricingModal: React.FC<PricingModalProps> = ({
       id: 'business',
       name: 'Business',
       popular: false,
-      color: 'bg-green-50 border-green-300',
-      headerColor: 'bg-green-100',
+      color: 'bg-green-50 dark:bg-green-500/10 border-green-300 dark:border-green-500/40',
+      headerColor: 'bg-green-100 dark:bg-green-500/15',
       buttonColor: 'bg-green-600 hover:bg-green-700',
       offeringId: 'business',
       limits: {
@@ -595,8 +595,8 @@ const PricingModal: React.FC<PricingModalProps> = ({
       id: 'pro',
       name: 'Professional',
       popular: true,
-      color: 'bg-orange-50 border-orange-300',
-      headerColor: 'bg-orange-100',
+      color: 'bg-orange-50 dark:bg-orange-500/10 border-orange-300 dark:border-orange-500/40',
+      headerColor: 'bg-orange-100 dark:bg-orange-500/15',
       buttonColor: 'bg-orange-600 hover:bg-orange-700',
       offeringId: 'pro',
       limits: {
@@ -623,8 +623,8 @@ const PricingModal: React.FC<PricingModalProps> = ({
       id: 'enterprise',
       name: 'Enterprise',
       popular: false,
-      color: 'bg-purple-50 border-purple-300',
-      headerColor: 'bg-purple-100',
+      color: 'bg-purple-50 dark:bg-purple-500/10 border-purple-300 dark:border-purple-500/40',
+      headerColor: 'bg-purple-100 dark:bg-purple-500/15',
       buttonColor: 'bg-purple-600 hover:bg-purple-700',
       offeringId: 'enterprise',
       limits: {
@@ -1051,7 +1051,7 @@ const PricingModal: React.FC<PricingModalProps> = ({
   return (
     <>
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl max-w-6xl max-h-[95vh] overflow-hidden w-full">
+        <div className="bg-surface rounded-2xl shadow-2xl max-w-6xl max-h-[95vh] overflow-hidden w-full">
           <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-4 md:p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -1094,8 +1094,8 @@ const PricingModal: React.FC<PricingModalProps> = ({
             {loadingProducts && (
               <div className="flex items-center justify-center py-8">
                 <div className="flex items-center space-x-3">
-                  <RefreshCw className="w-5 h-5 animate-spin text-purple-600" />
-                  <span className="text-gray-600">
+                  <RefreshCw className="w-5 h-5 animate-spin text-purple-600 dark:text-purple-400" />
+                  <span className="text-ink-muted">
                     {isWeb ? 'Loading pricing from Firestore...' : 'Loading current pricing from RevenueCat...'}
                   </span>
                 </div>
@@ -1136,13 +1136,13 @@ const PricingModal: React.FC<PricingModalProps> = ({
                 )}
 
                 <div className="flex justify-center mb-6">
-                  <div className="bg-gray-100 rounded-lg p-1 shadow-md">
+                  <div className="bg-surface-sunken rounded-lg p-1 shadow-md">
                     <button
                       onClick={() => setBillingCycle('monthly')}
                       className={`px-4 py-2 rounded-md font-medium transition-colors text-sm ${
                         billingCycle === 'monthly'
                           ? 'bg-green-600 text-white'
-                          : 'text-gray-600 hover:text-gray-900'
+                          : 'text-ink-muted hover:text-ink'
                       }`}
                     >
                       Monthly
@@ -1152,7 +1152,7 @@ const PricingModal: React.FC<PricingModalProps> = ({
                       className={`px-4 py-2 rounded-md font-medium transition-colors text-sm relative ${
                         billingCycle === 'annual'
                           ? 'bg-green-600 text-white'
-                          : 'text-gray-600 hover:text-gray-900'
+                          : 'text-ink-muted hover:text-ink'
                       }`}
                     >
                       Annual
@@ -1220,9 +1220,9 @@ const PricingModal: React.FC<PricingModalProps> = ({
                         )}
 
                         <div className={`${plan.headerColor} px-4 py-4 rounded-t-xl`}>
-                          <h3 className="text-lg font-bold text-gray-900">{plan.name}</h3>
+                          <h3 className="text-lg font-bold text-ink">{plan.name}</h3>
                           <div className="mt-2">
-                            <span className="text-2xl font-bold text-gray-900">
+                            <span className="text-2xl font-bold text-ink">
                               {plan.id === 'free' 
                                 ? 'Free' 
                                 : isWeb 
@@ -1231,13 +1231,13 @@ const PricingModal: React.FC<PricingModalProps> = ({
                               }
                             </span>
                             {((isWeb && price) || currentPackage) && (
-                              <span className="text-gray-600 ml-1 text-sm">
+                              <span className="text-ink-muted ml-1 text-sm">
                                 /{billingCycle === 'monthly' ? 'mo' : 'yr'}
                               </span>
                             )}
                           </div>
                           {billingCycle === 'annual' && monthlyEquivalent > 0 && (
-                            <div className="text-xs text-gray-500 line-through">
+                            <div className="text-xs text-ink-subtle line-through">
                               {isWeb 
                                 ? `Was KES ${monthlyEquivalent.toLocaleString()}/year`
                                 : plan.monthlyPackage && `Was ${plan.monthlyPackage.product.currencyCode} ${monthlyEquivalent.toLocaleString()}/year`
@@ -1249,16 +1249,16 @@ const PricingModal: React.FC<PricingModalProps> = ({
                         <div className="px-4 py-4">
                           <div className="grid grid-cols-1 gap-2 mb-4 text-xs">
                             <div className="flex items-center">
-                              <Building className="h-3 w-3 text-green-600 mr-1" />
+                              <Building className="h-3 w-3 text-green-600 dark:text-green-400 mr-1" />
                               <span>{plan.limits.properties} {typeof plan.limits.properties === 'number' && plan.limits.properties > 1 ? 'Properties' : 'Property'}</span>
                             </div>
                             <div className="flex items-center">
-                              <Users className="h-3 w-3 text-blue-600 mr-1" />
+                              <Users className="h-3 w-3 text-blue-600 dark:text-blue-400 mr-1" />
                               <span>{plan.limits.tenants} Tenants</span>
                             </div>
                             <div className="flex items-center">
-                              <Cloud className="h-3 w-3 text-purple-600 mr-1" />
-                              <span className={plan.limits.sync ? 'text-green-600' : 'text-gray-400'}>
+                              <Cloud className="h-3 w-3 text-purple-600 dark:text-purple-400 mr-1" />
+                              <span className={plan.limits.sync ? 'text-green-600 dark:text-green-400' : 'text-ink-faint'}>
                                 {plan.limits.sync ? 'Cloud Sync' : 'Local Only'}
                               </span>
                             </div>
@@ -1268,17 +1268,17 @@ const PricingModal: React.FC<PricingModalProps> = ({
                             {plan.features.slice(0, 4).map((feature, index) => (
                               <div key={index} className="flex items-start">
                                 {feature.included ? (
-                                  <Check className="h-3 w-3 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                                  <Check className="h-3 w-3 text-green-600 dark:text-green-400 mr-2 mt-0.5 flex-shrink-0" />
                                 ) : (
-                                  <X className="h-3 w-3 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
+                                  <X className="h-3 w-3 text-ink-faint mr-2 mt-0.5 flex-shrink-0" />
                                 )}
-                                <span className={`text-xs ${feature.included ? 'text-gray-900' : 'text-gray-400'}`}>
+                                <span className={`text-xs ${feature.included ? 'text-ink' : 'text-ink-faint'}`}>
                                   {feature.name}
                                 </span>
                               </div>
                             ))}
                             {plan.features.length > 4 && (
-                              <div className="text-xs text-gray-500 text-center mt-2">
+                              <div className="text-xs text-ink-subtle text-center mt-2">
                                 +{plan.features.length - 4} more features
                               </div>
                             )}
@@ -1289,9 +1289,9 @@ const PricingModal: React.FC<PricingModalProps> = ({
                             disabled={isCurrentPlan || (plan.id !== 'free' && isWeb && !price) || (plan.id !== 'free' && !isWeb && !currentPackage)}
                             className={`w-full px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
                               isCurrentPlan 
-                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                ? 'bg-line-strong text-ink-subtle cursor-not-allowed'
                                 : (plan.id !== 'free' && ((isWeb && !price) || (!isWeb && !currentPackage)))
-                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                ? 'bg-line-strong text-ink-subtle cursor-not-allowed'
                                 : `${plan.buttonColor} text-white hover:shadow-lg`
                             }`}
                           >
@@ -1306,49 +1306,49 @@ const PricingModal: React.FC<PricingModalProps> = ({
                   })}
                 </div>
 
-                <div className="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl p-4 md:p-6 mb-6">
+                <div className="bg-gradient-to-r from-yellow-50 dark:from-yellow-500/10 to-orange-50 dark:to-orange-500/10 rounded-xl p-4 md:p-6 mb-6">
                   <div className="text-center">
                     <Zap className="h-8 w-8 text-yellow-500 mx-auto mb-3" />
-                    <h3 className="text-lg font-bold text-gray-900 mb-3">
+                    <h3 className="text-lg font-bold text-ink mb-3">
                       {isWeb ? 'Full Control Over Your Subscription' : 'Start Your Journey Risk-Free'}
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="text-center">
-                        <div className="bg-green-100 rounded-full p-2 w-10 h-10 mx-auto mb-2 flex items-center justify-center">
-                          <FileText className="h-5 w-5 text-green-600" />
+                        <div className="bg-green-100 dark:bg-green-500/15 rounded-full p-2 w-10 h-10 mx-auto mb-2 flex items-center justify-center">
+                          <FileText className="h-5 w-5 text-green-600 dark:text-green-400" />
                         </div>
-                        <h4 className="font-semibold text-gray-900 mb-1 text-sm">
+                        <h4 className="font-semibold text-ink mb-1 text-sm">
                           {isWeb ? 'Pay As You Go' : '30-Day Free Trial'}
                         </h4>
-                        <p className="text-gray-600 text-xs">
+                        <p className="text-ink-muted text-xs">
                           {isWeb ? 'No automatic renewals or hidden fees' : 'Try any paid plan free for 30 days'}
                         </p>
                       </div>
                       <div className="text-center">
-                        <div className="bg-blue-100 rounded-full p-2 w-10 h-10 mx-auto mb-2 flex items-center justify-center">
-                          <Shield className="h-5 w-5 text-blue-600" />
+                        <div className="bg-blue-100 dark:bg-blue-500/15 rounded-full p-2 w-10 h-10 mx-auto mb-2 flex items-center justify-center">
+                          <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                         </div>
-                        <h4 className="font-semibold text-gray-900 mb-1 text-sm">
+                        <h4 className="font-semibold text-ink mb-1 text-sm">
                           {isWeb ? 'M-Pesa Payments' : 'No Commitment'}
                         </h4>
-                        <p className="text-gray-600 text-xs">
+                        <p className="text-ink-muted text-xs">
                           {isWeb ? 'Secure mobile money payments' : 'Cancel anytime, no questions asked'}
                         </p>
                       </div>
                       <div className="text-center">
-                        <div className="bg-purple-100 rounded-full p-2 w-10 h-10 mx-auto mb-2 flex items-center justify-center">
-                          <ExternalLink className="h-5 w-5 text-purple-600" />
+                        <div className="bg-purple-100 dark:bg-purple-500/15 rounded-full p-2 w-10 h-10 mx-auto mb-2 flex items-center justify-center">
+                          <ExternalLink className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                         </div>
-                        <h4 className="font-semibold text-gray-900 mb-1 text-sm">Expert Support</h4>
-                        <p className="text-gray-600 text-xs">Get help when you need it</p>
+                        <h4 className="font-semibold text-ink mb-1 text-sm">Expert Support</h4>
+                        <p className="text-ink-muted text-xs">Get help when you need it</p>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-gray-50 rounded-xl p-4 mb-6">
+                <div className="bg-surface-muted rounded-xl p-4 mb-6">
                   <div className="text-center">
-                    <p className="text-sm text-gray-600 mb-3 font-medium">
+                    <p className="text-sm text-ink-muted mb-3 font-medium">
                       Questions about pricing or need a custom solution?
                     </p>
                     <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -1371,15 +1371,15 @@ const PricingModal: React.FC<PricingModalProps> = ({
                 </div>
 
                 {!canDismiss && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-                    <div className="flex items-center justify-center text-yellow-800">
+                  <div className="bg-yellow-50 dark:bg-yellow-500/10 border border-yellow-200 dark:border-yellow-500/25 rounded-xl p-4">
+                    <div className="flex items-center justify-center text-yellow-800 dark:text-yellow-300">
                       <Crown className="w-5 h-5 mr-2" />
                       <span className="font-medium text-sm">
                         Select a plan to continue to your dashboard
                       </span>
                     </div>
                     <div className="mt-3 text-center">
-                      <p className="text-xs text-yellow-700">
+                      <p className="text-xs text-yellow-700 dark:text-yellow-300">
                         You can always upgrade later from your profile page
                       </p>
                     </div>

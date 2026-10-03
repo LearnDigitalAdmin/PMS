@@ -400,13 +400,13 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
   };
 
   const getStatusColor = (invoice: InvoiceWithDetails) => {
-    if (invoice.isPaid) return 'text-green-600 bg-green-50 border-green-200';
+    if (invoice.isPaid) return 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/25';
     
     const dueDate = new Date(invoice.dueDate || invoice.createdAt);
     const today = new Date();
     
-    if (dueDate < today) return 'text-red-600 bg-red-50 border-red-200';
-    return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+    if (dueDate < today) return 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/25';
+    return 'text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-500/10 border-yellow-200 dark:border-yellow-500/25';
   };
 
   const getStatusIcon = (invoice: InvoiceWithDetails) => {
@@ -460,17 +460,17 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-4">
+      <div className="min-h-screen bg-surface-muted p-4">
         <div className="animate-pulse space-y-4">
           {[1, 2, 3, 4, 5].map(i => (
-            <div key={i} className="bg-white rounded-xl p-4 shadow-sm">
+            <div key={i} className="bg-surface rounded-xl p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <div className="space-y-2 flex-1">
-                  <div className="h-4 bg-gray-200 rounded w-1/3"></div>
-                  <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-                  <div className="h-3 bg-gray-200 rounded w-1/4"></div>
+                  <div className="h-4 bg-track rounded w-1/3"></div>
+                  <div className="h-3 bg-track rounded w-1/2"></div>
+                  <div className="h-3 bg-track rounded w-1/4"></div>
                 </div>
-                <div className="h-8 bg-gray-200 rounded w-20"></div>
+                <div className="h-8 bg-track rounded w-20"></div>
               </div>
             </div>
           ))}
@@ -480,33 +480,33 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div>
       {/* Header */}
-      <div className="bg-white shadow-sm">
-        <div className="px-4 py-6">
-          <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
+      <div className="ui-card mb-4 lg:mb-6">
+        <div className="px-4 py-6 lg:px-6">
+          <h1 className="ui-page-title">Invoices</h1>
 
           <TrialStatsBanner userId={user?.id} compact className="mt-4" />
 
           {/* Summary Cards */}
           <div>
-            <h2 className="text-lg font-semibold text-gray-900 mt-4">Summary Estimates</h2>
-            <div className="grid grid-cols-2 gap-3 mt-4">
-            <div className="bg-blue-50 rounded-lg p-3">
-              <p className="text-xs text-blue-600 font-medium">Total</p>
-              <p className="text-lg font-bold text-blue-700">{formatCurrency(summary.total)}</p>
+            <h2 className="text-lg font-semibold text-ink mt-4">Summary Estimates</h2>
+            <div className="grid grid-cols-2 gap-3 mt-4 lg:grid-cols-4 lg:gap-4">
+            <div className="bg-blue-50 dark:bg-blue-500/10 rounded-lg p-3">
+              <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">Total</p>
+              <p className="text-lg font-bold text-blue-700 dark:text-blue-300">{formatCurrency(summary.total)}</p>
             </div>
-            <div className="bg-green-50 rounded-lg p-3">
-              <p className="text-xs text-green-600 font-medium">Paid</p>
-              <p className="text-lg font-bold text-green-700">{formatCurrency(summary.paid)}</p>
+            <div className="bg-green-50 dark:bg-green-500/10 rounded-lg p-3">
+              <p className="text-xs text-green-600 dark:text-green-400 font-medium">Paid</p>
+              <p className="text-lg font-bold text-green-700 dark:text-green-300">{formatCurrency(summary.paid)}</p>
             </div>
-            <div className="bg-yellow-50 rounded-lg p-3">
-              <p className="text-xs text-yellow-600 font-medium">Pending</p>
-              <p className="text-lg font-bold text-yellow-700">{formatCurrency(summary.pending)}</p>
+            <div className="bg-yellow-50 dark:bg-yellow-500/10 rounded-lg p-3">
+              <p className="text-xs text-yellow-600 dark:text-yellow-400 font-medium">Pending</p>
+              <p className="text-lg font-bold text-yellow-700 dark:text-yellow-300">{formatCurrency(summary.pending)}</p>
             </div>
-            <div className="bg-red-50 rounded-lg p-3">
-              <p className="text-xs text-red-600 font-medium">Overdue</p>
-              <p className="text-lg font-bold text-red-700">{formatCurrency(summary.overdue)}</p>
+            <div className="bg-red-50 dark:bg-red-500/10 rounded-lg p-3">
+              <p className="text-xs text-red-600 dark:text-red-400 font-medium">Overdue</p>
+              <p className="text-lg font-bold text-red-700 dark:text-red-300">{formatCurrency(summary.overdue)}</p>
             </div>
           </div>
           </div>
@@ -514,20 +514,20 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
       </div>
 
       {/* Controls */}
-      <div className="px-4 py-4 space-y-4">
+      <div className="space-y-4 px-4 py-4 md:px-0 md:pb-0 md:pt-0">
         {/* Month Navigation */}
-        <div className="bg-white rounded-lg p-3 shadow-sm">
+        <div className="ui-card p-3">
           <div className="flex items-center justify-between">
             <button
               onClick={() => navigateMonth('prev')}
-              className="p-2 text-gray-500 hover:text-blue-600 transition-colors"
+              className="p-2 text-ink-subtle hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
             
             <div className="flex items-center space-x-2">
-              <Calendar className="w-4 h-4 text-gray-500" />
-              <span className="font-medium text-gray-900">
+              <Calendar className="w-4 h-4 text-ink-subtle" />
+              <span className="font-medium text-ink">
                 {currentDate.toLocaleDateString('en-GB', {
                   month: 'long',
                   year: 'numeric'
@@ -537,7 +537,7 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
             
             <button
               onClick={() => navigateMonth('next')}
-              className="p-2 text-gray-500 hover:text-blue-600 transition-colors"
+              className="p-2 text-ink-subtle hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
             >
               <ChevronRight className="w-5 h-5" />
             </button>
@@ -547,19 +547,19 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
         {/* Search and Filters */}
         <div className="flex space-x-3">
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-ink-faint w-5 h-5" />
             <input
               type="text"
               placeholder="Search invoices..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-white rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-3 bg-surface rounded-lg border border-line focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
           
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className="bg-white border border-gray-200 rounded-lg p-3 text-gray-600 hover:text-blue-600 hover:border-blue-300 transition-colors"
+            className="bg-surface border border-line rounded-lg p-3 text-ink-muted hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-500/40 transition-colors"
           >
             <Filter className="w-5 h-5" />
           </button>
@@ -567,14 +567,14 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="bg-white border border-gray-200 rounded-lg p-3 text-gray-600 hover:text-blue-600 hover:border-blue-300 transition-colors disabled:opacity-50"
+            className="bg-surface border border-line rounded-lg p-3 text-ink-muted hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-500/40 transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
           </button>
           
           <button
             onClick={() => setExportModalVisible(true)}
-            className="bg-white border border-gray-200 rounded-lg p-3 text-gray-600 hover:text-blue-600 hover:border-blue-300 transition-colors"
+            className="bg-surface border border-line rounded-lg p-3 text-ink-muted hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-500/40 transition-colors"
           >
             <Download className="w-5 h-5" />
           </button>
@@ -582,15 +582,15 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
 
         {/* Property Filter */}
         {showFilters && (
-          <div className="bg-white rounded-lg p-4 shadow-sm space-y-3">
+          <div className="ui-card p-4 space-y-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-ink-soft mb-2">
                 Filter by Property
               </label>
               <select
                 value={selectedProperty || ''}
                 onChange={(e) => setSelectedProperty(e.target.value ? parseInt(e.target.value) : null)}
-                className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full p-3 border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All Properties</option>
                 {properties.map(property => (
@@ -602,7 +602,7 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-ink-soft mb-2">
                 Payment Status
               </label>
               <select
@@ -611,7 +611,7 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
                   ...prev,
                   isPaid: e.target.value === '' ? undefined : e.target.value === 'true'
                 }))}
-                className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full p-3 border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All Statuses</option>
                 <option value="true">Paid</option>
@@ -623,41 +623,41 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
       </div>
 
       {/* Invoice List */}
-      <div className="px-4 pb-24 space-y-3">
+      <div className="space-y-3 px-4 pb-24 md:grid md:grid-cols-2 md:gap-4 md:space-y-0 md:px-0 md:pb-24 md:pt-4 2xl:grid-cols-3">
         {invoices.length === 0 ? (
-          <div className="text-center py-12">
-            <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No invoices found</h3>
-            <p className="text-gray-500 mb-6">Create your first invoice to get started</p>
+          <div className="text-center py-12 md:col-span-full">
+            <FileText className="w-12 h-12 text-ink-faint mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-ink mb-2">No invoices found</h3>
+            <p className="text-ink-subtle mb-6">Create your first invoice to get started</p>
           </div>
         ) : (
           invoices.map((invoice) => (
-            <div key={invoice.id} className="bg-white rounded-lg shadow-sm border border-gray-100">
+            <div key={invoice.id} className="ui-card ui-card-hover">
               <div className="p-4">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center space-x-2">
-                    <span className="font-medium text-gray-900">#{invoice.invoiceNumber}</span>
+                    <span className="font-medium text-ink">#{invoice.invoiceNumber}</span>
                     <div className={`inline-flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(invoice)}`}>
                       {getStatusIcon(invoice)}
                       <span>{getStatusText(invoice)}</span>
                     </div>
                   </div>
-                  <span className="text-lg font-bold text-gray-900">
+                  <span className="text-lg font-bold text-ink">
                     {formatCurrency(invoice.totalAmount)}
                   </span>
                 </div>
                 
                 <div className="space-y-1 mb-3">
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-500">Tenant:</span>
+                    <span className="text-sm text-ink-subtle">Tenant:</span>
                     <span className="text-sm font-medium">{invoice.tenantName}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-500">Property:</span>
+                    <span className="text-sm text-ink-subtle">Property:</span>
                     <span className="text-sm font-medium">{invoice.propertyName}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-500">Due Date:</span>
+                    <span className="text-sm text-ink-subtle">Due Date:</span>
                     <span className="text-sm">
                       {invoice.dueDate ? formatDate(invoice.dueDate) : 'Not set'}
                     </span>
@@ -665,8 +665,8 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
                 </div>
                 
                 {invoice.arrears > 0 && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-3">
-                    <p className="text-sm text-red-700">
+                  <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/25 rounded-lg p-2 mb-3">
+                    <p className="text-sm text-red-700 dark:text-red-300">
                       Arrears: {formatCurrency(invoice.arrears)}
                     </p>
                   </div>
@@ -675,7 +675,7 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
                 <div className="flex space-x-2">
                   <button
                     onClick={() => handleViewInvoice(invoice.id)}
-                    className="flex-1 bg-blue-50 text-blue-600 py-2 px-4 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors flex items-center justify-center space-x-1"
+                    className="flex-1 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 py-2 px-4 rounded-lg text-sm font-medium hover:bg-blue-100 dark:hover:bg-blue-500/15 transition-colors flex items-center justify-center space-x-1"
                   >
                     <Eye className="w-4 h-4" />
                     <span>View</span>
@@ -683,7 +683,7 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
                   
                   <button
                     onClick={() => handleEditInvoice(invoice.id)}
-                    className="bg-gray-50 text-gray-600 py-2 px-4 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors"
+                    className="bg-surface-muted text-ink-muted py-2 px-4 rounded-lg text-sm font-medium hover:bg-surface-sunken transition-colors"
                     title="Edit Invoice"
                   >
                     <FileText className="w-4 h-4" />
@@ -692,11 +692,11 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
                   <button
                     onClick={() => handleDownloadPDF(invoice)}
                     disabled={processingPDF === invoice.id}
-                    className="bg-gray-50 text-gray-600 py-2 px-4 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors disabled:opacity-50 flex items-center justify-center"
+                    className="bg-surface-muted text-ink-muted py-2 px-4 rounded-lg text-sm font-medium hover:bg-surface-sunken transition-colors disabled:opacity-50 flex items-center justify-center"
                     title="Download PDF"
                   >
                     {processingPDF === invoice.id ? (
-                      <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                      <div className="w-4 h-4 border-2 border-line-strong border-t-gray-600 rounded-full animate-spin"></div>
                     ) : (
                       <Download className="w-4 h-4" />
                     )}
@@ -704,7 +704,7 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
                   
                   <button
                     onClick={() => handleShareInvoice(invoice)}
-                    className="bg-gray-50 text-gray-600 py-2 px-4 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors"
+                    className="bg-surface-muted text-ink-muted py-2 px-4 rounded-lg text-sm font-medium hover:bg-surface-sunken transition-colors"
                     title="Share Invoice"
                   >
                     <Share className="w-4 h-4" />
@@ -718,22 +718,22 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
 
       {/* Export Modal */}
       {exportModalVisible && (
-        <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
-          <div className="bg-white rounded-t-2xl w-full p-6 space-y-4">
-            <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
+        <div className="ui-sheet-backdrop">
+          <div className="bg-surface rounded-t-2xl w-full ui-sheet-panel p-6 space-y-4">
+            <div className="w-12 h-1 bg-line-strong rounded-full mx-auto mb-4"></div>
             <h3 className="text-lg font-semibold text-center">Export Invoices</h3>
             
             <div className="space-y-3">
               <button
                 onClick={() => setExportModalVisible(false)}
-                className="w-full bg-blue-50 text-blue-600 py-3 px-4 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors text-left"
+                className="w-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 py-3 px-4 rounded-lg text-sm font-medium hover:bg-blue-100 dark:hover:bg-blue-500/15 transition-colors text-left"
               >
                 Export Selected Invoices as PDF
               </button>
               
               <button
                 onClick={() => setExportModalVisible(false)}
-                className="w-full bg-green-50 text-green-600 py-3 px-4 rounded-lg text-sm font-medium hover:bg-green-100 transition-colors text-left"
+                className="w-full bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 py-3 px-4 rounded-lg text-sm font-medium hover:bg-green-100 dark:hover:bg-green-500/15 transition-colors text-left"
               >
                 Export as CSV Report
               </button>
@@ -741,7 +741,7 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
             
             <button
               onClick={() => setExportModalVisible(false)}
-              className="w-full bg-gray-100 text-gray-700 py-3 px-4 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+              className="w-full bg-surface-sunken text-ink-soft py-3 px-4 rounded-lg text-sm font-medium hover:bg-track transition-colors"
             >
               Cancel
             </button>
@@ -751,15 +751,15 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
 
       {/* Share Modal */}
       {shareModalVisible && selectedInvoiceForShare && (
-        <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
-          <div className="bg-white rounded-t-2xl w-full p-6 space-y-4 max-h-[80vh] overflow-y-auto">
-            <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
+        <div className="ui-sheet-backdrop">
+          <div className="bg-surface rounded-t-2xl w-full ui-sheet-panel p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+            <div className="w-12 h-1 bg-line-strong rounded-full mx-auto mb-4"></div>
             <h3 className="text-lg font-semibold text-center">Share Invoice #{selectedInvoiceForShare.invoiceNumber}</h3>
             
             <div className="space-y-3">
               <button
                 onClick={() => handleShareOption('pdf')}
-                className="w-full bg-red-50 text-red-600 py-3 px-4 rounded-lg font-medium hover:bg-red-100 transition-colors text-left flex items-center space-x-3"
+                className="w-full bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 py-3 px-4 rounded-lg font-medium hover:bg-red-100 dark:hover:bg-red-500/15 transition-colors text-left flex items-center space-x-3"
               >
                 <Download className="w-5 h-5" />
                 <div>
@@ -770,7 +770,7 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
               
               <button
                 onClick={() => handleShareOption('whatsapp')}
-                className="w-full bg-green-50 text-green-600 py-3 px-4 rounded-lg font-medium hover:bg-green-100 transition-colors text-left flex items-center space-x-3"
+                className="w-full bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 py-3 px-4 rounded-lg font-medium hover:bg-green-100 dark:hover:bg-green-500/15 transition-colors text-left flex items-center space-x-3"
               >
                 <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
                   <span className="text-white text-xs font-bold">W</span>
@@ -783,7 +783,7 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
               
               <button
                 onClick={() => handleShareOption('email')}
-                className="w-full bg-blue-50 text-blue-600 py-3 px-4 rounded-lg font-medium hover:bg-blue-100 transition-colors text-left flex items-center space-x-3"
+                className="w-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 py-3 px-4 rounded-lg font-medium hover:bg-blue-100 dark:hover:bg-blue-500/15 transition-colors text-left flex items-center space-x-3"
               >
                 <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
                   <span className="text-white text-xs">@</span>
@@ -796,7 +796,7 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
               
               <button
                 onClick={() => handleShareOption('summary')}
-                className="w-full bg-gray-50 text-gray-600 py-3 px-4 rounded-lg font-medium hover:bg-gray-100 transition-colors text-left flex items-center space-x-3"
+                className="w-full bg-surface-muted text-ink-muted py-3 px-4 rounded-lg font-medium hover:bg-surface-sunken transition-colors text-left flex items-center space-x-3"
               >
                 <Share className="w-5 h-5" />
                 <div>
@@ -811,7 +811,7 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
                 setShareModalVisible(false);
                 setSelectedInvoiceForShare(null);
               }}
-              className="w-full bg-gray-100 text-gray-700 py-3 px-4 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+              className="w-full bg-surface-sunken text-ink-soft py-3 px-4 rounded-lg font-medium hover:bg-track transition-colors"
             >
               Cancel
             </button>
@@ -822,7 +822,7 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
       {/* FAB */}
       <button
         onClick={() => handleCreateInvoice()}
-        className="fixed bottom-6 right-6 bg-blue-600 text-white p-4 rounded-full shadow-lg hover:bg-blue-700 transition-colors z-40"
+        className="fixed bottom-6 right-6 bg-brand-600 text-white p-4 rounded-full shadow-lg hover:bg-brand-700 transition-colors z-40 md:mb-0! md:bottom-8 md:right-8"
         style={{ marginBottom: '60px' }}
       >
         <Plus className="w-6 h-6" />
@@ -830,8 +830,8 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
 
       {/* Add Invoice Modal */}
       {showAddInvoiceModal && (
-        <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
-          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[95vh] overflow-hidden">
+        <div className="ui-page-overlay">
+          <div className="bg-surface rounded-lg w-full max-w-4xl max-h-[95vh] overflow-hidden">
             <AddInvoice
               propertyId={prefilledPropertyId}
               tenantId={prefilledTenantId}
@@ -847,8 +847,8 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
 
       {/* View Invoice Modal */}
       {showInvoiceModal && (
-        <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
-          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[95vh] overflow-hidden">
+        <div className="ui-page-overlay">
+          <div className="bg-surface rounded-lg w-full max-w-4xl max-h-[95vh] overflow-hidden">
             <AnInvoice
               invoiceId={invoiceId}
               onBack={handleCloseInvoice}

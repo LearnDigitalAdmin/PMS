@@ -225,24 +225,24 @@ const Property: React.FC<PropertyProps> = ({
 
   if (loading || !property) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-surface-muted">
         <div className="animate-pulse">
           {/* Mobile Loading Header */}
-          <div className="bg-white shadow-sm border-b border-gray-100 sticky top-0 z-10">
+          <div className="bg-surface shadow-sm border-b border-line-soft sticky top-0 z-10">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex items-center h-14 sm:h-16 gap-4">
-                <div className="w-6 h-6 bg-gray-200 rounded"></div>
-                <div className="w-24 sm:w-32 h-6 bg-gray-200 rounded"></div>
+                <div className="w-6 h-6 bg-track rounded"></div>
+                <div className="w-24 sm:w-32 h-6 bg-track rounded"></div>
               </div>
             </div>
           </div>
 
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
-            <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-8 mb-6 sm:mb-8">
-              <div className="w-full h-32 sm:h-48 bg-gray-200 rounded-xl sm:rounded-2xl mb-4 sm:mb-6"></div>
+            <div className="bg-surface rounded-xl sm:rounded-2xl p-4 sm:p-8 mb-6 sm:mb-8">
+              <div className="w-full h-32 sm:h-48 bg-track rounded-xl sm:rounded-2xl mb-4 sm:mb-6"></div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6">
                 {[...Array(4)].map((_, i) => (
-                  <div key={i} className="h-16 sm:h-20 bg-gray-200 rounded-lg sm:rounded-xl"></div>
+                  <div key={i} className="h-16 sm:h-20 bg-track rounded-lg sm:rounded-xl"></div>
                 ))}
               </div>
             </div>
@@ -262,23 +262,23 @@ const Property: React.FC<PropertyProps> = ({
 
 
 return (
-    <div className={isModal ? "fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5" : "min-h-screen bg-gray-50"}>
+    <div className={isModal ? "ui-page-overlay" : "min-h-screen bg-surface-muted"}>
       {/* Sticky Header */}
-      <div className="sticky top-0 bg-white shadow-sm border-b border-gray-100 z-20 flex-shrink-0">
+      <div className="sticky top-0 bg-surface shadow-sm border-b border-line-soft z-20 flex-shrink-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14 sm:h-16">
             <div className="flex items-center flex-1 min-w-0">
               <button
                 onClick={() => setShowDiscardDialog(true)}
-                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all mr-2 sm:mr-3 flex-shrink-0"
+                className="p-2 text-ink-subtle hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-all mr-2 sm:mr-3 flex-shrink-0"
               >
                 <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
-              <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 mr-2 sm:mr-3 flex-shrink-0" />
+              <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 dark:text-blue-400 mr-2 sm:mr-3 flex-shrink-0" />
               <div className="min-w-0 flex-1">
-                <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{property.name}</h1>
+                <h1 className="text-lg sm:text-xl font-bold text-ink truncate">{property.name}</h1>
                 {property.address && (
-                  <p className="text-xs sm:text-sm text-gray-500 flex items-center mt-0.5 truncate">
+                  <p className="text-xs sm:text-sm text-ink-subtle flex items-center mt-0.5 truncate">
                     <MapPin className="w-3 h-3 mr-1 flex-shrink-0" />
                     <span className="truncate">{property.address}</span>
                   </p>
@@ -290,33 +290,33 @@ return (
             <div className="hidden sm:flex items-center gap-2">
               <button
                 onClick={handleOpenTranscriptEditor}
-                className="inline-flex items-center px-3 py-2 text-sm text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-all"
+                className="inline-flex items-center px-3 py-2 text-sm text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/25 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-500/15 transition-all"
               >
                 <PenTool className="w-4 h-4 mr-2" />
                 Add/Edit Transcript
               </button>
               <button
                 onClick={handleOpenTranscript}
-                className="inline-flex items-center px-3 py-2 text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-all"
+                className="inline-flex items-center px-3 py-2 text-sm text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/25 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-500/15 transition-all"
               >
                 <FileText className="w-4 h-4 mr-2" />
                 Transcript
               </button>
 
-              <button onClick={() => setShowSendSms(true)} className="...">
+              <button onClick={() => setShowSendSms(true)} className="inline-flex items-center px-3 py-2 text-sm text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/25 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-500/15 transition-colors">
                 <MessageSquare className="w-4 h-4 mr-2" /> Send SMS
               </button>
 
               <button
                 onClick={handleOpenSheet}
-                className="inline-flex items-center px-3 py-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-all"
+                className="inline-flex items-center px-3 py-2 text-sm text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/25 rounded-lg hover:bg-green-100 dark:hover:bg-green-500/15 transition-all"
               >
                 <ClipboardList className="w-4 h-4 mr-2" />
                 Sheet
               </button>
               <button
                 onClick={openEditModal}
-                className="inline-flex items-center px-4 py-2 text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-all"
+                className="inline-flex items-center px-4 py-2 text-ink-soft bg-surface border border-line rounded-lg hover:bg-surface-muted transition-all"
               >
                 <Edit3 className="w-4 h-4 mr-2" />
                 Edit
@@ -326,7 +326,7 @@ return (
             {/* Mobile Menu Button */}
             <button
               onClick={() => setShowMobileMenu(!showMobileMenu)}
-              className="sm:hidden p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all ml-2"
+              className="sm:hidden p-2 text-ink-subtle hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-all ml-2"
             >
               {showMobileMenu ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
@@ -334,36 +334,36 @@ return (
 
           {/* Mobile Dropdown Menu */}
           {showMobileMenu && (
-            <div className="sm:hidden border-t border-gray-100 py-2">
+            <div className="sm:hidden border-t border-line-soft py-2">
               <button
                 onClick={handleOpenTranscriptEditor}
-                className="w-full flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 transition-all"
+                className="w-full flex items-center px-3 py-2 text-ink-soft hover:bg-surface-muted transition-all"
               >
                 <PenTool className="w-4 h-4 mr-3" />
                 Add/Edit Transcript
               </button>
               <button
                 onClick={handleOpenTranscript}
-                className="w-full flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 transition-all"
+                className="w-full flex items-center px-3 py-2 text-ink-soft hover:bg-surface-muted transition-all"
               >
                 <FileText className="w-4 h-4 mr-3" />
                 Transcript
               </button>
 
-              <button onClick={() => setShowSendSms(true)} className="w-full flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 transition-all">
+              <button onClick={() => setShowSendSms(true)} className="w-full flex items-center px-3 py-2 text-ink-soft hover:bg-surface-muted transition-all">
                 <MessageSquare className="w-4 h-4 mr-3" /> Send SMS
               </button>
 
               <button
                 onClick={handleOpenSheet}
-                className="w-full flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 transition-all"
+                className="w-full flex items-center px-3 py-2 text-ink-soft hover:bg-surface-muted transition-all"
               >
                 <ClipboardList className="w-4 h-4 mr-3" />
                 Sheet
               </button>
               <button
                 onClick={openEditModal}
-                className="w-full flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 transition-all"
+                className="w-full flex items-center px-3 py-2 text-ink-soft hover:bg-surface-muted transition-all"
               >
                 <Edit3 className="w-4 h-4 mr-3" />
                 Edit Property
@@ -377,10 +377,10 @@ return (
       <div className="flex-1 overflow-y-auto pb-safe">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
           {/* Property Overview */}
-          <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6 sm:mb-8">
+          <div className="bg-surface rounded-xl sm:rounded-2xl shadow-sm border border-line-soft overflow-hidden mb-6 sm:mb-8">
             {/* Property Hero */}
-            <div className="h-32 sm:h-48 md:h-64 bg-gradient-to-br from-blue-500 via-blue-600 to-purple-600 relative">
-              <div className="absolute inset-0 bg-black bg-opacity-20"></div>
+            <div className="h-32 sm:h-48 md:h-64 bg-gradient-to-br from-brand-500 via-brand-600 to-indigo-600 relative">
+              <div className="absolute inset-0 bg-black/20"></div>
               <div className="absolute bottom-3 sm:bottom-6 left-3 sm:left-6 text-white">
                 <Building2 className="w-6 h-6 sm:w-8 md:w-10 sm:h-8 md:h-10 mb-2 sm:mb-3 opacity-90" />
                 <h2 className="text-xl sm:text-2xl md:text-3xl font-bold mb-1 sm:mb-2">{property.name}</h2>
@@ -395,69 +395,69 @@ return (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6">
                 {/* Total Tenants */}
                 <div 
-                  className="text-center p-3 sm:p-4 md:p-6 bg-blue-50 rounded-lg sm:rounded-xl md:rounded-2xl cursor-pointer hover:bg-blue-100 transition-colors" 
+                  className="text-center p-3 sm:p-4 md:p-6 bg-blue-50 dark:bg-blue-500/10 rounded-lg sm:rounded-xl md:rounded-2xl cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-500/15 transition-colors" 
                   onClick={() => setShowAddTenant(true)}
                 >
                   <div className="w-8 h-8 sm:w-10 md:w-12 sm:h-10 md:h-12 bg-blue-600 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-4">
                     <Users className="w-4 h-4 sm:w-5 md:w-6 sm:h-5 md:h-6 text-white" />
                   </div>
-                  <div className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-1">
+                  <div className="text-xl sm:text-2xl md:text-3xl font-bold text-ink mb-1">
                     {property.tenants.length}
                   </div>
-                  <div className="text-xs sm:text-sm font-medium text-gray-600">
+                  <div className="text-xs sm:text-sm font-medium text-ink-muted">
                     Total Tenants
                   </div>
-                  <div className="text-xs text-gray-500 mt-1">
+                  <div className="text-xs text-ink-subtle mt-1">
                     {property.tenants.filter((t: { isActive: boolean }) => t.isActive).length} Active
                   </div>
                 </div>
 
                 {/* Monthly Revenue */}
-                <div className="text-center p-3 sm:p-4 md:p-6 bg-green-50 rounded-lg sm:rounded-xl md:rounded-2xl">
+                <div className="text-center p-3 sm:p-4 md:p-6 bg-green-50 dark:bg-green-500/10 rounded-lg sm:rounded-xl md:rounded-2xl">
                   <div className="w-8 h-8 sm:w-10 md:w-12 sm:h-10 md:h-12 bg-green-600 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-4">
                     <DollarSign className="w-4 h-4 sm:w-5 md:w-6 sm:h-5 md:h-6 text-white" />
                   </div>
-                  <div className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-1">
+                  <div className="text-xl sm:text-2xl md:text-3xl font-bold text-ink mb-1">
                     ${property.monthlyRevenue.toLocaleString()}
                   </div>
-                  <div className="text-xs sm:text-sm font-medium text-gray-600">
+                  <div className="text-xs sm:text-sm font-medium text-ink-muted">
                     Monthly Potential
                   </div>
                   {dashboardData && (
-                    <div className="text-xs text-gray-500 mt-1">
+                    <div className="text-xs text-ink-subtle mt-1">
                       ${dashboardData.monthlyRevenue.toLocaleString()} Collected
                     </div>
                   )}
                 </div>
 
                 {/* Occupancy Rate */}
-                <div className="text-center p-3 sm:p-4 md:p-6 bg-purple-50 rounded-lg sm:rounded-xl md:rounded-2xl">
+                <div className="text-center p-3 sm:p-4 md:p-6 bg-purple-50 dark:bg-purple-500/10 rounded-lg sm:rounded-xl md:rounded-2xl">
                   <div className="w-8 h-8 sm:w-10 md:w-12 sm:h-10 md:h-12 bg-purple-600 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-4">
                     <TrendingUp className="w-4 h-4 sm:w-5 md:w-6 sm:h-5 md:h-6 text-white" />
                   </div>
-                  <div className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-1">
+                  <div className="text-xl sm:text-2xl md:text-3xl font-bold text-ink mb-1">
                     {property.occupancyRate.toFixed(0)}%
                   </div>
-                  <div className="text-xs sm:text-sm font-medium text-gray-600">
+                  <div className="text-xs sm:text-sm font-medium text-ink-muted">
                     Occupancy Rate
                   </div>
-                  <div className="text-xs text-gray-500 mt-1">
+                  <div className="text-xs text-ink-subtle mt-1">
                     {property.tenants.filter((t: { isActive: boolean }) => t.isActive).length} / {property.maxUnits} Units
                   </div>
                 </div>
 
                 {/* Commission */}
-                <div className="text-center p-3 sm:p-4 md:p-6 bg-orange-50 rounded-lg sm:rounded-xl md:rounded-2xl">
+                <div className="text-center p-3 sm:p-4 md:p-6 bg-orange-50 dark:bg-orange-500/10 rounded-lg sm:rounded-xl md:rounded-2xl">
                   <div className="w-8 h-8 sm:w-10 md:w-12 sm:h-10 md:h-12 bg-orange-600 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-4">
                     <Percent className="w-4 h-4 sm:w-5 md:w-6 sm:h-5 md:h-6 text-white" />
                   </div>
-                  <div className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-1">
+                  <div className="text-xl sm:text-2xl md:text-3xl font-bold text-ink mb-1">
                     {property.agentCommissionRate}%
                   </div>
-                  <div className="text-xs sm:text-sm font-medium text-gray-600">
+                  <div className="text-xs sm:text-sm font-medium text-ink-muted">
                     Commission Rate
                   </div>
-                  <div className="text-xs text-green-700 mt-1">
+                  <div className="text-xs text-green-700 dark:text-green-300 mt-1">
                     KES {property.agentIncome} this month
                   </div>
                 </div>
@@ -468,22 +468,22 @@ return (
           {/* Monthly Overview */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 lg:gap-8 mb-6 sm:mb-8">
             {/* Current Month Stats */}
-            <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
+            <div className="bg-surface rounded-xl sm:rounded-2xl shadow-sm border border-line-soft p-4 sm:p-6">
               <div className="flex items-center justify-between mb-4 sm:mb-6">
-                <h3 className="text-base sm:text-lg font-bold text-gray-900">Monthly Overview</h3>
+                <h3 className="text-base sm:text-lg font-bold text-ink">Monthly Overview</h3>
                 <div className="flex items-center gap-1 sm:gap-2">
                   <button
                     onClick={() => navigateMonth('prev')}
-                    className="p-1.5 sm:p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
+                    className="p-1.5 sm:p-2 text-ink-faint hover:text-ink-muted hover:bg-surface-sunken rounded-lg transition-all"
                   >
                     <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4" />
                   </button>
-                  <span className="text-xs sm:text-sm font-medium text-gray-700 min-w-[100px] sm:min-w-[120px] text-center">
+                  <span className="text-xs sm:text-sm font-medium text-ink-soft min-w-[100px] sm:min-w-[120px] text-center">
                     {getMonthName(selectedMonth)}
                   </span>
                   <button
                     onClick={() => navigateMonth('next')}
-                    className="p-1.5 sm:p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
+                    className="p-1.5 sm:p-2 text-ink-faint hover:text-ink-muted hover:bg-surface-sunken rounded-lg transition-all"
                   >
                     <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4" />
                   </button>
@@ -492,46 +492,46 @@ return (
 
               {dashboardData && (
                 <div className="space-y-3 sm:space-y-4">
-                  <div className="flex items-center justify-between p-3 sm:p-4 bg-gray-50 rounded-lg sm:rounded-xl">
+                  <div className="flex items-center justify-between p-3 sm:p-4 bg-surface-muted rounded-lg sm:rounded-xl">
                     <div className="flex items-center">
-                      <Receipt className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 mr-2 sm:mr-3" />
-                      <span className="font-medium text-gray-700 text-sm sm:text-base">Revenue Collected</span>
+                      <Receipt className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 dark:text-blue-400 mr-2 sm:mr-3" />
+                      <span className="font-medium text-ink-soft text-sm sm:text-base">Revenue Collected</span>
                     </div>
-                    <span className="text-lg sm:text-xl font-bold text-green-600">
+                    <span className="text-lg sm:text-xl font-bold text-green-600 dark:text-green-400">
                       ${dashboardData.monthlyRevenue.toLocaleString()}
                     </span>
                   </div>
 
                   {property.agentCommissionRate > 0 && (
                     <>
-                      <div className="flex items-center justify-between p-3 sm:p-4 bg-orange-50 rounded-lg sm:rounded-xl">
+                      <div className="flex items-center justify-between p-3 sm:p-4 bg-orange-50 dark:bg-orange-500/10 rounded-lg sm:rounded-xl">
                         <div className="flex items-center">
-                          <Percent className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600 mr-2 sm:mr-3" />
-                          <span className="font-medium text-gray-700 text-sm sm:text-base">Commission ({property.agentCommissionRate}%)</span>
+                          <Percent className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600 dark:text-orange-400 mr-2 sm:mr-3" />
+                          <span className="font-medium text-ink-soft text-sm sm:text-base">Commission ({property.agentCommissionRate}%)</span>
                         </div>
-                        <span className="text-lg sm:text-xl font-bold text-orange-600">
+                        <span className="text-lg sm:text-xl font-bold text-orange-600 dark:text-orange-400">
                           -${commissionAmount.toLocaleString()}
                         </span>
                       </div>
 
-                      <div className="flex items-center justify-between p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl">
+                      <div className="flex items-center justify-between p-3 sm:p-4 bg-blue-50 dark:bg-blue-500/10 rounded-lg sm:rounded-xl">
                         <div className="flex items-center">
-                          <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 mr-2 sm:mr-3" />
-                          <span className="font-medium text-gray-700 text-sm sm:text-base">Net Revenue</span>
+                          <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 dark:text-blue-400 mr-2 sm:mr-3" />
+                          <span className="font-medium text-ink-soft text-sm sm:text-base">Net Revenue</span>
                         </div>
-                        <span className="text-lg sm:text-xl font-bold text-blue-600">
+                        <span className="text-lg sm:text-xl font-bold text-blue-600 dark:text-blue-400">
                           ${netRevenue.toLocaleString()}
                         </span>
                       </div>
                     </>
                   )}
 
-                  <div className="flex items-center justify-between p-3 sm:p-4 bg-red-50 rounded-lg sm:rounded-xl">
+                  <div className="flex items-center justify-between p-3 sm:p-4 bg-red-50 dark:bg-red-500/10 rounded-lg sm:rounded-xl">
                     <div className="flex items-center">
-                      <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-red-600 mr-2 sm:mr-3" />
-                      <span className="font-medium text-gray-700 text-sm sm:text-base">Total Arrears</span>
+                      <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-red-600 dark:text-red-400 mr-2 sm:mr-3" />
+                      <span className="font-medium text-ink-soft text-sm sm:text-base">Total Arrears</span>
                     </div>
-                    <span className="text-lg sm:text-xl font-bold text-red-600">
+                    <span className="text-lg sm:text-xl font-bold text-red-600 dark:text-red-400">
                       ${dashboardData.totalArrears.toLocaleString()}
                     </span>
                   </div>
@@ -540,48 +540,48 @@ return (
             </div>
 
             {/* Bills Summary */}
-            <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
-              <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-4 sm:mb-6">Bills Summary</h3>
+            <div className="bg-surface rounded-xl sm:rounded-2xl shadow-sm border border-line-soft p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-bold text-ink mb-4 sm:mb-6">Bills Summary</h3>
               
               {dashboardData && (
                 <div className="space-y-3 sm:space-y-4">
-                  <div className="flex items-center justify-between p-3 sm:p-4 bg-green-50 rounded-lg sm:rounded-xl">
+                  <div className="flex items-center justify-between p-3 sm:p-4 bg-green-50 dark:bg-green-500/10 rounded-lg sm:rounded-xl">
                     <div className="flex items-center">
                       <div className="w-3 h-3 bg-green-500 rounded-full mr-2 sm:mr-3"></div>
-                      <span className="font-medium text-gray-700 text-sm sm:text-base">Paid Invoices</span>
+                      <span className="font-medium text-ink-soft text-sm sm:text-base">Paid Invoices</span>
                     </div>
                     <div className="text-right">
-                      <div className="text-lg sm:text-xl font-bold text-green-600">
+                      <div className="text-lg sm:text-xl font-bold text-green-600 dark:text-green-400">
                         {dashboardData.paidInvoices}
                       </div>
-                      <div className="text-xs text-gray-500">invoices</div>
+                      <div className="text-xs text-ink-subtle">invoices</div>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between p-3 sm:p-4 bg-red-50 rounded-lg sm:rounded-xl">
+                  <div className="flex items-center justify-between p-3 sm:p-4 bg-red-50 dark:bg-red-500/10 rounded-lg sm:rounded-xl">
                     <div className="flex items-center">
                       <div className="w-3 h-3 bg-red-500 rounded-full mr-2 sm:mr-3"></div>
-                      <span className="font-medium text-gray-700 text-sm sm:text-base">Unpaid Invoices</span>
+                      <span className="font-medium text-ink-soft text-sm sm:text-base">Unpaid Invoices</span>
                     </div>
                     <div className="text-right">
-                      <div className="text-lg sm:text-xl font-bold text-red-600">
+                      <div className="text-lg sm:text-xl font-bold text-red-600 dark:text-red-400">
                         {dashboardData.unpaidInvoices}
                       </div>
-                      <div className="text-xs text-gray-500">invoices</div>
+                      <div className="text-xs text-ink-subtle">invoices</div>
                     </div>
                   </div>
 
-                  <div className="pt-3 sm:pt-4 border-t border-gray-100">
+                  <div className="pt-3 sm:pt-4 border-t border-line-soft">
                     <div className="flex items-center justify-between">
-                      <span className="font-medium text-gray-700 text-sm sm:text-base">Payment Rate</span>
-                      <span className="text-base sm:text-lg font-bold text-gray-900">
+                      <span className="font-medium text-ink-soft text-sm sm:text-base">Payment Rate</span>
+                      <span className="text-base sm:text-lg font-bold text-ink">
                         {dashboardData.paidInvoices + dashboardData.unpaidInvoices > 0 
                           ? Math.round((dashboardData.paidInvoices / (dashboardData.paidInvoices + dashboardData.unpaidInvoices)) * 100)
                           : 0}%
                       </span>
                     </div>
                     
-                    <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                    <div className="w-full bg-track rounded-full h-2 mt-2">
                       <div 
                         className="bg-green-500 h-2 rounded-full transition-all duration-300"
                         style={{ 
@@ -620,15 +620,15 @@ return (
 
       {/* Edit Property Modal */}
       {showEditModal && (
-        <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md transform transition-all max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-100">
-              <h2 className="text-xl font-bold text-gray-900">Edit Property</h2>
+        <div className="ui-sheet-backdrop">
+          <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md transform transition-all max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-line-soft">
+              <h2 className="text-xl font-bold text-ink">Edit Property</h2>
             </div>
             
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-ink-soft mb-2">
                   Property Name *
                 </label>
                 <input
@@ -636,7 +636,7 @@ return (
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
-                    formErrors.name ? 'border-red-500' : 'border-gray-200'
+                    formErrors.name ? 'border-red-500' : 'border-line'
                   }`}
                   placeholder="Enter property name"
                 />
@@ -646,33 +646,33 @@ return (
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-ink-soft mb-2">
                   Address
                 </label>
                 <input
                   type="text"
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  className="w-full px-4 py-3 border border-line rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   placeholder="Enter property address"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-ink-soft mb-2">
                   Description
                 </label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={3}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
+                  className="w-full px-4 py-3 border border-line rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
                   placeholder="Enter property description"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-ink-soft mb-2">
                   Agent Commission Rate (%)
                 </label>
                 <input
@@ -683,7 +683,7 @@ return (
                   max="100"
                   step="0.1"
                   className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
-                    formErrors.agentCommissionRate ? 'border-red-500' : 'border-gray-200'
+                    formErrors.agentCommissionRate ? 'border-red-500' : 'border-line'
                   }`}
                   placeholder="0"
                 />
@@ -693,10 +693,10 @@ return (
               </div>
             </div>
 
-            <div className="p-6 bg-gray-50 rounded-b-2xl flex gap-3">
+            <div className="p-6 bg-surface-muted rounded-b-2xl flex gap-3">
               <button
                 onClick={() => setShowEditModal(false)}
-                className="flex-1 px-4 py-3 text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-all font-medium"
+                className="flex-1 px-4 py-3 text-ink-soft bg-surface border border-line rounded-xl hover:bg-surface-muted transition-all font-medium"
               >
                 Cancel
               </button>
@@ -713,22 +713,22 @@ return (
 
       {/* Discard Dialog */}
       {showDiscardDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-surface rounded-lg max-w-md w-full">
             <div className="p-6">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                  <AlertCircle className="w-5 h-5 text-red-600" />
+                <div className="w-10 h-10 bg-red-100 dark:bg-red-500/15 rounded-full flex items-center justify-center">
+                  <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
                 </div>
                 <h3 className="text-lg font-semibold">Close View?</h3>
               </div>
-              <p className="text-gray-600 mb-6">
+              <p className="text-ink-muted mb-6">
                 Are you sure you want to close?
               </p>
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowDiscardDialog(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                  className="flex-1 px-4 py-2 border border-line-strong text-ink-soft rounded-lg hover:bg-surface-muted"
                 >
                   Continue Editing
                 </button>

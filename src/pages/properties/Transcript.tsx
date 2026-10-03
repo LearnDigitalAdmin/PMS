@@ -181,15 +181,15 @@ const Transcript: React.FC<TranscriptProps> = ({
   const showTranscriptShareOptions = (): Promise<{ method: 'whatsapp' | 'general'; phoneNumber?: string } | null> => {
     return new Promise((resolve) => {
       const options = document.createElement('div');
-      options.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+      options.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
       options.innerHTML = `
         <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4">
-          <h3 class="text-lg font-bold text-gray-900 mb-4">Send Transcript to Landlord</h3>
+          <h3 class="text-lg font-bold text-ink mb-4">Send Transcript to Landlord</h3>
           <p class="text-gray-600 mb-6">Choose how to send the monthly remittance transcript to <strong>${transcript?.landlordName}</strong></p>
           
           <div class="space-y-4">
             <!-- WhatsApp Option -->
-            <div class="border border-gray-200 rounded-lg p-4">
+            <div class="border border-line rounded-lg p-4">
               <label class="flex items-start gap-3 cursor-pointer">
                 <input type="radio" name="shareMethod" value="whatsapp" class="mt-1" ${transcript?.landlordContact ? 'checked' : ''}>
                 <div class="flex-1">
@@ -199,18 +199,18 @@ const Transcript: React.FC<TranscriptProps> = ({
                     </div>
                     <span class="font-medium text-gray-900">Send via WhatsApp</span>
                   </div>
-                  <input type="tel" 
-                         id="phoneInput" 
-                         placeholder="Enter landlord's phone number" 
+                  <input type="tel"
+                         id="phoneInput"
+                         placeholder="Enter landlord's phone number"
                          value="${transcript?.landlordContact || ''}"
-                         class="w-full mt-2 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                  <p class="text-xs text-gray-500 mt-1">Direct delivery with read receipts</p>
+                         class="w-full mt-2 px-3 py-2 border border-line-strong rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                  <p class="text-xs text-ink-subtle mt-1">Direct delivery with read receipts</p>
                 </div>
               </label>
             </div>
 
             <!-- General Share Option -->
-            <div class="border border-gray-200 rounded-lg p-4">
+            <div class="border border-line rounded-lg p-4">
               <label class="flex items-start gap-3 cursor-pointer">
                 <input type="radio" name="shareMethod" value="general" class="mt-1" ${!transcript?.landlordContact ? 'checked' : ''}>
                 <div class="flex-1">
@@ -227,7 +227,7 @@ const Transcript: React.FC<TranscriptProps> = ({
           </div>
 
           <div class="flex gap-3 mt-6">
-            <button id="cancel-transcript" class="flex-1 px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <button id="cancel-transcript" class="flex-1 px-4 py-2 text-ink-muted border border-line-strong rounded-lg hover:bg-surface-muted transition-colors">
               Cancel
             </button>
             <button id="send-transcript" class="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
@@ -374,13 +374,13 @@ const Transcript: React.FC<TranscriptProps> = ({
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4">
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-surface rounded-2xl p-8 max-w-md w-full mx-4">
           <div className="animate-pulse">
-            <div className="h-6 bg-gray-200 rounded mb-4"></div>
-            <div className="h-4 bg-gray-200 rounded mb-2"></div>
-            <div className="h-4 bg-gray-200 rounded mb-2"></div>
-            <div className="h-4 bg-gray-200 rounded"></div>
+            <div className="h-6 bg-track rounded mb-4"></div>
+            <div className="h-4 bg-track rounded mb-2"></div>
+            <div className="h-4 bg-track rounded mb-2"></div>
+            <div className="h-4 bg-track rounded"></div>
           </div>
         </div>
       </div>
@@ -388,10 +388,10 @@ const Transcript: React.FC<TranscriptProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6 flex-shrink-0">
+        <div className="bg-gradient-to-r from-brand-600 to-indigo-700 text-white p-6 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <FileText className="w-8 h-8" />
@@ -436,14 +436,14 @@ const Transcript: React.FC<TranscriptProps> = ({
           {error ? (
             <div className="p-8 text-center">
               <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Error Loading Transcript</h3>
-              <p className="text-gray-600">{error}</p>
+              <h3 className="text-lg font-semibold text-ink mb-2">Error Loading Transcript</h3>
+              <p className="text-ink-muted">{error}</p>
             </div>
           ) : !transcript ? (
             <div className="p-8 text-center">
-              <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Transcript Available</h3>
-              <p className="text-gray-600 mb-4">
+              <FileText className="w-16 h-16 text-ink-faint mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-ink mb-2">No Transcript Available</h3>
+              <p className="text-ink-muted mb-4">
                 No transcript has been generated for {getMonthName(currentMonth)} yet.
               </p>
               <button
@@ -456,50 +456,50 @@ const Transcript: React.FC<TranscriptProps> = ({
           ) : (
             <div className="p-8 space-y-8">
               {/* Property & Landlord Information */}
-              <div className="bg-gray-50 rounded-xl p-6">
+              <div className="bg-surface-muted rounded-xl p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
                       <Building2 className="w-5 h-5" />
                       Property Information
                     </h3>
                     <div className="space-y-3">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-700">Property:</span>
-                        <span className="text-gray-900">{transcript.property.name}</span>
+                        <span className="font-medium text-ink-soft">Property:</span>
+                        <span className="text-ink">{transcript.property.name}</span>
                       </div>
                       {transcript.property.address && (
                         <div className="flex items-start gap-2">
-                          <MapPin className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
-                          <span className="text-gray-600">{transcript.property.address}</span>
+                          <MapPin className="w-4 h-4 text-ink-subtle mt-0.5 flex-shrink-0" />
+                          <span className="text-ink-muted">{transcript.property.address}</span>
                         </div>
                       )}
                       <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-gray-500" />
-                        <span className="text-gray-600">Period: {getMonthName(transcript.billingMonth)}</span>
+                        <Calendar className="w-4 h-4 text-ink-subtle" />
+                        <span className="text-ink-muted">Period: {getMonthName(transcript.billingMonth)}</span>
                       </div>
                     </div>
                   </div>
 
                   <div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
                       <User className="w-5 h-5" />
                       Landlord Information
                     </h3>
                     <div className="space-y-3">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-700">Name:</span>
-                        <span className="text-gray-900">{transcript.landlordName}</span>
+                        <span className="font-medium text-ink-soft">Name:</span>
+                        <span className="text-ink">{transcript.landlordName}</span>
                       </div>
                       {transcript.landlordContact && (
                         <div className="flex items-center gap-2">
-                          <Phone className="w-4 h-4 text-gray-500" />
-                          <span className="text-gray-600">{transcript.landlordContact}</span>
+                          <Phone className="w-4 h-4 text-ink-subtle" />
+                          <span className="text-ink-muted">{transcript.landlordContact}</span>
                         </div>
                       )}
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-700">Units:</span>
-                        <span className="text-gray-600">
+                        <span className="font-medium text-ink-soft">Units:</span>
+                        <span className="text-ink-muted">
                           {transcript.tenantSummary.activeTenants} occupied / {transcript.property.maxUnits} total
                         </span>
                       </div>
@@ -510,20 +510,20 @@ const Transcript: React.FC<TranscriptProps> = ({
                 {/* Status Badge */}
                 <div className="mt-6 flex justify-between items-center">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-700">Status:</span>
+                    <span className="text-sm font-medium text-ink-soft">Status:</span>
                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      transcript.status === 'draft' ? 'bg-yellow-100 text-yellow-800' :
-                      transcript.status === 'finalized' ? 'bg-blue-100 text-blue-800' :
-                      transcript.status === 'sent' ? 'bg-green-100 text-green-800' :
-                      transcript.status === 'acknowledged' ? 'bg-purple-100 text-purple-800' :
-                      'bg-gray-100 text-gray-800'
+                      transcript.status === 'draft' ? 'bg-yellow-100 dark:bg-yellow-500/15 text-yellow-800 dark:text-yellow-300' :
+                      transcript.status === 'finalized' ? 'bg-blue-100 dark:bg-blue-500/15 text-blue-800 dark:text-blue-300' :
+                      transcript.status === 'sent' ? 'bg-green-100 dark:bg-green-500/15 text-green-800 dark:text-green-300' :
+                      transcript.status === 'acknowledged' ? 'bg-purple-100 dark:bg-purple-500/15 text-purple-800 dark:text-purple-300' :
+                      'bg-surface-sunken text-ink'
                     }`}>
                       {transcript.status.charAt(0).toUpperCase() + transcript.status.slice(1)}
                     </span>
                   </div>
                   
                   {transcript.sentDate && (
-                    <div className="text-sm text-gray-600">
+                    <div className="text-sm text-ink-muted">
                       Sent: {new Date(transcript.sentDate).toLocaleDateString()}
                     </div>
                   )}
@@ -531,7 +531,7 @@ const Transcript: React.FC<TranscriptProps> = ({
               </div>
 
               {/* Financial Summary */}
-              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <div className="bg-surface border border-line rounded-xl overflow-hidden">
                 <div className="bg-gray-800 text-white p-4">
                   <h3 className="text-lg font-bold">Financial Summary</h3>
                 </div>
@@ -542,7 +542,7 @@ const Transcript: React.FC<TranscriptProps> = ({
                       .sort((a, b) => a.sortOrder - b.sortOrder)
                       .map((item, index) => (
                         <div key={item.id} className={`flex justify-between items-center py-3 ${
-                          index > 0 ? 'border-t border-gray-100' : ''
+                          index > 0 ? 'border-t border-line-soft' : ''
                         }`}>
                           <div className="flex items-center gap-3">
                             <div className={`w-3 h-3 rounded-full ${
@@ -553,14 +553,14 @@ const Transcript: React.FC<TranscriptProps> = ({
                               'bg-gray-500'
                             }`}></div>
                             <div>
-                              <span className="font-medium text-gray-900">{item.description}</span>
+                              <span className="font-medium text-ink">{item.description}</span>
                               {item.category && (
-                                <span className="text-sm text-gray-500 ml-2">({item.category})</span>
+                                <span className="text-sm text-ink-subtle ml-2">({item.category})</span>
                               )}
                             </div>
                           </div>
                           <div className={`text-lg font-bold ${
-                            item.isDeductible ? 'text-red-600' : 'text-green-600'
+                            item.isDeductible ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'
                           }`}>
                             {item.isDeductible ? '-' : '+'}${item.amount.toLocaleString()}
                           </div>
@@ -571,23 +571,23 @@ const Transcript: React.FC<TranscriptProps> = ({
                   {/* Totals */}
                   <div className="mt-6 pt-6 border-t-2 border-gray-800 space-y-3">
                     <div className="flex justify-between items-center">
-                      <span className="font-medium text-gray-700">Gross Income:</span>
-                      <span className="text-lg font-bold text-green-600">
+                      <span className="font-medium text-ink-soft">Gross Income:</span>
+                      <span className="text-lg font-bold text-green-600 dark:text-green-400">
                         ${(transcript.grossRentCollected + transcript.totalWaterCharges + 
                            transcript.totalPowerCharges + transcript.totalOtherCharges).toLocaleString()}
                       </span>
                     </div>
                     
                     <div className="flex justify-between items-center">
-                      <span className="font-medium text-gray-700">Total Deductions:</span>
-                      <span className="text-lg font-bold text-red-600">
+                      <span className="font-medium text-ink-soft">Total Deductions:</span>
+                      <span className="text-lg font-bold text-red-600 dark:text-red-400">
                         -${transcript.totalDeductibles.toLocaleString()}
                       </span>
                     </div>
                     
-                    <div className="flex justify-between items-center bg-blue-50 p-4 rounded-lg">
-                      <span className="text-xl font-bold text-gray-900">Net Amount to Landlord:</span>
-                      <span className="text-2xl font-bold text-blue-600">
+                    <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-500/10 p-4 rounded-lg">
+                      <span className="text-xl font-bold text-ink">Net Amount to Landlord:</span>
+                      <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
                         ${transcript.netAmountToLandlord.toLocaleString()}
                       </span>
                     </div>
@@ -596,33 +596,33 @@ const Transcript: React.FC<TranscriptProps> = ({
               </div>
 
               {/* Tenant Summary */}
-              <div className="bg-gray-50 rounded-xl p-6">
-                <h3 className="text-lg font-bold text-gray-900 mb-4">Tenant Summary</h3>
+              <div className="bg-surface-muted rounded-xl p-6">
+                <h3 className="text-lg font-bold text-ink mb-4">Tenant Summary</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-gray-900">{transcript.tenantSummary.totalTenants}</div>
-                    <div className="text-sm text-gray-600">Total Tenants</div>
+                    <div className="text-2xl font-bold text-ink">{transcript.tenantSummary.totalTenants}</div>
+                    <div className="text-sm text-ink-muted">Total Tenants</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-green-600">{transcript.tenantSummary.activeTenants}</div>
-                    <div className="text-sm text-gray-600">Active</div>
+                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">{transcript.tenantSummary.activeTenants}</div>
+                    <div className="text-sm text-ink-muted">Active</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600">{transcript.tenantSummary.paidInvoices}</div>
-                    <div className="text-sm text-gray-600">Paid Bills</div>
+                    <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{transcript.tenantSummary.paidInvoices}</div>
+                    <div className="text-sm text-ink-muted">Paid Bills</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-red-600">{transcript.tenantSummary.unpaidInvoices}</div>
-                    <div className="text-sm text-gray-600">Unpaid Bills</div>
+                    <div className="text-2xl font-bold text-red-600 dark:text-red-400">{transcript.tenantSummary.unpaidInvoices}</div>
+                    <div className="text-sm text-ink-muted">Unpaid Bills</div>
                   </div>
                 </div>
               </div>
 
               {/* Notes */}
               {transcript.notes && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
-                  <h3 className="text-lg font-bold text-gray-900 mb-3">Additional Notes</h3>
-                  <p className="text-gray-700 leading-relaxed">{transcript.notes}</p>
+                <div className="bg-yellow-50 dark:bg-yellow-500/10 border border-yellow-200 dark:border-yellow-500/25 rounded-xl p-6">
+                  <h3 className="text-lg font-bold text-ink mb-3">Additional Notes</h3>
+                  <p className="text-ink-soft leading-relaxed">{transcript.notes}</p>
                 </div>
               )}
             </div>
@@ -631,15 +631,15 @@ const Transcript: React.FC<TranscriptProps> = ({
 
         {/* Footer Actions */}
         {transcript && (
-          <div className="bg-gray-50 p-6 flex-shrink-0">
+          <div className="bg-surface-muted p-6 flex-shrink-0">
             <div className="flex flex-wrap gap-3 justify-end">
               <button
                 onClick={handlePreview}
                 disabled={isProcessing}
-                className={`flex items-center gap-2 px-4 py-2 text-purple-700 bg-purple-50 border border-purple-200 rounded-lg transition-colors ${
+                className={`flex items-center gap-2 px-4 py-2 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/25 rounded-lg transition-colors ${
                   isProcessing 
                     ? 'opacity-50 cursor-not-allowed' 
-                    : 'hover:bg-purple-100'
+                    : 'hover:bg-purple-100 dark:hover:bg-purple-500/15'
                 }`}
               >
                 <Eye className="w-4 h-4" />
@@ -649,10 +649,10 @@ const Transcript: React.FC<TranscriptProps> = ({
               <button
                 onClick={handleDownload}
                 disabled={isProcessing}
-                className={`flex items-center gap-2 px-4 py-2 text-blue-700 bg-blue-50 border border-blue-200 rounded-lg transition-colors ${
+                className={`flex items-center gap-2 px-4 py-2 text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/25 rounded-lg transition-colors ${
                   isProcessing 
                     ? 'opacity-50 cursor-not-allowed' 
-                    : 'hover:bg-blue-100'
+                    : 'hover:bg-blue-100 dark:hover:bg-blue-500/15'
                 }`}
               >
                 <Download className="w-4 h-4" />
@@ -662,10 +662,10 @@ const Transcript: React.FC<TranscriptProps> = ({
               <button
                 onClick={handleSave}
                 disabled={isProcessing}
-                className={`flex items-center gap-2 px-4 py-2 text-green-700 bg-green-50 border border-green-200 rounded-lg transition-colors ${
+                className={`flex items-center gap-2 px-4 py-2 text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/25 rounded-lg transition-colors ${
                   isProcessing 
                     ? 'opacity-50 cursor-not-allowed' 
-                    : 'hover:bg-green-100'
+                    : 'hover:bg-green-100 dark:hover:bg-green-500/15'
                 }`}
               >
                 <Save className="w-4 h-4" />

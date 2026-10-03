@@ -203,35 +203,35 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
 
   const getPaymentStatusBadge = (tenant: TenantWithInvoices) => {
     if (!tenant.currentInvoice) {
-      return <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">No Invoice</span>;
+      return <span className="px-2 py-1 bg-surface-sunken text-ink-muted text-xs rounded-full">No Invoice</span>;
     }
 
     if (tenant.currentInvoice.isPaid) {
-      return <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Paid</span>;
+      return <span className="px-2 py-1 bg-green-100 dark:bg-green-500/15 text-green-800 dark:text-green-300 text-xs rounded-full">Paid</span>;
     }
 
     const dueDate = tenant.currentInvoice.dueDate ? new Date(tenant.currentInvoice.dueDate) : null;
     const isOverdue = dueDate && dueDate < new Date();
 
     if (isOverdue) {
-      return <span className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">Overdue</span>;
+      return <span className="px-2 py-1 bg-red-100 dark:bg-red-500/15 text-red-800 dark:text-red-300 text-xs rounded-full">Overdue</span>;
     }
 
-    return <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full">Pending</span>;
+    return <span className="px-2 py-1 bg-yellow-100 dark:bg-yellow-500/15 text-yellow-800 dark:text-yellow-300 text-xs rounded-full">Pending</span>;
   };
 
   const getRiskBadge = (screening: ScreeningQuickView | undefined) => {
     if (!screening) {
-      return <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full flex items-center gap-1">
+      return <span className="px-2 py-1 bg-surface-sunken text-ink-muted text-xs rounded-full flex items-center gap-1">
         <Activity className="h-3 w-3" />
         No Score
       </span>;
     }
 
     const riskConfig = {
-      low: { bg: 'bg-green-100', text: 'text-green-800', icon: CheckCircle, label: 'Low Risk' },
-      medium: { bg: 'bg-yellow-100', text: 'text-yellow-800', icon: AlertTriangle, label: 'Medium Risk' },
-      high: { bg: 'bg-red-100', text: 'text-red-800', icon: XCircle, label: 'High Risk' }
+      low: { bg: 'bg-green-100 dark:bg-green-500/15', text: 'text-green-800 dark:text-green-300', icon: CheckCircle, label: 'Low Risk' },
+      medium: { bg: 'bg-yellow-100 dark:bg-yellow-500/15', text: 'text-yellow-800 dark:text-yellow-300', icon: AlertTriangle, label: 'Medium Risk' },
+      high: { bg: 'bg-red-100 dark:bg-red-500/15', text: 'text-red-800 dark:text-red-300', icon: XCircle, label: 'High Risk' }
     };
 
     const config = riskConfig[screening.risk_level];
@@ -248,22 +248,22 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
   const getScreeningScoreBadge = (screening: ScreeningQuickView | undefined) => {
     if (!screening) return null;
 
-    let bgColor = 'bg-gray-100';
-    let textColor = 'text-gray-800';
-    let borderColor = 'border-gray-300';
+    let bgColor = 'bg-surface-sunken';
+    let textColor = 'text-ink';
+    let borderColor = 'border-line-strong';
 
     if (screening.screening_score >= 75) {
-      bgColor = 'bg-green-50';
-      textColor = 'text-green-700';
-      borderColor = 'border-green-300';
+      bgColor = 'bg-green-50 dark:bg-green-500/10';
+      textColor = 'text-green-700 dark:text-green-300';
+      borderColor = 'border-green-300 dark:border-green-500/40';
     } else if (screening.screening_score >= 50) {
-      bgColor = 'bg-yellow-50';
-      textColor = 'text-yellow-700';
-      borderColor = 'border-yellow-300';
+      bgColor = 'bg-yellow-50 dark:bg-yellow-500/10';
+      textColor = 'text-yellow-700 dark:text-yellow-300';
+      borderColor = 'border-yellow-300 dark:border-yellow-500/40';
     } else {
-      bgColor = 'bg-red-50';
-      textColor = 'text-red-700';
-      borderColor = 'border-red-300';
+      bgColor = 'bg-red-50 dark:bg-red-500/10';
+      textColor = 'text-red-700 dark:text-red-300';
+      borderColor = 'border-red-300 dark:border-red-500/40';
     }
 
     return (
@@ -278,7 +278,7 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
     if (!screening || screening.early_warning_flags.length === 0) return null;
 
     return (
-      <div className="flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded-full">
+      <div className="flex items-center gap-1 px-2 py-1 bg-orange-100 dark:bg-orange-500/15 text-orange-800 dark:text-orange-300 text-xs rounded-full">
         <AlertCircle className="h-3 w-3" />
         {screening.early_warning_flags.length} Alert{screening.early_warning_flags.length > 1 ? 's' : ''}
       </div>
@@ -308,9 +308,9 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
 
   const renderScreeningDetails = (screening: ScreeningQuickView) => {
     return (
-      <div className="mt-4 pt-4 border-t border-gray-200">
-        <h5 className="font-medium text-gray-900 mb-3 text-sm sm:text-base flex items-center gap-2">
-          <Shield className="h-4 w-4 text-blue-600" />
+      <div className="mt-4 pt-4 border-t border-line">
+        <h5 className="font-medium text-ink mb-3 text-sm sm:text-base flex items-center gap-2">
+          <Shield className="h-4 w-4 text-blue-600 dark:text-blue-400" />
           Tenant Screening Report
         </h5>
 
@@ -318,22 +318,22 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
           {/* Screening Score */}
           <div className={`p-3 rounded-lg border ${
-            screening.screening_score >= 75 ? 'bg-green-50 border-green-200' :
-            screening.screening_score >= 50 ? 'bg-yellow-50 border-yellow-200' :
-            'bg-red-50 border-red-200'
+            screening.screening_score >= 75 ? 'bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/25' :
+            screening.screening_score >= 50 ? 'bg-yellow-50 dark:bg-yellow-500/10 border-yellow-200 dark:border-yellow-500/25' :
+            'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/25'
           }`}>
             <div className="flex items-center gap-1 mb-1">
               <Target className={`h-3 w-3 ${
-                screening.screening_score >= 75 ? 'text-green-600' :
-                screening.screening_score >= 50 ? 'text-yellow-600' :
-                'text-red-600'
+                screening.screening_score >= 75 ? 'text-green-600 dark:text-green-400' :
+                screening.screening_score >= 50 ? 'text-yellow-600 dark:text-yellow-400' :
+                'text-red-600 dark:text-red-400'
               }`} />
-              <span className="text-xs text-gray-600">Score</span>
+              <span className="text-xs text-ink-muted">Score</span>
             </div>
             <div className={`text-lg font-bold ${
-              screening.screening_score >= 75 ? 'text-green-700' :
-              screening.screening_score >= 50 ? 'text-yellow-700' :
-              'text-red-700'
+              screening.screening_score >= 75 ? 'text-green-700 dark:text-green-300' :
+              screening.screening_score >= 50 ? 'text-yellow-700 dark:text-yellow-300' :
+              'text-red-700 dark:text-red-300'
             }`}>
               {screening.screening_score.toFixed(0)}/100
             </div>
@@ -341,22 +341,22 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
 
           {/* On-Time Rate */}
           <div className={`p-3 rounded-lg border ${
-            screening.on_time_payment_rate >= 0.8 ? 'bg-green-50 border-green-200' :
-            screening.on_time_payment_rate >= 0.6 ? 'bg-yellow-50 border-yellow-200' :
-            'bg-red-50 border-red-200'
+            screening.on_time_payment_rate >= 0.8 ? 'bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/25' :
+            screening.on_time_payment_rate >= 0.6 ? 'bg-yellow-50 dark:bg-yellow-500/10 border-yellow-200 dark:border-yellow-500/25' :
+            'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/25'
           }`}>
             <div className="flex items-center gap-1 mb-1">
               <CheckCircle className={`h-3 w-3 ${
-                screening.on_time_payment_rate >= 0.8 ? 'text-green-600' :
-                screening.on_time_payment_rate >= 0.6 ? 'text-yellow-600' :
-                'text-red-600'
+                screening.on_time_payment_rate >= 0.8 ? 'text-green-600 dark:text-green-400' :
+                screening.on_time_payment_rate >= 0.6 ? 'text-yellow-600 dark:text-yellow-400' :
+                'text-red-600 dark:text-red-400'
               }`} />
-              <span className="text-xs text-gray-600">On-Time</span>
+              <span className="text-xs text-ink-muted">On-Time</span>
             </div>
             <div className={`text-lg font-bold ${
-              screening.on_time_payment_rate >= 0.8 ? 'text-green-700' :
-              screening.on_time_payment_rate >= 0.6 ? 'text-yellow-700' :
-              'text-red-700'
+              screening.on_time_payment_rate >= 0.8 ? 'text-green-700 dark:text-green-300' :
+              screening.on_time_payment_rate >= 0.6 ? 'text-yellow-700 dark:text-yellow-300' :
+              'text-red-700 dark:text-red-300'
             }`}>
               {formatPercentage(screening.on_time_payment_rate)}
             </div>
@@ -364,34 +364,34 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
 
           {/* Arrears */}
           <div className={`p-3 rounded-lg border ${
-            screening.total_arrears === 0 ? 'bg-green-50 border-green-200' :
-            screening.total_arrears < 5000 ? 'bg-yellow-50 border-yellow-200' :
-            'bg-red-50 border-red-200'
+            screening.total_arrears === 0 ? 'bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/25' :
+            screening.total_arrears < 5000 ? 'bg-yellow-50 dark:bg-yellow-500/10 border-yellow-200 dark:border-yellow-500/25' :
+            'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/25'
           }`}>
             <div className="flex items-center gap-1 mb-1">
               <AlertCircle className={`h-3 w-3 ${
-                screening.total_arrears === 0 ? 'text-green-600' :
-                screening.total_arrears < 5000 ? 'text-yellow-600' :
-                'text-red-600'
+                screening.total_arrears === 0 ? 'text-green-600 dark:text-green-400' :
+                screening.total_arrears < 5000 ? 'text-yellow-600 dark:text-yellow-400' :
+                'text-red-600 dark:text-red-400'
               }`} />
-              <span className="text-xs text-gray-600">Arrears</span>
+              <span className="text-xs text-ink-muted">Arrears</span>
             </div>
             <div className={`text-sm font-bold ${
-              screening.total_arrears === 0 ? 'text-green-700' :
-              screening.total_arrears < 5000 ? 'text-yellow-700' :
-              'text-red-700'
+              screening.total_arrears === 0 ? 'text-green-700 dark:text-green-300' :
+              screening.total_arrears < 5000 ? 'text-yellow-700 dark:text-yellow-300' :
+              'text-red-700 dark:text-red-300'
             }`}>
               {formatCurrency(screening.total_arrears)}
             </div>
           </div>
 
           {/* History */}
-          <div className="p-3 rounded-lg border bg-blue-50 border-blue-200">
+          <div className="p-3 rounded-lg border bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/25">
             <div className="flex items-center gap-1 mb-1">
-              <Calendar className="h-3 w-3 text-blue-600" />
-              <span className="text-xs text-gray-600">History</span>
+              <Calendar className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+              <span className="text-xs text-ink-muted">History</span>
             </div>
-            <div className="text-lg font-bold text-blue-700">
+            <div className="text-lg font-bold text-blue-700 dark:text-blue-300">
               {screening.months_tracked} mo
             </div>
           </div>
@@ -399,23 +399,23 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
 
         {/* Portfolio Percentile */}
         {screening.portfolio_percentile !== null && (
-          <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+          <div className="mb-4 p-3 bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/25 rounded-lg">
             <div className="flex items-center gap-2 mb-2">
-              <Award className="h-4 w-4 text-purple-600" />
-              <span className="text-sm font-medium text-purple-900">Portfolio Ranking</span>
+              <Award className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              <span className="text-sm font-medium text-purple-900 dark:text-purple-300">Portfolio Ranking</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="flex-1 bg-purple-200 rounded-full h-2 overflow-hidden">
+              <div className="flex-1 bg-purple-200 dark:bg-purple-500/25 rounded-full h-2 overflow-hidden">
                 <div 
                   className="h-full bg-purple-600 rounded-full transition-all duration-500"
                   style={{ width: `${screening.portfolio_percentile}%` }}
                 />
               </div>
-              <span className="text-sm font-bold text-purple-700">
+              <span className="text-sm font-bold text-purple-700 dark:text-purple-300">
                 {screening.portfolio_percentile}th percentile
               </span>
             </div>
-            <p className="text-xs text-purple-700 mt-1">
+            <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
               {screening.portfolio_percentile >= 75 ? 'Top 25% performer in your portfolio' :
                screening.portfolio_percentile >= 50 ? 'Above average performer' :
                screening.portfolio_percentile >= 25 ? 'Below average performer' :
@@ -426,14 +426,14 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
 
         {/* Warning Flags */}
         {screening.early_warning_flags.length > 0 && (
-          <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+          <div className="mb-4 p-3 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/25 rounded-lg">
             <div className="flex items-center gap-2 mb-2">
-              <AlertCircle className="h-4 w-4 text-orange-600" />
-              <span className="text-sm font-medium text-orange-900">Early Warning Alerts</span>
+              <AlertCircle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+              <span className="text-sm font-medium text-orange-900 dark:text-orange-300">Early Warning Alerts</span>
             </div>
             <div className="space-y-1">
               {screening.early_warning_flags.map((flag, index) => (
-                <div key={index} className="flex items-start gap-2 text-xs text-orange-800">
+                <div key={index} className="flex items-start gap-2 text-xs text-orange-800 dark:text-orange-300">
                   <span className="mt-0.5">•</span>
                   <span className="capitalize">{flag.replace(/_/g, ' ')}</span>
                 </div>
@@ -444,19 +444,19 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
 
         {/* Last Payment Info */}
         <div className="grid grid-cols-2 gap-3 text-xs">
-          <div className="p-2 bg-gray-50 rounded-lg">
-            <span className="text-gray-600 block mb-1">Last Payment</span>
+          <div className="p-2 bg-surface-muted rounded-lg">
+            <span className="text-ink-muted block mb-1">Last Payment</span>
             <div className="flex items-center gap-1">
-              {screening.last_payment_status === 'early' && <TrendingUp className="h-3 w-3 text-green-600" />}
-              {screening.last_payment_status === 'on_time' && <CheckCircle className="h-3 w-3 text-green-600" />}
-              {screening.last_payment_status === 'late' && <TrendingDown className="h-3 w-3 text-orange-600" />}
-              {screening.last_payment_status === 'unpaid' && <XCircle className="h-3 w-3 text-red-600" />}
+              {screening.last_payment_status === 'early' && <TrendingUp className="h-3 w-3 text-green-600 dark:text-green-400" />}
+              {screening.last_payment_status === 'on_time' && <CheckCircle className="h-3 w-3 text-green-600 dark:text-green-400" />}
+              {screening.last_payment_status === 'late' && <TrendingDown className="h-3 w-3 text-orange-600 dark:text-orange-400" />}
+              {screening.last_payment_status === 'unpaid' && <XCircle className="h-3 w-3 text-red-600 dark:text-red-400" />}
               <span className={`font-medium capitalize ${
                 screening.last_payment_status === 'early' || screening.last_payment_status === 'on_time' 
-                  ? 'text-green-700' 
+                  ? 'text-green-700 dark:text-green-300' 
                   : screening.last_payment_status === 'late'
-                  ? 'text-orange-700'
-                  : 'text-red-700'
+                  ? 'text-orange-700 dark:text-orange-300'
+                  : 'text-red-700 dark:text-red-300'
               }`}>
                 {screening.last_payment_status.replace('_', ' ')}
               </span>
@@ -464,12 +464,12 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
           </div>
 
           {screening.days_since_last_payment !== null && (
-            <div className="p-2 bg-gray-50 rounded-lg">
-              <span className="text-gray-600 block mb-1">Days Since Payment</span>
+            <div className="p-2 bg-surface-muted rounded-lg">
+              <span className="text-ink-muted block mb-1">Days Since Payment</span>
               <span className={`font-medium ${
-                screening.days_since_last_payment <= 30 ? 'text-green-700' :
-                screening.days_since_last_payment <= 60 ? 'text-yellow-700' :
-                'text-red-700'
+                screening.days_since_last_payment <= 30 ? 'text-green-700 dark:text-green-300' :
+                screening.days_since_last_payment <= 60 ? 'text-yellow-700 dark:text-yellow-300' :
+                'text-red-700 dark:text-red-300'
               }`}>
                 {screening.days_since_last_payment} days
               </span>
@@ -479,19 +479,19 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
 
         {/* Recommendation */}
         <div className={`mt-3 p-3 rounded-lg border ${
-          screening.recommended_action === 'approve' ? 'bg-green-50 border-green-200' :
-          screening.recommended_action === 'conditional' ? 'bg-blue-50 border-blue-200' :
-          screening.recommended_action === 'review' ? 'bg-yellow-50 border-yellow-200' :
-          'bg-red-50 border-red-200'
+          screening.recommended_action === 'approve' ? 'bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/25' :
+          screening.recommended_action === 'conditional' ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/25' :
+          screening.recommended_action === 'review' ? 'bg-yellow-50 dark:bg-yellow-500/10 border-yellow-200 dark:border-yellow-500/25' :
+          'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/25'
         }`}>
           <div className="flex items-center gap-2">
             <Activity className={`h-4 w-4 ${
-              screening.recommended_action === 'approve' ? 'text-green-600' :
-              screening.recommended_action === 'conditional' ? 'text-blue-600' :
-              screening.recommended_action === 'review' ? 'text-yellow-600' :
-              'text-red-600'
+              screening.recommended_action === 'approve' ? 'text-green-600 dark:text-green-400' :
+              screening.recommended_action === 'conditional' ? 'text-blue-600 dark:text-blue-400' :
+              screening.recommended_action === 'review' ? 'text-yellow-600 dark:text-yellow-400' :
+              'text-red-600 dark:text-red-400'
             }`} />
-            <span className="text-xs font-medium text-gray-700">
+            <span className="text-xs font-medium text-ink-soft">
               Recommendation: <span className="capitalize font-bold">{screening.recommended_action}</span>
             </span>
           </div>
@@ -502,10 +502,10 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
 
   if (loading) {
     return (
-      <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
+      <div className="bg-surface rounded-xl sm:rounded-2xl shadow-sm border border-line-soft p-4 sm:p-6">
         <div className="flex items-center justify-center py-8 sm:py-12">
           <div className="animate-spin rounded-full h-6 w-6 sm:h-8 sm:w-8 border-b-2 border-blue-600"></div>
-          <span className="ml-2 text-sm sm:text-base text-gray-600">Loading tenants...</span>
+          <span className="ml-2 text-sm sm:text-base text-ink-muted">Loading tenants...</span>
         </div>
       </div>
     );
@@ -513,10 +513,10 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
 
   if (error) {
     return (
-      <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
+      <div className="bg-surface rounded-xl sm:rounded-2xl shadow-sm border border-line-soft p-4 sm:p-6">
         <div className="flex flex-col items-center justify-center py-8 sm:py-12">
           <AlertCircle className="h-8 w-8 sm:h-12 sm:w-12 text-red-500 mb-3 sm:mb-4" />
-          <p className="text-sm sm:text-base text-gray-600 text-center mb-3 sm:mb-4">{error}</p>
+          <p className="text-sm sm:text-base text-ink-muted text-center mb-3 sm:mb-4">{error}</p>
           <button
             onClick={loadTenants}
             className="px-3 py-2 sm:px-4 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm sm:text-base"
@@ -529,11 +529,11 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
   }
 
   return (
-    <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+    <div className="bg-surface rounded-xl sm:rounded-2xl shadow-sm border border-line-soft overflow-hidden">
       {/* Header */}
-      <div className="p-4 sm:p-6 border-b border-gray-100">
+      <div className="p-4 sm:p-6 border-b border-line-soft">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-          <h3 className="text-lg sm:text-xl font-bold text-gray-900">
+          <h3 className="text-lg sm:text-xl font-bold text-ink">
             Tenants ({filteredTenants.length})
           </h3>
         </div>
@@ -541,13 +541,13 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
         {/* Search */}
         {tenants.length > 0 && (
           <div className="relative mt-4">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3 w-3 sm:h-4 sm:w-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3 w-3 sm:h-4 sm:w-4 text-ink-faint" />
             <input
               type="text"
               placeholder="Search tenants by name, unit, phone, or email..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-8 sm:pl-10 pr-4 py-2 sm:py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
+              className="w-full pl-8 sm:pl-10 pr-4 py-2 sm:py-3 border border-line rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
             />
           </div>
         )}
@@ -557,11 +557,11 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
       <div className="p-4 sm:p-6">
         {filteredTenants.length === 0 ? (
           <div className="text-center py-8 sm:py-12">
-            <User className="mx-auto h-8 w-8 sm:h-12 sm:w-12 text-gray-400 mb-3 sm:mb-4" />
-            <h4 className="text-base sm:text-lg font-medium text-gray-900 mb-2">
+            <User className="mx-auto h-8 w-8 sm:h-12 sm:w-12 text-ink-faint mb-3 sm:mb-4" />
+            <h4 className="text-base sm:text-lg font-medium text-ink mb-2">
               {searchTerm ? 'No tenants found' : 'No tenants yet'}
             </h4>
-            <p className="text-sm sm:text-base text-gray-500 mb-4 sm:mb-6">
+            <p className="text-sm sm:text-base text-ink-subtle mb-4 sm:mb-6">
               {searchTerm 
                 ? 'Try adjusting your search terms' 
                 : 'Add your first tenant to get started with billing and management'
@@ -569,26 +569,26 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
             </p>
           </div>
         ) : (
-          <div className="space-y-3 sm:space-y-4">
+          <div className="space-y-3 sm:space-y-4 xl:grid xl:grid-cols-2 xl:items-start xl:gap-4 xl:space-y-0">
             {filteredTenants.map((tenant) => {
               const screening = screeningData.get(tenant.id);
               
               return (
-                <div key={tenant.id} className="border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
+                <div key={tenant.id} className="border border-line rounded-lg bg-surface-muted shadow-sm">
                   {/* Tenant Card Header */}
                   <div className="p-3 sm:p-4">
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap">
-                          <h4 className="font-semibold text-gray-900 text-sm sm:text-base">{tenant.name}</h4>
+                          <h4 className="font-semibold text-ink text-sm sm:text-base">{tenant.name}</h4>
                           {tenant.unitNumber && (
-                            <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full whitespace-nowrap">
+                            <span className="px-2 py-1 bg-blue-100 dark:bg-blue-500/15 text-blue-800 dark:text-blue-300 text-xs rounded-full whitespace-nowrap">
                               Unit {tenant.unitNumber}
                             </span>
                           )}
                           {getPaymentStatusBadge(tenant)}
                           {!tenant.isActive && (
-                            <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full whitespace-nowrap">
+                            <span className="px-2 py-1 bg-surface-sunken text-ink-muted text-xs rounded-full whitespace-nowrap">
                               Inactive
                             </span>
                           )}
@@ -601,19 +601,19 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
                           {getWarningFlags(screening)}
                         </div>
                         
-                        <div className="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm text-gray-600 flex-wrap">
+                        <div className="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm text-ink-muted flex-wrap">
                           <span className="flex items-center gap-1 whitespace-nowrap">
                             <DollarSign className="h-3 w-3" />
                             {formatCurrency(tenant.rentAmount)}/month
                           </span>
                           {tenant.totalArrears > 0 && (
-                            <span className="flex items-center gap-1 text-red-600 whitespace-nowrap">
+                            <span className="flex items-center gap-1 text-red-600 dark:text-red-400 whitespace-nowrap">
                               <AlertCircle className="h-3 w-3" />
                               {formatCurrency(tenant.totalArrears)} arrears
                             </span>
                           )}
                           {screening && screening.months_tracked > 0 && (
-                            <span className="flex items-center gap-1 text-blue-600 whitespace-nowrap">
+                            <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400 whitespace-nowrap">
                               <Activity className="h-3 w-3" />
                               {screening.months_tracked} months tracked
                             </span>
@@ -623,12 +623,12 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
 
                       <button
                         onClick={() => setExpandedTenant(expandedTenant === tenant.id ? null : tenant.id)}
-                        className="p-1.5 sm:p-2 hover:bg-gray-100 rounded transition-colors ml-2"
+                        className="p-1.5 sm:p-2 hover:bg-surface-sunken rounded transition-colors ml-2"
                       >
                         {expandedTenant === tenant.id ? (
-                          <ChevronUp className="h-4 w-4 text-gray-500" />
+                          <ChevronUp className="h-4 w-4 text-ink-subtle" />
                         ) : (
-                          <ChevronDown className="h-4 w-4 text-gray-500" />
+                          <ChevronDown className="h-4 w-4 text-ink-subtle" />
                         )}
                       </button>
                     </div>
@@ -636,33 +636,33 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
 
                   {/* Expanded Details */}
                   {expandedTenant === tenant.id && (
-                    <div className="border-t border-gray-200 p-3 sm:p-4 bg-white">
+                    <div className="border-t border-line p-3 sm:p-4 bg-surface">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                         {/* Contact Information */}
                         <div>
-                          <h5 className="font-medium text-gray-900 mb-3 text-sm sm:text-base">Contact Information</h5>
+                          <h5 className="font-medium text-ink mb-3 text-sm sm:text-base">Contact Information</h5>
                           <div className="space-y-2">
                             {tenant.phone && (
                               <div className="flex items-center justify-between">
-                                <span className="text-xs sm:text-sm text-gray-600">Phone:</span>
+                                <span className="text-xs sm:text-sm text-ink-muted">Phone:</span>
                                 <div className="flex items-center gap-2">
                                   <span className="text-xs sm:text-sm font-medium">{tenant.phone}</span>
                                   <div className="flex gap-1">
                                     <button
                                       onClick={() => handleContactAction('call', tenant.phone!)}
-                                      className="p-1 text-green-600 hover:bg-green-100 rounded transition-colors"
+                                      className="p-1 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-500/15 rounded transition-colors"
                                       title="Call"
                                     >
                                       <Phone className="h-3 w-3" />
                                     </button>
                                     <button
                                       onClick={() => handleContactAction('whatsapp', tenant.phone!)}
-                                      className="p-1 text-green-600 hover:bg-green-100 rounded transition-colors"
+                                      className="p-1 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-500/15 rounded transition-colors"
                                       title="WhatsApp"
                                     >
                                       <MessageCircle className="h-3 w-3" />
                                     </button>
-                                    <button onClick={() => setSmsTarget(tenant)} className="p-1 text-blue-600 hover:bg-blue-100 rounded transition-colors" title="Send SMS">
+                                    <button onClick={() => setSmsTarget(tenant)} className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-500/15 rounded transition-colors" title="Send SMS">
                                       <MessageSquare className="h-3 w-3" />
                                     </button>
                                   </div>
@@ -671,14 +671,14 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
                             )}
                             {tenant.email && (
                               <div className="flex items-center justify-between">
-                                <span className="text-xs sm:text-sm text-gray-600">Email:</span>
+                                <span className="text-xs sm:text-sm text-ink-muted">Email:</span>
                                 <div className="flex items-center gap-2">
                                   <span className="text-xs sm:text-sm font-medium truncate max-w-[120px]" title={tenant.email}>
                                     {tenant.email}
                                   </span>
                                   <button
                                     onClick={() => window.location.href = `mailto:${tenant.email}`}
-                                    className="p-1 text-blue-600 hover:bg-blue-100 rounded transition-colors"
+                                    className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-500/15 rounded transition-colors"
                                     title="Send Email"
                                   >
                                     <Mail className="h-3 w-3" />
@@ -691,27 +691,27 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
 
                         {/* Financial Information */}
                         <div>
-                          <h5 className="font-medium text-gray-900 mb-3 text-sm sm:text-base">Financial Details</h5>
+                          <h5 className="font-medium text-ink mb-3 text-sm sm:text-base">Financial Details</h5>
                           <div className="space-y-2">
                             <div className="flex items-center justify-between">
-                              <span className="text-xs sm:text-sm text-gray-600">Rent Amount:</span>
+                              <span className="text-xs sm:text-sm text-ink-muted">Rent Amount:</span>
                               <span className="text-xs sm:text-sm font-medium">{formatCurrency(tenant.rentAmount)}</span>
                             </div>
                             {tenant.standingFees > 0 && (
                               <div className="flex items-center justify-between">
-                                <span className="text-xs sm:text-sm text-gray-600">Standing Fees:</span>
+                                <span className="text-xs sm:text-sm text-ink-muted">Standing Fees:</span>
                                 <span className="text-xs sm:text-sm font-medium">{formatCurrency(tenant.standingFees)}</span>
                               </div>
                             )}
                             {tenant.depositAmount > 0 && (
                               <div className="flex items-center justify-between">
-                                <span className="text-xs sm:text-sm text-gray-600">Deposit:</span>
+                                <span className="text-xs sm:text-sm text-ink-muted">Deposit:</span>
                                 <span className="text-xs sm:text-sm font-medium">{formatCurrency(tenant.depositAmount)}</span>
                               </div>
                             )}
                             {tenant.lastPaymentDate && (
                               <div className="flex items-center justify-between">
-                                <span className="text-xs sm:text-sm text-gray-600">Last Payment:</span>
+                                <span className="text-xs sm:text-sm text-ink-muted">Last Payment:</span>
                                 <span className="text-xs sm:text-sm font-medium">{formatDate(tenant.lastPaymentDate)}</span>
                               </div>
                             )}
@@ -721,19 +721,19 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
                         {/* Lease Information */}
                         {(tenant.leaseStart || tenant.leaseEnd) && (
                           <div className="sm:col-span-2">
-                            <h5 className="font-medium text-gray-900 mb-3 text-sm sm:text-base">Lease Information</h5>
+                            <h5 className="font-medium text-ink mb-3 text-sm sm:text-base">Lease Information</h5>
                             <div className="flex flex-wrap gap-3 sm:gap-4">
                               {tenant.leaseStart && (
                                 <div className="flex items-center gap-1 text-xs sm:text-sm">
-                                  <Calendar className="h-3 w-3 text-gray-400" />
-                                  <span className="text-gray-600">Start:</span>
+                                  <Calendar className="h-3 w-3 text-ink-faint" />
+                                  <span className="text-ink-muted">Start:</span>
                                   <span className="font-medium">{formatDate(tenant.leaseStart)}</span>
                                 </div>
                               )}
                               {tenant.leaseEnd && (
                                 <div className="flex items-center gap-1 text-xs sm:text-sm">
-                                  <Calendar className="h-3 w-3 text-gray-400" />
-                                  <span className="text-gray-600">End:</span>
+                                  <Calendar className="h-3 w-3 text-ink-faint" />
+                                  <span className="text-ink-muted">End:</span>
                                   <span className="font-medium">{formatDate(tenant.leaseEnd)}</span>
                                 </div>
                               )}
@@ -746,10 +746,10 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
                       {screening && renderScreeningDetails(screening)}
 
                       {/* Action Buttons */}
-                      <div className="flex flex-wrap gap-2 mt-4 sm:mt-6 pt-3 sm:pt-4 border-t border-gray-200">
+                      <div className="flex flex-wrap gap-2 mt-4 sm:mt-6 pt-3 sm:pt-4 border-t border-line">
                         <button
                           onClick={() => handleEditTenant(tenant)}
-                          className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-1.5 text-xs sm:text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                          className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-1.5 text-xs sm:text-sm bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-500/25 transition-colors"
                           title="Edit Tenant"
                         >
                           <Edit3 className="h-3 w-3" />
@@ -758,7 +758,7 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
                         
                         {tenant.currentInvoice && !tenant.currentInvoice.isPaid && (
                           <button
-                            className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-1.5 text-xs sm:text-sm bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
+                            className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-1.5 text-xs sm:text-sm bg-green-100 dark:bg-green-500/15 text-green-700 dark:text-green-300 rounded-lg hover:bg-green-200 dark:hover:bg-green-500/25 transition-colors"
                             title="Resend Invoice"
                           >
                             <Receipt className="h-3 w-3" />
@@ -769,7 +769,7 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
                         <button
                           onClick={() => handleDeleteTenant(tenant.id, tenant.name)}
                           disabled={deletingTenant === tenant.id}
-                          className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-1.5 text-xs sm:text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors disabled:opacity-50"
+                          className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-1.5 text-xs sm:text-sm bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-500/25 transition-colors disabled:opacity-50"
                           title="Delete Tenant"
                         >
                           <Trash2 className="h-3 w-3" />

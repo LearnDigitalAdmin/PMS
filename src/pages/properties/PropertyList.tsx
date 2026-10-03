@@ -332,9 +332,9 @@ const Properties: React.FC<PropertyListProps> = ({
   };
 
   const getOccupancyColor = (rate: number) => {
-    if (rate >= 80) return 'text-green-600 bg-green-50';
-    if (rate >= 50) return 'text-yellow-600 bg-yellow-50';
-    return 'text-red-600 bg-red-50';
+    if (rate >= 80) return 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10';
+    if (rate >= 50) return 'text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-500/10';
+    return 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10';
   };
 
   const handleProperty = (propertyId: number) => {
@@ -363,7 +363,7 @@ const Properties: React.FC<PropertyListProps> = ({
 
     return (
       <div 
-        className="group bg-white rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100 overflow-hidden cursor-pointer animate-fade-in"
+        className="group bg-surface rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 border border-line-soft overflow-hidden cursor-pointer animate-fade-in"
         style={{ animationDelay: `${index * 100}ms` }}
         onClick={() => handleProperty(property.id)}
       >
@@ -376,16 +376,16 @@ const Properties: React.FC<PropertyListProps> = ({
               className="w-full h-full object-cover"
             />
           ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-500 via-blue-600 to-purple-600"></div>
+            <div className="absolute inset-0 bg-gradient-to-br from-brand-500 via-brand-600 to-indigo-600"></div>
           )}
-          <div className="absolute inset-0 bg-black bg-opacity-20"></div>
+          <div className="absolute inset-0 bg-black/20"></div>
           <div className="absolute top-4 right-4 flex gap-2 opacity-70 group-hover:opacity-100 transition-opacity">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 openEditModal(property);
               }}
-              className="p-2 bg-white bg-opacity-20 backdrop-blur-sm rounded-lg hover:bg-opacity-30 transition-all"
+              className="p-2 bg-white/20 backdrop-blur-sm rounded-lg hover:bg-white/30 transition-all"
             >
               <Edit3 className="w-4 h-4 text-blue" />
             </button>
@@ -394,7 +394,7 @@ const Properties: React.FC<PropertyListProps> = ({
                 e.stopPropagation();
                 openDeleteModal(property);
               }}
-              className="p-2 bg-white bg-opacity-20 backdrop-blur-sm rounded-lg hover:bg-opacity-30 transition-all"
+              className="p-2 bg-white/20 backdrop-blur-sm rounded-lg hover:bg-white/30 transition-all"
             >
               <Trash2 className="w-4 h-4 text-red" />
             </button>
@@ -424,41 +424,41 @@ const Properties: React.FC<PropertyListProps> = ({
           <div className="grid grid-cols-3 gap-4 mb-4">
             <div className="text-center">
               <div className="flex items-center justify-center mb-1">
-                <Users className="w-4 h-4 text-blue-600 mr-1" />
-                <span className="text-2xl font-bold text-gray-900">
+                <Users className="w-4 h-4 text-blue-600 dark:text-blue-400 mr-1" />
+                <span className="text-2xl font-bold text-ink">
                   {property.activeTenants}
                 </span>
               </div>
-              <p className="text-xs text-gray-500 font-medium">Tenants</p>
+              <p className="text-xs text-ink-subtle font-medium">Tenants</p>
             </div>
             
-            <div className="text-center border-x border-gray-100">
+            <div className="text-center border-x border-line-soft">
               <div className="flex items-center justify-center mb-1">
-                <DollarSign className="w-4 h-4 text-green-600 mr-1" />
-                <span className="text-2xl font-bold text-gray-900">
+                <DollarSign className="w-4 h-4 text-green-600 dark:text-green-400 mr-1" />
+                <span className="text-2xl font-bold text-ink">
                   ${property.monthlyRevenue.toLocaleString()}
                 </span>
               </div>
-              <p className="text-xs text-gray-500 font-medium">Monthly</p>
+              <p className="text-xs text-ink-subtle font-medium">Monthly</p>
             </div>
             
             <div className="text-center">
               <div className="flex items-center justify-center mb-1">
-                <TrendingUp className={`w-4 h-4 mr-1 ${occupancyPercentage >= 80 ? 'text-green-600' : occupancyPercentage >= 50 ? 'text-yellow-600' : 'text-red-600'}`} />
-                <span className={`text-2xl font-bold ${occupancyPercentage >= 80 ? 'text-green-600' : occupancyPercentage >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                <TrendingUp className={`w-4 h-4 mr-1 ${occupancyPercentage >= 80 ? 'text-green-600 dark:text-green-400' : occupancyPercentage >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`} />
+                <span className={`text-2xl font-bold ${occupancyPercentage >= 80 ? 'text-green-600 dark:text-green-400' : occupancyPercentage >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
                   {occupancyPercentage.toFixed(0)}%
                 </span>
               </div>
-              <p className="text-xs text-gray-500 font-medium">Occupied</p>
+              <p className="text-xs text-ink-subtle font-medium">Occupied</p>
             </div>
           </div>
 
           {/* Units Info */}
-          <div className="mb-4 text-sm text-gray-600">
+          <div className="mb-4 text-sm text-ink-muted">
             <div className="flex justify-between items-center">
               <span>Units: {property.activeTenants}/{property.maxUnits}</span>
               {property.companyId && (
-                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
+                <span className="px-2 py-1 bg-blue-100 dark:bg-blue-500/15 text-blue-800 dark:text-blue-300 rounded-full text-xs">
                   Company Property
                 </span>
               )}
@@ -467,14 +467,14 @@ const Properties: React.FC<PropertyListProps> = ({
 
           {/* Description */}
           {property.description && (
-            <p className="text-sm text-gray-600 mb-4 line-clamp-2">
+            <p className="text-sm text-ink-muted mb-4 line-clamp-2">
               {property.description}
             </p>
           )}
 
           {/* Commission Badge */}
           {property.agentCommissionRate > 0 && (
-            <div className="inline-flex items-center px-3 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
+            <div className="inline-flex items-center px-3 py-1 bg-orange-100 dark:bg-orange-500/15 text-orange-800 dark:text-orange-300 text-xs font-medium rounded-full">
               <TrendingUp className="w-3 h-3 mr-1" />
               {property.agentCommissionRate}% Commission (${property.agentIncome.toLocaleString()}/month)
             </div>
@@ -489,7 +489,7 @@ const Properties: React.FC<PropertyListProps> = ({
 
     return (
       <div 
-        className="group bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-200 border border-gray-100 p-4 cursor-pointer animate-fade-in"
+        className="group bg-surface rounded-xl shadow-sm hover:shadow-md transition-all duration-200 border border-line-soft p-4 cursor-pointer animate-fade-in"
         style={{ animationDelay: `${index * 50}ms` }}
         onClick={() => handleProperty(property.id)}
       >
@@ -503,7 +503,7 @@ const Properties: React.FC<PropertyListProps> = ({
                 className="w-full h-full object-cover"
               />
             ) : (
-              <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+              <div className="w-full h-full bg-gradient-to-br from-brand-500 to-indigo-600 flex items-center justify-center">
                 <Building2 className="w-6 h-6 text-white" />
               </div>
             )}
@@ -513,11 +513,11 @@ const Properties: React.FC<PropertyListProps> = ({
             {/* Property Info */}
             <div className="flex items-start justify-between mb-2">
               <div className="flex-1 min-w-0 pr-4">
-                <h3 className="text-lg font-semibold text-gray-900 truncate">
+                <h3 className="text-lg font-semibold text-ink truncate">
                   {property.name}
                 </h3>
                 {property.address && (
-                  <p className="text-sm text-gray-500 truncate mt-1 flex items-center">
+                  <p className="text-sm text-ink-subtle truncate mt-1 flex items-center">
                     <MapPin className="w-3 h-3 mr-1 flex-shrink-0" />
                     {property.address}
                   </p>
@@ -531,7 +531,7 @@ const Properties: React.FC<PropertyListProps> = ({
                     e.stopPropagation();
                     openEditModal(property);
                   }}
-                  className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                  className="p-2 text-ink-faint hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-all"
                 >
                   <Edit3 className="w-4 h-4" />
                 </button>
@@ -540,7 +540,7 @@ const Properties: React.FC<PropertyListProps> = ({
                     e.stopPropagation();
                     openDeleteModal(property);
                   }}
-                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                  className="p-2 text-ink-faint hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-all"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -549,19 +549,19 @@ const Properties: React.FC<PropertyListProps> = ({
 
             {/* Stats Row */}
             <div className="flex flex-wrap items-center gap-4 text-sm">
-              <div className="flex items-center text-gray-600">
+              <div className="flex items-center text-ink-muted">
                 <Users className="w-4 h-4 mr-1 flex-shrink-0" />
                 <span className="font-medium">{property.activeTenants}</span>
                 <span className="ml-1">tenants</span>
               </div>
               
-              <div className="flex items-center text-gray-600">
+              <div className="flex items-center text-ink-muted">
                 <DollarSign className="w-4 h-4 mr-1 flex-shrink-0" />
                 <span className="font-medium">${property.monthlyRevenue.toLocaleString()}</span>
                 <span className="ml-1">monthly</span>
               </div>
               
-              <div className="flex items-center text-gray-600">
+              <div className="flex items-center text-ink-muted">
                 <Building2 className="w-4 h-4 mr-1 flex-shrink-0" />
                 <span className="font-medium">{property.activeTenants}/{property.maxUnits}</span>
                 <span className="ml-1">units</span>
@@ -573,7 +573,7 @@ const Properties: React.FC<PropertyListProps> = ({
               </div>
 
               {property.agentCommissionRate > 0 && (
-                <div className="flex items-center px-2 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-medium">
+                <div className="flex items-center px-2 py-1 bg-orange-100 dark:bg-orange-500/15 text-orange-800 dark:text-orange-300 rounded-full text-xs font-medium">
                   <span>{property.agentCommissionRate}% commission</span>
                 </div>
               )}
@@ -589,19 +589,19 @@ const Properties: React.FC<PropertyListProps> = ({
       {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[...Array(6)].map((_, i) => (
-            <div key={i} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="h-48 bg-gray-200"></div>
+            <div key={i} className="bg-surface rounded-2xl shadow-sm border border-line-soft overflow-hidden">
+              <div className="h-48 bg-track"></div>
               <div className="p-6">
                 <div className="grid grid-cols-3 gap-4 mb-4">
                   {[...Array(3)].map((_, j) => (
                     <div key={j} className="text-center">
-                      <div className="h-8 bg-gray-200 rounded mb-1"></div>
-                      <div className="h-3 bg-gray-200 rounded"></div>
+                      <div className="h-8 bg-track rounded mb-1"></div>
+                      <div className="h-3 bg-track rounded"></div>
                     </div>
                   ))}
                 </div>
-                <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                <div className="h-4 bg-track rounded mb-2"></div>
+                <div className="h-4 bg-track rounded w-3/4"></div>
               </div>
             </div>
           ))}
@@ -609,21 +609,21 @@ const Properties: React.FC<PropertyListProps> = ({
       ) : (
         <div className="space-y-4">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="bg-white rounded-xl p-4 border border-gray-100">
+            <div key={i} className="bg-surface rounded-xl p-4 border border-line-soft">
               <div className="flex items-center gap-4">
-                <div className="w-16 h-16 bg-gray-200 rounded-lg flex-shrink-0"></div>
+                <div className="w-16 h-16 bg-track rounded-lg flex-shrink-0"></div>
                 <div className="flex-1">
-                  <div className="h-6 bg-gray-200 rounded w-1/3 mb-2"></div>
-                  <div className="h-4 bg-gray-200 rounded w-1/2 mb-3"></div>
+                  <div className="h-6 bg-track rounded w-1/3 mb-2"></div>
+                  <div className="h-4 bg-track rounded w-1/2 mb-3"></div>
                   <div className="flex gap-6">
-                    <div className="h-4 bg-gray-200 rounded w-20"></div>
-                    <div className="h-4 bg-gray-200 rounded w-24"></div>
-                    <div className="h-4 bg-gray-200 rounded w-20"></div>
+                    <div className="h-4 bg-track rounded w-20"></div>
+                    <div className="h-4 bg-track rounded w-24"></div>
+                    <div className="h-4 bg-track rounded w-20"></div>
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <div className="w-8 h-8 bg-gray-200 rounded-lg"></div>
-                  <div className="w-8 h-8 bg-gray-200 rounded-lg"></div>
+                  <div className="w-8 h-8 bg-track rounded-lg"></div>
+                  <div className="w-8 h-8 bg-track rounded-lg"></div>
                 </div>
               </div>
             </div>
@@ -634,25 +634,25 @@ const Properties: React.FC<PropertyListProps> = ({
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div>
       {/* Header */}
-      <div className="bg-white shadow-sm">
-        <div className="px-4 py-6">
+      <div className="ui-card">
+        <div className="px-4 py-6 lg:px-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center">
-              <Home className="w-6 h-6 text-blue-600 mr-3" />
-              <h1 className="text-xl font-bold text-gray-900">{properties.length === 1 ? 'Property' : 'Properties'}</h1>
+              <Home className="w-6 h-6 text-blue-600 dark:text-blue-400 mr-3" />
+              <h1 className="text-xl font-bold text-ink lg:text-2xl">{properties.length === 1 ? 'Property' : 'Properties'}</h1>
             </div>
             
             <div className="flex items-center gap-2">
               {/* View Toggle */}
-              <div className="flex bg-gray-100 rounded-lg p-1">
+              <div className="flex bg-surface-sunken rounded-lg p-1">
                 <button
                   onClick={() => setViewMode('grid')}
                   className={`p-2 rounded-md transition-all ${
                     viewMode === 'grid' 
-                      ? 'bg-white text-blue-600 shadow-sm' 
-                      : 'text-gray-500 hover:text-gray-700'
+                      ? 'bg-surface text-blue-600 dark:text-blue-400 shadow-sm' 
+                      : 'text-ink-subtle hover:text-ink-soft'
                   }`}
                 >
                   <Grid className="w-4 h-4" />
@@ -662,8 +662,8 @@ const Properties: React.FC<PropertyListProps> = ({
                   onClick={() => setShowSummariesModal(true)}
                   className={`p-2 rounded-md transition-all ${
                     viewMode === 'list' 
-                      ? 'bg-white text-blue-600 shadow-sm' 
-                      : 'text-gray-500 hover:text-gray-700'
+                      ? 'bg-surface text-blue-600 dark:text-blue-400 shadow-sm' 
+                      : 'text-ink-subtle hover:text-ink-soft'
                   }`}
                 >
                   <List className="w-4 h-4" />
@@ -675,7 +675,7 @@ const Properties: React.FC<PropertyListProps> = ({
               <button
                 onClick={handleRefresh}
                 disabled={refreshing}
-                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                className="p-2 text-ink-subtle hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-all"
               >
                 <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
               </button>
@@ -684,35 +684,35 @@ const Properties: React.FC<PropertyListProps> = ({
 
           {/* Search - Full width on mobile */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-ink-faint w-4 h-4" />
             <input
               type="text"
               placeholder="Search properties..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              className="w-full pl-10 pr-4 py-3 bg-surface-muted border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
             />
           </div>
         </div>
       </div>
 
-      <div className="px-4 pt-4">
+      <div className="px-4 pt-4 md:px-0">
         <TrialStatsBanner userId={currentUserId} compact />
       </div>
 
       {/* Content */}
-      <div className="px-4 py-6">
+      <div className="px-4 py-6 md:px-0 lg:py-6">
         {loading ? (
           <LoadingSkeleton />
         ) : filteredProperties.length === 0 ? (
           <div className="text-center py-12 px-4">
-            <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-blue-100 to-purple-100 rounded-2xl flex items-center justify-center">
-              <Building2 className="w-10 h-10 text-blue-600" />
+            <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-blue-100 dark:from-blue-500/5 to-indigo-100 dark:to-indigo-500/5 rounded-2xl flex items-center justify-center">
+              <Building2 className="w-10 h-10 text-blue-600 dark:text-blue-400" />
             </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">
+            <h3 className="text-xl font-bold text-ink mb-2">
               {properties.length === 0 ? 'No Properties Yet' : 'No Properties Found'}
             </h3>
-            <p className="text-gray-500 mb-6 text-sm max-w-sm mx-auto">
+            <p className="text-ink-subtle mb-6 text-sm max-w-sm mx-auto">
               {properties.length === 0 
                 ? 'Start by adding your first property to begin managing tenants and billing.'
                 : `No properties match "${searchTerm}". Try adjusting your search.`
@@ -731,7 +731,7 @@ const Properties: React.FC<PropertyListProps> = ({
         ) : (
           <div className={`${
             viewMode === 'grid' 
-              ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4' 
+              ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 lg:gap-6' 
               : 'space-y-3'
           }`}>
             {filteredProperties.map((property, index) => 
@@ -747,8 +747,8 @@ const Properties: React.FC<PropertyListProps> = ({
 
       {/* Property Detail Modal */}
       {showPropModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[95vh] overflow-hidden">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-surface rounded-lg w-full max-w-4xl max-h-[95vh] overflow-hidden">
             <Property
               propertyId={propertyId}
               userId={currentUserId}
@@ -763,7 +763,7 @@ const Properties: React.FC<PropertyListProps> = ({
       {canAddProperty && (
         <button
           onClick={() => setShowAddModal(true)}
-          className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center z-40"
+          className="fixed bottom-6 right-6 w-14 h-14 bg-brand-600 hover:bg-brand-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center z-40 md:mb-0! md:bottom-8 md:right-8"
           style={{ marginBottom: '60px' }}
         >
           <Plus className="w-6 h-6" />
@@ -772,17 +772,17 @@ const Properties: React.FC<PropertyListProps> = ({
 
       {/* Upgrade Notice for Free Users */}
       {!canAddProperty && (
-        <div className="fixed bottom-17 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm bg-white rounded-xl shadow-xl border border-gray-200 p-4 z-40">
+        <div className="fixed bottom-17 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm bg-surface rounded-xl shadow-xl border border-line p-4 z-40">
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-orange-400 to-pink-500 rounded-lg flex items-center justify-center flex-shrink-0">
+            <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg flex items-center justify-center flex-shrink-0">
               <Building2 className="w-5 h-5 text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <h4 className="font-semibold text-gray-900 text-sm">Property Limit Reached</h4>
-              <p className="text-gray-600 text-xs mt-1">
+              <h4 className="font-semibold text-ink text-sm">Property Limit Reached</h4>
+              <p className="text-ink-muted text-xs mt-1">
                 Upgrade plan to add more properties
               </p>
-              <button onClick={() => setShowPricingModal(true)} className="mt-2 text-blue-600 text-xs font-medium hover:text-blue-700">
+              <button onClick={() => setShowPricingModal(true)} className="mt-2 text-blue-600 dark:text-blue-400 text-xs font-medium hover:text-blue-700 dark:hover:text-blue-300">
                 Upgrade Now →
               </button>
             </div>
@@ -842,16 +842,16 @@ const Properties: React.FC<PropertyListProps> = ({
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && selectedProperty && (
-        <div className="fixed bottom-17 inset-0 bg-white z-50 flex flex-col pb-5">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="ui-sheet-backdrop">
+          <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md">
             <div className="p-6">
-              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Trash2 className="w-6 h-6 text-red-600" />
+              <div className="w-12 h-12 bg-red-100 dark:bg-red-500/15 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="w-6 h-6 text-red-600 dark:text-red-400" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900 text-center mb-2">
+              <h3 className="text-lg font-bold text-ink text-center mb-2">
                 Delete Property
               </h3>
-              <p className="text-gray-600 text-center mb-6 text-sm">
+              <p className="text-ink-muted text-center mb-6 text-sm">
                 Are you sure you want to delete "{selectedProperty.name}"? This will also delete all associated tenants and invoices. This action cannot be undone.
               </p>
               <div className="flex gap-3">
@@ -860,7 +860,7 @@ const Properties: React.FC<PropertyListProps> = ({
                     setShowDeleteModal(false);
                     setSelectedProperty(null);
                   }}
-                  className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-all font-medium"
+                  className="flex-1 px-4 py-3 text-ink-soft bg-surface-sunken rounded-xl hover:bg-track transition-all font-medium"
                 >
                   Cancel
                 </button>

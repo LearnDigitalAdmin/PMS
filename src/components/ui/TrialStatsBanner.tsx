@@ -39,7 +39,7 @@ const TrialStatsBanner: React.FC<TrialStatsBannerProps> = ({ userId, compact = f
 
   return (
     <div
-      className={`rounded-xl bg-gradient-to-r from-indigo-600 via-blue-600 to-purple-600 text-white shadow-md overflow-hidden ${className}`}
+      className={`rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 text-white shadow-md overflow-hidden ${className}`}
     >
       <div
         className={`flex items-center gap-4 md:gap-6 overflow-x-auto no-scrollbar ${

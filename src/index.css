@@ -1,1 +1,371 @@
 @import "tailwindcss";
+
+/* ==========================================================================
+   Plot Yangu — design system
+   --------------------------------------------------------------------------
+   1. Dark mode follows the OS (`prefers-color-scheme`) exactly as before, and
+      ALSO honours a `.dark` class on <html> (which App.tsx toggles), so both
+      the `dark:` utilities and the semantic tokens below switch together.
+   2. Semantic colour tokens (surface / ink / line) switch value in `.dark`.
+      Light values are identical to the Tailwind grays the app already used,
+      so light mode looks the same; dark mode now works on every page.
+   3. A small set of shared component classes (ui-*) keeps cards, buttons,
+      inputs and modals consistent across pages and breakpoints.
+   ========================================================================== */
+
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    @slot;
+  }
+  &:where(.dark, .dark *) {
+    @slot;
+  }
+}
+
+/* ---- Static theme: typography, brand scale, radii, shadows --------------- */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+
+  /* Brand = the app's primary blue (matches <meta name="theme-color">). */
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-300: #93c5fd;
+  --color-brand-400: #60a5fa;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+  --color-brand-800: #1e40af;
+  --color-brand-900: #1e3a8a;
+  --color-brand-950: #172554;
+
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 12px -2px rgb(15 23 42 / 0.06);
+  --shadow-card-hover: 0 2px 4px rgb(15 23 42 / 0.05), 0 12px 28px -6px rgb(15 23 42 / 0.14);
+  --shadow-pop: 0 24px 60px -12px rgb(15 23 42 / 0.35);
+}
+
+/* ---- Semantic tokens: exposed as utilities (bg-surface, text-ink, …) ------ */
+@theme inline {
+  --color-surface: var(--c-surface);
+  --color-surface-muted: var(--c-surface-muted);
+  --color-surface-sunken: var(--c-surface-sunken);
+  --color-track: var(--c-track);
+
+  --color-line-soft: var(--c-line-soft);
+  --color-line: var(--c-line);
+  --color-line-strong: var(--c-line-strong);
+
+  --color-ink: var(--c-ink);
+  --color-ink-soft: var(--c-ink-soft);
+  --color-ink-muted: var(--c-ink-muted);
+  --color-ink-subtle: var(--c-ink-subtle);
+  --color-ink-faint: var(--c-ink-faint);
+}
+
+:root {
+  color-scheme: light;
+
+  --c-canvas: linear-gradient(135deg, #eff6ff 0%, #eef2ff 48%, #f5f3ff 100%);
+  --c-canvas-solid: #f4f6fb;
+
+  --c-surface: #ffffff;
+  --c-surface-muted: #f9fafb;
+  --c-surface-sunken: #f3f4f6;
+  --c-track: #e5e7eb;
+
+  --c-line-soft: #f3f4f6;
+  --c-line: #e5e7eb;
+  --c-line-strong: #d1d5db;
+
+  --c-ink: #111827;
+  --c-ink-soft: #374151;
+  --c-ink-muted: #4b5563;
+  --c-ink-subtle: #6b7280;
+  --c-ink-faint: #9ca3af;
+
+  --nav-width: 16.5rem;
+  --rail-width: 5.25rem;
+  --topbar-height: 3.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --c-canvas: linear-gradient(135deg, #080d1a 0%, #0b1224 50%, #130f26 100%);
+    --c-canvas-solid: #080d1a;
+
+    --c-surface: #0f1729;
+    --c-surface-muted: #131d33;
+    --c-surface-sunken: #1a2540;
+    --c-track: #243252;
+
+    --c-line-soft: #18233d;
+    --c-line: #1f2d4b;
+    --c-line-strong: #31436a;
+
+    --c-ink: #f1f5f9;
+    --c-ink-soft: #d3dbe8;
+    --c-ink-muted: #aab5c9;
+    --c-ink-subtle: #8c9ab1;
+    --c-ink-faint: #66758f;
+  }
+}
+
+.dark {
+  color-scheme: dark;
+
+  --c-canvas: linear-gradient(135deg, #080d1a 0%, #0b1224 50%, #130f26 100%);
+  --c-canvas-solid: #080d1a;
+
+  --c-surface: #0f1729;
+  --c-surface-muted: #131d33;
+  --c-surface-sunken: #1a2540;
+  --c-track: #243252;
+
+  --c-line-soft: #18233d;
+  --c-line: #1f2d4b;
+  --c-line-strong: #31436a;
+
+  --c-ink: #f1f5f9;
+  --c-ink-soft: #d3dbe8;
+  --c-ink-muted: #aab5c9;
+  --c-ink-subtle: #8c9ab1;
+  --c-ink-faint: #66758f;
+}
+
+/* ---- Base ---------------------------------------------------------------- */
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    background-color: var(--c-canvas-solid);
+    scroll-padding-top: calc(var(--topbar-height) + 1rem);
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background-color: var(--c-canvas-solid);
+    color: var(--c-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
+  }
+
+  /* Tailwind v4 changed the default border colour to `currentColor`, which
+     turned every bare `border` / `divide-*` into a dark line. Restore a soft,
+     theme-aware default; explicit border-* colour utilities still win.       */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--c-line);
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-brand-500) 28%, transparent);
+  }
+
+  /* One consistent, accessible focus ring for keyboard users. */
+  :where(a, button, [role="button"], summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+    border-radius: 0.5rem;
+  }
+
+  /* Native form controls and dropdown lists follow the active theme. */
+  :where(select, option) {
+    color-scheme: inherit;
+  }
+  :where(select, option) {
+    background-color: var(--c-surface);
+    color: var(--c-ink);
+  }
+  ::placeholder {
+    color: var(--c-ink-faint);
+    opacity: 1;
+  }
+
+  /* Slim, theme-aware scrollbars on pointer devices. */
+  @media (hover: hover) and (pointer: fine) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--c-line-strong) transparent;
+    }
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--c-line-strong);
+      border-radius: 999px;
+      border: 3px solid transparent;
+      background-clip: content-box;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--c-ink-faint);
+      background-clip: content-box;
+      border: 3px solid transparent;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ---- Safe-area helpers ----------------------------------------------------
+   `safe-area-inset-bottom` was referenced by the nav but never defined, so the
+   bottom bar sat under the iOS home indicator. Defined here.                 */
+@utility safe-area-inset-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@utility safe-area-inset-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* ---- Shared component classes -------------------------------------------- */
+@layer components {
+  /* Page canvas painted behind the whole app shell. */
+  .app-canvas {
+    background: var(--c-canvas);
+    background-color: var(--c-canvas-solid);
+    background-attachment: fixed;
+  }
+
+  /* Cards ------------------------------------------------------------------ */
+  .ui-card {
+    @apply rounded-2xl border border-line bg-surface/90 shadow-card backdrop-blur-md;
+  }
+  .ui-card-hover {
+    @apply transition-all duration-200;
+  }
+  @media (hover: hover) {
+    .ui-card-hover:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-card-hover);
+    }
+  }
+
+  /* Icon chips: one gradient family per meaning, never a rainbow. --------- */
+  .ui-chip {
+    @apply inline-flex shrink-0 items-center justify-center rounded-xl text-white shadow-sm;
+  }
+  .ui-chip-brand {
+    @apply bg-gradient-to-br from-brand-500 to-indigo-600;
+  }
+  .ui-chip-success {
+    @apply bg-gradient-to-br from-emerald-500 to-teal-600;
+  }
+  .ui-chip-warning {
+    @apply bg-gradient-to-br from-amber-500 to-orange-600;
+  }
+  .ui-chip-danger {
+    @apply bg-gradient-to-br from-red-500 to-rose-600;
+  }
+
+  /* Buttons ---------------------------------------------------------------- */
+  .ui-btn,
+  .ui-btn-primary,
+  .ui-btn-secondary,
+  .ui-btn-ghost,
+  .ui-btn-danger {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .ui-btn-primary {
+    @apply bg-gradient-to-br from-brand-500 to-indigo-600 text-white shadow-sm hover:shadow-md hover:brightness-110 active:brightness-95;
+  }
+  .ui-btn-secondary {
+    @apply border border-line bg-surface text-ink-soft hover:border-line-strong hover:bg-surface-muted;
+  }
+  .ui-btn-ghost {
+    @apply text-ink-muted hover:bg-surface-sunken hover:text-ink;
+  }
+  .ui-btn-danger {
+    @apply bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-sm hover:shadow-md hover:brightness-110;
+  }
+
+  /* Inputs ----------------------------------------------------------------- */
+  .ui-input {
+    @apply w-full rounded-xl border border-line-strong bg-surface px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-faint transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30;
+  }
+
+  /* Page scaffolding ------------------------------------------------------- */
+  .ui-page-title {
+    @apply text-2xl font-bold tracking-tight text-ink lg:text-3xl;
+  }
+  .ui-page-subtitle {
+    @apply mt-1 text-sm text-ink-subtle lg:text-base;
+  }
+
+  /* Modals: bottom sheet on phones, centred dialog from md up -------------- */
+  .ui-modal-backdrop {
+    @apply fixed inset-0 z-50 flex items-end justify-center bg-slate-950/55 p-0 backdrop-blur-sm md:items-center md:p-6;
+  }
+  .ui-modal {
+    @apply w-full overflow-hidden rounded-t-3xl border border-line bg-surface text-ink shadow-pop md:rounded-3xl;
+    max-height: min(92dvh, 56rem);
+  }
+
+  /* Full-screen sheets: identical to the previous mobile look (below md),
+     centred dialogs / side-by-side page overlays from md up. ---------------- */
+  .ui-sheet-backdrop {
+    @apply fixed inset-x-0 top-0 bottom-17 z-50 flex flex-col bg-surface pb-5 md:bottom-0 md:items-center md:justify-center md:bg-slate-950/55 md:p-6 md:pb-6 md:backdrop-blur-sm;
+  }
+  .ui-page-overlay {
+    @apply fixed inset-x-0 top-0 bottom-17 z-50 flex flex-col bg-surface pb-5 md:bottom-0 md:left-[var(--rail-width)] md:top-[var(--topbar-height)] md:pb-0 lg:left-[var(--nav-width)];
+  }
+  .ui-sheet-panel {
+    @apply md:w-full md:max-w-md md:rounded-3xl md:border md:border-line md:shadow-pop;
+  }
+
+  /* Tables ------------------------------------------------------------------ */
+  .ui-table {
+    @apply w-full text-left text-sm;
+  }
+  .ui-table thead th {
+    @apply sticky top-0 bg-surface-muted px-4 py-3 text-xs font-semibold uppercase tracking-wide text-ink-subtle;
+  }
+  .ui-table tbody td {
+    @apply border-t border-line-soft px-4 py-3 text-ink-soft;
+  }
+  .ui-table tbody tr {
+    @apply transition-colors hover:bg-surface-muted;
+  }
+}
+
+/* ---- Printing: never print app chrome ------------------------------------- */
+@media print {
+  .app-chrome {
+    display: none !important;
+  }
+  .app-canvas {
+    background: #fff !important;
+  }
+  .app-main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}

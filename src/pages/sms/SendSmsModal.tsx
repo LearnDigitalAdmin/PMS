@@ -98,8 +98,8 @@ const SendSmsModal: React.FC<SendSmsModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[120] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-auto overflow-hidden max-h-[90vh] flex flex-col">
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex items-center justify-between">
+      <div className="bg-surface rounded-2xl shadow-2xl max-w-lg w-full mx-auto overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="bg-gradient-to-r from-brand-600 to-indigo-700 px-6 py-4 flex items-center justify-between">
           <h3 className="text-lg font-bold text-white flex items-center">
             <MessageSquare className="w-5 h-5 mr-2" />
             Send SMS {recipients.length > 1 ? `(${validRecipients.length} tenants)` : ''}
@@ -108,58 +108,58 @@ const SendSmsModal: React.FC<SendSmsModalProps> = ({
         </div>
 
         <div className="p-6 space-y-4 overflow-y-auto">
-          <div className="flex items-center justify-between text-sm bg-gray-50 rounded-lg p-3 border border-gray-200">
-            <span className="flex items-center gap-2 text-gray-700">
+          <div className="flex items-center justify-between text-sm bg-surface-muted rounded-lg p-3 border border-line">
+            <span className="flex items-center gap-2 text-ink-soft">
               <Users className="w-4 h-4" /> {validRecipients.length} recipient{validRecipients.length !== 1 ? 's' : ''}
             </span>
-            <span className="text-gray-700">
+            <span className="text-ink-soft">
               Credits available: <span className="font-semibold">{availableCredits ?? '—'}</span>
             </span>
           </div>
 
           {missingPhoneCount > 0 && (
-            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 flex items-center gap-2">
+            <p className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/25 rounded-lg p-2 flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />
               {missingPhoneCount} recipient{missingPhoneCount !== 1 ? 's have' : ' has'} no phone number and will be skipped.
             </p>
           )}
 
           <div>
-            <label className="block text-sm font-semibold text-gray-900 mb-2">Message</label>
+            <label className="block text-sm font-semibold text-ink mb-2">Message</label>
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={4}
               className={`w-full px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none ${
-                bodyIssue ? 'border-red-500' : 'border-gray-300'
+                bodyIssue ? 'border-red-500' : 'border-line-strong'
               }`}
               placeholder="e.g. Please clear this month's rent by the 5th to avoid late fees."
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-ink-subtle mt-1">
               Every message opens with "Dear [tenant name]," and closes with your signature — {senderSignature}. No links, emojis, or special characters.
             </p>
             {bodyIssue && <p className="text-red-500 text-xs mt-1">{bodyIssue}</p>}
           </div>
 
-          <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 space-y-1 text-sm">
+          <div className="bg-surface-muted rounded-xl p-4 border border-line space-y-1 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-600">Longest composed message</span>
+              <span className="text-ink-muted">Longest composed message</span>
               <span className="font-medium">{longestMessage} chars</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Credits required</span>
+              <span className="text-ink-muted">Credits required</span>
               <span className="font-medium">{totalTokensNeeded}</span>
             </div>
           </div>
 
           {availableCredits !== null && availableCredits < totalTokensNeeded && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-red-600 dark:text-red-400">
               Not enough SMS credits. You need {totalTokensNeeded - availableCredits} more.
             </p>
           )}
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           {result && (
-            <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-2">
+            <p className="text-sm text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/25 rounded-lg p-2">
               Sent to {result.sent} recipient{result.sent !== 1 ? 's' : ''}
               {result.failed > 0 ? `, ${result.failed} failed` : ''}.
             </p>

@@ -99,12 +99,16 @@ interface ProcessWebSubscriptionRequest {
 //   All other functions in your file are UNCHANGED.
 // ============================================================
 
+// HostPinnacle credentials now come from Secret Manager instead of a committed
+// .env file. sendPmsSms and sendSMS below (the only two exported functions that
+// reach sendHostPinnacleSms) each list these four in their `secrets: [...]` array.
+const HP_SMS_USERID   = defineSecret("HP_SMS_USERID");
+const HP_SMS_PASSWORD = defineSecret("HP_SMS_PASSWORD");
+const HP_SMS_APIKEY   = defineSecret("HP_SMS_APIKEY");
+const HP_SMS_SENDERID = defineSecret("HP_SMS_SENDERID");
+
 const SMS_CONFIG = {
     API_URL:   "https://smsportal.hostpinnacle.co.ke/SMSApi/send",
-    USERID:    process.env.HP_SMS_USERID    || "",   // set in .env / functions config
-    PASSWORD:  process.env.HP_SMS_PASSWORD  || "",
-    APIKEY:    process.env.HP_SMS_APIKEY    || "",
-    SENDER_ID: process.env.HP_SMS_SENDERID  || "",   // your approved sender ID
     MAX_LENGTH: 400,
 };
 
@@ -212,6 +216,7 @@ export const sendPmsSms = onCall({
   memory: "256MiB",
   region: "africa-south1",
   cors: true,
+  secrets: [HP_SMS_USERID, HP_SMS_PASSWORD, HP_SMS_APIKEY, HP_SMS_SENDERID],
 }, async (request: CallableRequest<SendPmsSmsRequest>) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "You must be logged in to send SMS.");
@@ -431,18 +436,23 @@ interface SmsSendResult {
  */
 async function sendHostPinnacleSms(opts: SmsSendOptions): Promise<SmsSendResult> {
     try {
-        if (!SMS_CONFIG.USERID || !SMS_CONFIG.APIKEY) {
+        const userid   = HP_SMS_USERID.value();
+        const password = HP_SMS_PASSWORD.value();
+        const apikey   = HP_SMS_APIKEY.value();
+        const senderId = opts.senderId || HP_SMS_SENDERID.value();
+
+        if (!userid || !apikey) {
             console.warn("HostPinnacle SMS credentials not configured — skipping SMS.");
             return { success: false, error: "SMS credentials not configured" };
         }
 
         const params = new URLSearchParams({
-            userid:         SMS_CONFIG.USERID,
-            password:       SMS_CONFIG.PASSWORD,
+            userid,
+            password,
             sendMethod:     "quick",
             mobile:         opts.mobile,
             msg:            opts.message,
-            senderid:       opts.senderId || SMS_CONFIG.SENDER_ID,
+            senderid:       senderId,
             msgType:        "text",
             duplicatecheck: opts.duplicateCheck === false ? "false" : "true",
             output:         "json",
@@ -453,7 +463,7 @@ async function sendHostPinnacleSms(opts: SmsSendOptions): Promise<SmsSendResult>
             params.toString(),
             {
                 headers: {
-                    "apikey":       SMS_CONFIG.APIKEY,
+                    "apikey":       apikey,
                     "Content-Type": "application/x-www-form-urlencoded",
                 },
                 timeout: 10_000,
@@ -1000,6 +1010,7 @@ export const sendSMS = onCall({
     memory: "256MiB",
     region: "africa-south1",
     cors: true,
+    secrets: [HP_SMS_USERID, HP_SMS_PASSWORD, HP_SMS_APIKEY, HP_SMS_SENDERID],
 }, async (request: CallableRequest<SendSmsRequest>) => {
     // Auth required
     if (!request.auth) {

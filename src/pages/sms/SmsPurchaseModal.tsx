@@ -77,8 +77,8 @@ const SmsPurchaseModal: React.FC<SmsPurchaseModalProps> = ({ isOpen, onClose, us
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[120] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-auto overflow-hidden">
-        <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-4 flex items-center justify-between">
+      <div className="bg-surface rounded-2xl shadow-2xl max-w-md w-full mx-auto overflow-hidden">
+        <div className="bg-gradient-to-r from-emerald-600 to-teal-700 px-6 py-4 flex items-center justify-between">
           <h3 className="text-lg font-bold text-white flex items-center">
             <MessageSquare className="w-5 h-5 mr-2" />
             Buy SMS Credits
@@ -88,31 +88,31 @@ const SmsPurchaseModal: React.FC<SmsPurchaseModalProps> = ({ isOpen, onClose, us
 
         <div className="p-6 space-y-5">
           <div>
-            <label className="block text-sm font-semibold text-gray-900 mb-2">SMS Credits</label>
+            <label className="block text-sm font-semibold text-ink mb-2">SMS Credits</label>
             <input
               type="number"
               min={10}
               step={10}
               value={credits}
               onChange={(e) => setCredits(e.target.value)}
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              className="w-full px-4 py-3 border-2 border-line-strong rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
               placeholder="e.g. 500"
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-ink-subtle mt-1">
               1 credit ≈ 1 SMS of up to 150 characters (including the greeting and your signature).
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-900 mb-2">M-Pesa Phone Number</label>
+            <label className="block text-sm font-semibold text-ink mb-2">M-Pesa Phone Number</label>
             <div className="relative">
-              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-ink-faint" />
               <input
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 className={`w-full pl-10 pr-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
-                  phoneError ? 'border-red-500' : 'border-gray-300'
+                  phoneError ? 'border-red-500' : 'border-line-strong'
                 }`}
                 placeholder="0712345678, 254712345678, or 712345678"
               />
@@ -120,14 +120,14 @@ const SmsPurchaseModal: React.FC<SmsPurchaseModalProps> = ({ isOpen, onClose, us
             {phoneError && <p className="text-red-500 text-xs mt-1">{phoneError}</p>}
           </div>
 
-          <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 flex items-center justify-between">
-            <span className="text-sm text-gray-600">
+          <div className="bg-surface-muted rounded-xl p-4 border border-line flex items-center justify-between">
+            <span className="text-sm text-ink-muted">
               Estimated cost ({userTier} tier @ KES {rate.toFixed(2)}/credit)
             </span>
-            <span className="text-xl font-bold text-gray-900">KES {estimatedCost.toLocaleString()}</span>
+            <span className="text-xl font-bold text-ink">KES {estimatedCost.toLocaleString()}</span>
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
           <button
             onClick={handlePurchase}

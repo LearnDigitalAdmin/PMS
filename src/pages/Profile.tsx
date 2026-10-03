@@ -53,12 +53,12 @@ const Profile: React.FC = () => {
   const getCurrentPlanDetails = () => {
     const tier = user?.tier || 'free';
     const plans = {
-      free: { name: 'Free Forever', color: 'text-gray-600', bgColor: 'bg-gray-100' },
-      starter: { name: 'Starter', color: 'text-blue-600', bgColor: 'bg-blue-100' },
-      business: { name: 'Business', color: 'text-green-600', bgColor: 'bg-green-100' },
+      free: { name: 'Free Forever', color: 'text-ink-muted', bgColor: 'bg-surface-sunken' },
+      starter: { name: 'Starter', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-500/15' },
+      business: { name: 'Business', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-500/15' },
       professional: { name: 'Professional', color: 'text-black-600', bgColor: 'bg-black-100' },
-      enterprise: { name: 'Enterprise', color: 'text-purple-600', bgColor: 'bg-purple-100' },
-      solo: { name: 'Solo', color: 'text-yellow-600', bgColor: 'bg-yellow-100' }
+      enterprise: { name: 'Enterprise', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-500/15' },
+      solo: { name: 'Solo', color: 'text-yellow-600 dark:text-yellow-400', bgColor: 'bg-yellow-100 dark:bg-yellow-500/15' }
     };
     return plans[tier as keyof typeof plans] || plans.free;
   };
@@ -67,9 +67,9 @@ const Profile: React.FC = () => {
 
   return (
     <>
-      <div className="p-4 pb-24 max-w-md mx-auto">
+      <div className="p-4 pb-24 max-w-md mx-auto md:pb-10 lg:max-w-6xl lg:p-0">
         {/* Auto-rotating Marketing Banner */}
-        <div className="mb-6 bg-gradient-to-r from-green-500 to-blue-600 rounded-xl p-4 text-white shadow-lg">
+        <div className="mb-6 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl p-4 text-white shadow-lg">
           <div className="flex items-center justify-between">
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate animate-pulse">
@@ -82,53 +82,56 @@ const Profile: React.FC = () => {
 
         <TrialStatsBanner userId={user?.id} className="mb-6" />
 
+        {/* Two columns on large screens: account on the left, company & settings on the right */}
+        <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-8">
+        <div>
         {/* User Profile Card */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 mb-6">
+        <div className="ui-card p-6 mb-6">
           <div className="text-center mb-6">
             <div className="relative inline-block">
-              <div className="w-20 h-20 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <User className="w-10 h-10 text-white" />
               </div>
               <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
                 <CheckCircle className="w-4 h-4 text-white" />
               </div>
             </div>
-            <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200 mb-1">Profile</h2>
+            <h2 className="text-2xl font-bold text-ink mb-1">Profile</h2>
             <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${planDetails.bgColor} ${planDetails.color}`}>
               {user?.tier !== 'free' && <Crown className="w-3 h-3 mr-1" />}
               {planDetails.name} Plan
             </div>
           </div>
           
-          <div className="space-y-4 mb-6">
-            <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4">
-              <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Name</label>
-              <p className="text-lg font-semibold text-gray-900 dark:text-white">{user?.name}</p>
+          <div className="space-y-4 mb-6 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0">
+            <div className="bg-surface-muted rounded-xl p-4">
+              <label className="block text-sm font-medium text-ink-muted mb-1">Name</label>
+              <p className="text-lg font-semibold text-ink">{user?.name}</p>
             </div>
             
-            <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4">
-              <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Email</label>
-              <p className="text-lg font-semibold text-gray-900 dark:text-white">{user?.email}</p>
+            <div className="bg-surface-muted rounded-xl p-4">
+              <label className="block text-sm font-medium text-ink-muted mb-1">Email</label>
+              <p className="text-lg font-semibold text-ink">{user?.email}</p>
             </div>
             
             {user?.phone && (
-              <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4">
-                <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Phone</label>
-                <p className="text-lg font-semibold text-gray-900 dark:text-white">{user.phone}</p>
+              <div className="bg-surface-muted rounded-xl p-4">
+                <label className="block text-sm font-medium text-ink-muted mb-1">Phone</label>
+                <p className="text-lg font-semibold text-ink">{user.phone}</p>
               </div>
             )}
             
             {company?.name && (
-              <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4">
-                <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Company</label>
-                <p className="text-lg font-semibold text-gray-900 dark:text-white">{company.name}</p>
+              <div className="bg-surface-muted rounded-xl p-4">
+                <label className="block text-sm font-medium text-ink-muted mb-1">Company</label>
+                <p className="text-lg font-semibold text-ink">{company.name}</p>
               </div>
             )}
           </div>
 
           {/* Current Plan Status */}
           {user?.tier === 'free' && (
-            <div className="bg-gradient-to-r from-orange-400 to-pink-500 rounded-xl p-4 mb-4 text-white">
+            <div className="bg-gradient-to-r from-amber-500 to-orange-600 rounded-xl p-4 mb-4 text-white">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="font-bold text-sm flex items-center">
@@ -151,7 +154,7 @@ const Profile: React.FC = () => {
           {/* Upgrade/Manage Plan Button */}
           <button
             onClick={() => setShowPricingModal(true)}
-            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white py-3 px-4 rounded-xl transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 flex items-center justify-center space-x-2 mb-4"
+            className="w-full bg-gradient-to-r from-brand-600 to-indigo-700 hover:from-brand-700 hover:to-indigo-800 text-white py-3 px-4 rounded-xl transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 flex items-center justify-center space-x-2 mb-4"
           >
             {user?.tier === 'free' ? (
               <>
@@ -174,37 +177,39 @@ const Profile: React.FC = () => {
             Sign Out
           </button>
         </div>
+        </div>
 
+        <div>
         {/* Global Payment Instructions Settings */}
         <PaymentInstructionsSettings />
 
         {/* Company Branding Section */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 mb-6">
+        <div className="ui-card p-6 mb-6">
           <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-gradient-to-br from-green-600 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 bg-gradient-to-br from-emerald-600 to-teal-700 rounded-full flex items-center justify-center mx-auto mb-4">
               <Building className="w-8 h-8 text-white" />
             </div>
-            <h3 className="text-xl font-bold text-gray-800 dark:text-gray-200 mb-2">SMB KENYA LTD</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Property Management Company</p>
-            <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">Naivasha • Nakuru • Nairobi</p>
+            <h3 className="text-xl font-bold text-ink mb-2">SMB KENYA LTD</h3>
+            <p className="text-sm text-ink-muted">Property Management Company</p>
+            <p className="text-xs text-ink-subtle mt-1">Naivasha • Nakuru • Nairobi</p>
           </div>
 
           {/* Services Grid */}
           <div className="grid grid-cols-2 gap-3 mb-6">
             <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 text-center">
-              <Star className="w-5 h-5 text-green-600 mx-auto mb-2" />
+              <Star className="w-5 h-5 text-green-600 dark:text-green-400 mx-auto mb-2" />
               <p className="text-xs font-medium text-green-700 dark:text-green-400">Rent Collection</p>
             </div>
             <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 text-center">
-              <Building className="w-5 h-5 text-blue-600 mx-auto mb-2" />
+              <Building className="w-5 h-5 text-blue-600 dark:text-blue-400 mx-auto mb-2" />
               <p className="text-xs font-medium text-blue-700 dark:text-blue-400">Property Mgmt</p>
             </div>
             <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 text-center">
-              <CheckCircle className="w-5 h-5 text-purple-600 mx-auto mb-2" />
+              <CheckCircle className="w-5 h-5 text-purple-600 dark:text-purple-400 mx-auto mb-2" />
               <p className="text-xs font-medium text-purple-700 dark:text-purple-400">Tenant Screening</p>
             </div>
             <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-3 text-center">
-              <ExternalLink className="w-5 h-5 text-orange-600 mx-auto mb-2" />
+              <ExternalLink className="w-5 h-5 text-orange-600 dark:text-orange-400 mx-auto mb-2" />
               <p className="text-xs font-medium text-orange-700 dark:text-orange-400">Commercial Agency</p>
             </div>
           </div>
@@ -237,7 +242,7 @@ const Profile: React.FC = () => {
           </div>
 
           {/* Premium Features Teaser */}
-          <div className="bg-gradient-to-r from-yellow-400 to-orange-500 rounded-xl p-4 text-white">
+          <div className="bg-gradient-to-r from-amber-500 to-orange-600 rounded-xl p-4 text-white">
             <h4 className="font-bold text-sm mb-2 flex items-center">
               <Crown className="w-4 h-4 mr-2" />
               Premium Features Available
@@ -260,15 +265,17 @@ const Profile: React.FC = () => {
         </div>
 
         {/* App Info */}
-        <div className="bg-gray-100 dark:bg-gray-700 rounded-xl p-4 text-center">
-          <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+        <div className="bg-surface-sunken rounded-xl p-4 text-center">
+          <p className="text-xs text-ink-muted mb-2">
             🏠 Free Property Management App
           </p>
-          <p className="text-xs text-gray-500 dark:text-gray-500">
+          <p className="text-xs text-ink-subtle">
             All invoices are professionally branded with watermarks.
             <br />
             <span className="font-medium">Upgrade to remove watermarks.</span>
           </p>
+        </div>
+        </div>
         </div>
       </div>
 

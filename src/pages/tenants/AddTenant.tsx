@@ -211,18 +211,18 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
   };
 
   return (
-    <div className="fixed bottom-17 inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
+    <div className="fixed bottom-17 inset-0 md:bottom-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      <div className="bg-surface rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">
+        <div className="flex items-center justify-between p-6 border-b border-line">
+          <h2 className="text-xl font-semibold text-ink">
             {isEditMode ? 'Edit Tenant' : 'Add New Tenant'}
           </h2>
           <button
             onClick={handleClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            className="p-2 hover:bg-surface-sunken rounded-full transition-colors"
           >
-            <X className="h-5 w-5 text-gray-500" />
+            <X className="h-5 w-5 text-ink-subtle" />
           </button>
         </div>
 
@@ -231,27 +231,27 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Basic Information */}
             <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Basic Information</h3>
+              <h3 className="text-lg font-medium text-ink mb-4">Basic Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Name (Required) */}
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-ink-soft mb-2">
                     Tenant Name <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
-                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
                     <input
                       type="text"
                       value={formData.name}
                       onChange={(e) => handleInputChange('name', e.target.value)}
                       placeholder="Enter tenant's full name"
                       className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.name ? 'border-red-300' : 'border-gray-300'
+                        errors.name ? 'border-red-300 dark:border-red-500/40' : 'border-line-strong'
                       }`}
                     />
                   </div>
                   {errors.name && (
-                    <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                    <p className="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
                       {errors.name}
                     </p>
@@ -260,21 +260,21 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
 
                 {/* ID Number */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">ID/Passport Number</label>
+                  <label className="block text-sm font-medium text-ink-soft mb-2">ID/Passport Number</label>
                   <div className="relative">
-                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
                     <input
                       type="number"
                       value={formData.id}
                       onChange={(e) => handleInputChange('id', e.target.value)}
                       placeholder="e.g., 12345678"
                       className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.id ? 'border-red-300' : 'border-gray-300'
+                        errors.id ? 'border-red-300 dark:border-red-500/40' : 'border-line-strong'
                       }`}
                     />
                   </div>
                   {errors.id && (
-                    <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                    <p className="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
                       {errors.id}
                     </p>
@@ -283,21 +283,21 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
 
                 {/* Phone */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+                  <label className="block text-sm font-medium text-ink-soft mb-2">Phone Number</label>
                   <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
                     <input
                       type="tel"
                       value={formData.phone}
                       onChange={(e) => handleInputChange('phone', e.target.value)}
                       placeholder="e.g., +254 700 123 456"
                       className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.phone ? 'border-red-300' : 'border-gray-300'
+                        errors.phone ? 'border-red-300 dark:border-red-500/40' : 'border-line-strong'
                       }`}
                     />
                   </div>
                   {errors.phone && (
-                    <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                    <p className="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
                       {errors.phone}
                     </p>
@@ -306,21 +306,21 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
 
                 {/* Email */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
+                  <label className="block text-sm font-medium text-ink-soft mb-2">Email Address</label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
                     <input
                       type="email"
                       value={formData.email}
                       onChange={(e) => handleInputChange('email', e.target.value)}
                       placeholder="tenant@example.com"
                       className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.email ? 'border-red-300' : 'border-gray-300'
+                        errors.email ? 'border-red-300 dark:border-red-500/40' : 'border-line-strong'
                       }`}
                     />
                   </div>
                   {errors.email && (
-                    <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                    <p className="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
                       {errors.email}
                     </p>
@@ -329,15 +329,15 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
 
                 {/* Unit Number */}
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Unit/Apartment Number</label>
+                  <label className="block text-sm font-medium text-ink-soft mb-2">Unit/Apartment Number</label>
                   <div className="relative">
-                    <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
                     <input
                       type="text"
                       value={formData.unitNumber}
                       onChange={(e) => handleInputChange('unitNumber', e.target.value)}
                       placeholder="e.g., A1, 2B, Ground Floor"
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full pl-10 pr-4 py-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
                 </div>
@@ -346,15 +346,15 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
 
             {/* Financial Information */}
             <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Financial Information</h3>
+              <h3 className="text-lg font-medium text-ink mb-4">Financial Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Rent Amount (Required) */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-ink-soft mb-2">
                     Monthly Rent <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
                     <input
                       type="number"
                       step="0.01"
@@ -363,17 +363,17 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
                       onChange={(e) => handleInputChange('rentAmount', e.target.value)}
                       placeholder="0.00"
                       className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.rentAmount ? 'border-red-300' : 'border-gray-300'
+                        errors.rentAmount ? 'border-red-300 dark:border-red-500/40' : 'border-line-strong'
                       }`}
                     />
                   </div>
                   {formData.rentAmount && !errors.rentAmount && (
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-ink-subtle">
                       {formatCurrency(formData.rentAmount)}
                     </p>
                   )}
                   {errors.rentAmount && (
-                    <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                    <p className="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
                       {errors.rentAmount}
                     </p>
@@ -382,9 +382,9 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
 
                 {/* Standing Fees */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Standing Fees</label>
+                  <label className="block text-sm font-medium text-ink-soft mb-2">Standing Fees</label>
                   <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
                     <input
                       type="number"
                       step="0.01"
@@ -392,11 +392,11 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
                       value={formData.standingFees}
                       onChange={(e) => handleInputChange('standingFees', e.target.value)}
                       placeholder="0.00"
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full pl-10 pr-4 py-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
                   {formData.standingFees && (
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-ink-subtle">
                       {formatCurrency(formData.standingFees)}
                     </p>
                   )}
@@ -404,9 +404,9 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
 
                 {/* Deposit Amount */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Security Deposit</label>
+                  <label className="block text-sm font-medium text-ink-soft mb-2">Security Deposit</label>
                   <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
                     <input
                       type="number"
                       step="0.01"
@@ -414,11 +414,11 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
                       value={formData.depositAmount}
                       onChange={(e) => handleInputChange('depositAmount', e.target.value)}
                       placeholder="0.00"
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full pl-10 pr-4 py-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
                   {formData.depositAmount && (
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-ink-subtle">
                       {formatCurrency(formData.depositAmount)}
                     </p>
                   )}
@@ -428,24 +428,24 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
 
             {/* Lease Information */}
             <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Lease Information</h3>
+              <h3 className="text-lg font-medium text-ink mb-4">Lease Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Lease Start Date */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Lease Start Date</label>
+                  <label className="block text-sm font-medium text-ink-soft mb-2">Lease Start Date</label>
                   <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
                     <input
                       type="date"
                       value={formData.leaseStart}
                       onChange={(e) => handleInputChange('leaseStart', e.target.value)}
                       className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.leaseStart ? 'border-red-300' : 'border-gray-300'
+                        errors.leaseStart ? 'border-red-300 dark:border-red-500/40' : 'border-line-strong'
                       }`}
                     />
                   </div>
                   {errors.leaseStart && (
-                    <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                    <p className="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
                       {errors.leaseStart}
                     </p>
@@ -454,21 +454,21 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
 
                 {/* Lease End Date */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Lease End Date</label>
+                  <label className="block text-sm font-medium text-ink-soft mb-2">Lease End Date</label>
                   <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
                     <input
                       type="date"
                       value={formData.leaseEnd}
                       onChange={(e) => handleInputChange('leaseEnd', e.target.value)}
                       min={formData.leaseStart || undefined}
                       className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.leaseEnd ? 'border-red-300' : 'border-gray-300'
+                        errors.leaseEnd ? 'border-red-300 dark:border-red-500/40' : 'border-line-strong'
                       }`}
                     />
                   </div>
                   {errors.leaseEnd && (
-                    <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                    <p className="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
                       {errors.leaseEnd}
                     </p>
@@ -478,8 +478,8 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
               
               {/* Lease Duration Helper */}
               {formData.leaseStart && formData.leaseEnd && !errors.leaseEnd && (
-                <div className="mt-3 p-3 bg-blue-50 rounded-lg">
-                  <p className="text-sm text-blue-700">
+                <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-500/10 rounded-lg">
+                  <p className="text-sm text-blue-700 dark:text-blue-300">
                     <Calendar className="inline h-4 w-4 mr-1" />
                     Lease Duration: {
                       Math.ceil(
@@ -494,9 +494,9 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
 
             {/* Summary */}
             {(formData.name || formData.rentAmount) && (
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h4 className="font-medium text-gray-900 mb-2">Summary</h4>
-                <div className="space-y-1 text-sm text-gray-600">
+              <div className="bg-surface-muted p-4 rounded-lg">
+                <h4 className="font-medium text-ink mb-2">Summary</h4>
+                <div className="space-y-1 text-sm text-ink-muted">
                   {formData.name && (
                     <p><span className="font-medium">Tenant:</span> {formData.name}</p>
                   )}
@@ -519,12 +519,12 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
+        <div className="flex items-center justify-end gap-3 p-6 border-t border-line bg-surface-muted">
           <button
             type="button"
             onClick={handleClose}
             disabled={loading}
-            className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-ink-soft bg-surface border border-line-strong rounded-lg hover:bg-surface-muted transition-colors disabled:opacity-50"
           >
             Cancel
           </button>

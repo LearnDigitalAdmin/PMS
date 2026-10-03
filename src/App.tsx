@@ -21,7 +21,7 @@ import { getDaysRemaining } from './utils/trial';
 
 // Loading component with skeleton animation
 const LoadingSpinner = () => (
-  <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900">
+  <div className="app-canvas min-h-screen">
     <div className="flex items-center justify-center h-screen">
       <div className="relative">
         <div className="w-12 h-12 rounded-full border-4 border-blue-200 dark:border-blue-800"></div>
@@ -40,22 +40,22 @@ const ExitConfirmationDialog = ({ isOpen, onConfirm, onCancel }: {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-sm w-full mx-4 animate-in fade-in duration-200">
+    <div className="fixed inset-0 bg-slate-950/55 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
+      <div className="bg-surface border border-line rounded-3xl shadow-pop max-w-sm w-full mx-4 animate-in fade-in duration-200">
         <div className="p-6">
           <div className="flex items-center justify-center w-12 h-12 mx-auto mb-4 bg-red-100 dark:bg-red-900 rounded-full">
             <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
           </div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white text-center mb-2">
+          <h3 className="text-lg font-semibold text-ink text-center mb-2">
             Exit Application?
           </h3>
-          <p className="text-gray-600 dark:text-gray-400 text-center mb-6">
+          <p className="text-ink-muted text-center mb-6">
             Are you sure you want to close the application? Any unsaved changes may be lost.
           </p>
           <div className="flex space-x-3">
             <button
               onClick={onCancel}
-              className="flex-1 px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors duration-200"
+              className="flex-1 px-4 py-2 text-ink-soft bg-surface-sunken rounded-lg hover:bg-track transition-colors duration-200"
             >
               Cancel
             </button>
@@ -121,14 +121,15 @@ const StatusBar = () => {
   if (!user) return null;
 
   const getTierBadgeClasses = (tier: string) => {
+    // Mobile/tablet bar is a brand gradient (translucent chips); md+ bar is a light/dark surface (tinted chips).
     switch (tier) {
-      case 'enterprise': return 'bg-purple-500/40';
-      case 'pro': return 'bg-blue-500/40';
-      case 'business': return 'bg-blue-500/40';
-      case 'low': return 'bg-green-500/40';
-      case 'solo': return 'bg-indigo-500/40';
-      case 'free': return 'bg-white/15';
-      default: return 'bg-white/15';
+      case 'enterprise': return 'bg-purple-500/40 md:bg-purple-100 md:text-purple-700 dark:md:bg-purple-500/20 dark:md:text-purple-300';
+      case 'pro': return 'bg-blue-500/40 md:bg-blue-100 md:text-blue-700 dark:md:bg-blue-500/20 dark:md:text-blue-300';
+      case 'business': return 'bg-blue-500/40 md:bg-blue-100 md:text-blue-700 dark:md:bg-blue-500/20 dark:md:text-blue-300';
+      case 'low': return 'bg-green-500/40 md:bg-green-100 md:text-green-700 dark:md:bg-green-500/20 dark:md:text-green-300';
+      case 'solo': return 'bg-indigo-500/40 md:bg-indigo-100 md:text-indigo-700 dark:md:bg-indigo-500/20 dark:md:text-indigo-300';
+      case 'free': return 'bg-white/15 md:bg-surface-sunken md:text-ink-soft';
+      default: return 'bg-white/15 md:bg-surface-sunken md:text-ink-soft';
     }
   };
 
@@ -140,26 +141,28 @@ const StatusBar = () => {
   const trialUrgent = info?.isTrial && daysRemaining !== null && daysRemaining <= 7;
 
   return (
-    <div className="fixed top-0 left-0 right-0 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-3 py-1.5 text-xs flex flex-wrap items-center gap-x-3 gap-y-1 justify-between z-50">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium capitalize ${getTierBadgeClasses(user.tier)}`}>
+    <div className="app-chrome fixed top-0 left-0 right-0 z-50 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 bg-gradient-to-r from-brand-600 to-indigo-600 px-3 py-1.5 text-xs text-white md:left-[var(--rail-width)] md:min-h-[var(--topbar-height)] md:flex-nowrap md:border-b md:border-line md:bg-surface/80 md:bg-none md:px-6 md:py-0 md:text-ink-soft md:backdrop-blur-xl lg:left-[var(--nav-width)]">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 md:flex-nowrap md:gap-3">
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium capitalize md:px-3 md:py-1 ${getTierBadgeClasses(user.tier)}`}>
           {getTierIcon(user.tier)}
           {user.tier} Plan
         </span>
 
-        <span className="inline-flex items-center gap-1 opacity-90">
-          <MessageSquare className="w-3 h-3" />
+        <span className="inline-flex items-center gap-1 opacity-90 md:text-ink-muted md:opacity-100">
+          <MessageSquare className="w-3 h-3 md:h-3.5 md:w-3.5" />
           {smsCredits ?? '—'} SMS credits
         </span>
 
         {!user.storage && user.tier !== 'business' && user.tier !== 'solo' && user.tier !== 'pro' && user.tier !== 'enterprise' && (
-          <AlertCircle className="w-3 h-3 text-yellow-300 flex-shrink-0" />
+          <AlertCircle className="w-3 h-3 text-yellow-300 md:text-amber-500 flex-shrink-0" />
         )}
 
         {info?.isTrial && daysRemaining !== null && (
           <span
-            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ${
-              trialUrgent ? 'bg-red-500/40 text-white' : 'bg-white/15'
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold md:px-3 md:py-1 ${
+              trialUrgent
+                ? 'bg-red-500/40 text-white md:bg-red-100 md:text-red-700 dark:md:bg-red-500/20 dark:md:text-red-300'
+                : 'bg-white/15 md:bg-surface-sunken md:text-ink-soft'
             }`}
           >
             Trial: {daysRemaining === 0 ? 'ends today' : `${daysRemaining} day${daysRemaining === 1 ? '' : 's'} left`}
@@ -167,16 +170,16 @@ const StatusBar = () => {
         )}
       </div>
       
-      <div className="flex items-center gap-3 flex-shrink-0">
+      <div className="flex items-center gap-3 flex-shrink-0 md:gap-4">
         {user.storage && (
           <>
             {syncStatus.syncInProgress ? (
               <div className="flex items-center space-x-1">
-                <div className="w-2 h-2 bg-yellow-300 rounded-full animate-pulse"></div>
+                <div className="w-2 h-2 bg-yellow-300 md:bg-amber-500 rounded-full animate-pulse"></div>
                 <span>Syncing...</span>
               </div>
             ) : (
-              <span className="text-xs opacity-75">
+              <span className="text-xs opacity-75 md:text-ink-subtle md:opacity-100">
                 Last sync: {syncStatus.lastSync === 'Never' ? 'Never' : 
                   new Date(syncStatus.lastSync).toLocaleTimeString()}
               </span>
@@ -186,9 +189,9 @@ const StatusBar = () => {
         
         <div className="flex items-center space-x-1">
           {syncStatus.isOnline ? (
-            <Wifi className="w-3 h-3 text-green-300" />
+            <Wifi className="w-3 h-3 text-green-300 md:h-3.5 md:w-3.5 md:text-emerald-500" />
           ) : (
-            <WifiOff className="w-3 h-3 text-red-300" />
+            <WifiOff className="w-3 h-3 text-red-300 md:h-3.5 md:w-3.5 md:text-red-500" />
           )}
           <span className="text-xs">
             {syncStatus.isOnline ? 'Online' : 'Offline'}
@@ -199,20 +202,112 @@ const StatusBar = () => {
   );
 };
 
-// Enhanced Navigation with Tier Restrictions
+// Primary navigation entries — shared by the bottom bar (phones) and the sidebar/rail (md and up)
+const NAV_ITEMS = [
+  { path: '/', icon: Home, label: 'Dashboard', color: 'blue', restricted: false },
+  { path: '/properties', icon: Building, label: 'Properties', color: 'indigo', restricted: false },
+  { path: '/invoices', icon: FileText, label: 'Invoices', color: 'purple', restricted: false },
+  { path: '/profile', icon: UserIcon, label: 'Profile', color: 'green', restricted: false },
+  { path: '/payments', icon: DollarSign, label: 'Payments', color: 'black', restricted: false },
+];
+
+// Active-state colours for the sidebar (mirrors the per-item hues the bottom bar already uses)
+const SIDEBAR_ACTIVE: { [key: string]: string } = {
+  blue: 'bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',
+  indigo: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',
+  purple: 'bg-purple-50 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300',
+  green: 'bg-green-50 text-green-700 dark:bg-green-500/15 dark:text-green-300',
+  black: 'bg-surface-sunken text-ink',
+};
+
+// Desktop / tablet navigation: icon rail on md, full sidebar on lg+
+const SidebarNavigation = () => {
+  const { user } = useAuth();
+  const initial = (user?.name || user?.email || '?').trim().charAt(0).toUpperCase();
+
+  return (
+    <aside className="app-chrome fixed inset-y-0 left-0 z-40 hidden w-[var(--rail-width)] flex-col border-r border-line bg-surface/80 backdrop-blur-xl md:flex lg:w-[var(--nav-width)]">
+      {/* Brand */}
+      <div className="flex h-[var(--topbar-height)] shrink-0 items-center justify-center gap-3 border-b border-line px-3 lg:justify-start lg:px-5">
+        <span className="ui-chip ui-chip-brand h-9 w-9">
+          <Building className="h-5 w-5" />
+        </span>
+        <div className="hidden min-w-0 lg:block">
+          <p className="truncate text-sm font-bold leading-tight text-ink">Plot Yangu</p>
+          <p className="truncate text-[11px] leading-tight text-ink-subtle">Property management</p>
+        </div>
+      </div>
+
+      {/* Links */}
+      <nav aria-label="Primary" className="flex-1 space-y-1 overflow-y-auto px-2.5 py-4 lg:px-3">
+        <p className="hidden px-3.5 pb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-faint lg:block">Menu</p>
+        {NAV_ITEMS.map(({ path, icon: Icon, label, color, restricted }) => {
+          // Check if user can access this feature
+          const canAccess = !restricted || (user && (
+            user.tier === 'business' || 
+            user.tier === 'solo' ||
+            user.tier === 'pro' || 
+            user.tier === 'enterprise' || 
+            user.type === 'paid'
+          ));
+
+          return (
+            <NavLink
+              key={path}
+              to={path}
+              end={path === '/'}
+              title={label}
+              className={({ isActive }) =>
+                `group relative flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-[11px] font-medium transition-colors duration-200 lg:flex-row lg:gap-3 lg:px-3.5 lg:text-sm ${
+                  isActive && canAccess ? SIDEBAR_ACTIVE[color] : 'text-ink-subtle hover:bg-surface-sunken hover:text-ink'
+                } ${!canAccess ? 'cursor-not-allowed opacity-50' : ''}`
+              }
+              onClick={(e) => {
+                if (!canAccess) {
+                  e.preventDefault();
+                  // Could show upgrade modal here
+                }
+              }}
+            >
+              {({ isActive }) => (
+                <>
+                  <Icon className={`h-5 w-5 shrink-0 transition-transform duration-200 ${isActive ? 'scale-110' : 'group-hover:scale-105'}`} />
+                  <span className="truncate">{label}</span>
+                  {isActive && canAccess && (
+                    <span aria-hidden="true" className="absolute left-0 top-1/2 hidden h-6 w-1 -translate-y-1/2 rounded-r-full bg-current lg:block" />
+                  )}
+                  {restricted && !canAccess && (
+                    <Crown className="absolute right-3 top-1/2 hidden h-3 w-3 -translate-y-1/2 text-yellow-500 lg:block" />
+                  )}
+                </>
+              )}
+            </NavLink>
+          );
+        })}
+      </nav>
+
+      {/* Account */}
+      <div className="shrink-0 border-t border-line p-2.5 lg:p-3">
+        <div className="flex items-center justify-center gap-3 rounded-xl p-1.5 lg:justify-start lg:bg-surface-muted lg:p-3">
+          <span className="ui-chip ui-chip-brand h-9 w-9 text-sm font-bold">{initial}</span>
+          <div className="hidden min-w-0 lg:block">
+            <p className="truncate text-sm font-semibold text-ink">{user?.name || 'Account'}</p>
+            <p className="truncate text-xs capitalize text-ink-subtle">{user?.tier} plan</p>
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+};
+
+// Enhanced Navigation with Tier Restrictions (phones: bottom bar)
 const BottomNavigation = () => {
   const { user } = useAuth();
   
-  const navItems = [
-    { path: '/', icon: Home, label: 'Dashboard', color: 'blue', restricted: false },
-    { path: '/properties', icon: Building, label: 'Properties', color: 'indigo', restricted: false },
-    { path: '/invoices', icon: FileText, label: 'Invoices', color: 'purple', restricted: false },
-    { path: '/profile', icon: UserIcon, label: 'Profile', color: 'green', restricted: false },
-    { path: '/payments', icon: DollarSign, label: 'Payments', color: 'black', restricted: false },
-  ];
+  const navItems = NAV_ITEMS;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg border-t border-gray-200/50 dark:border-gray-700/50 z-50">
+    <nav className="app-chrome fixed bottom-0 left-0 right-0 bg-surface/90 backdrop-blur-lg border-t border-line/50 z-50 md:hidden">
       <div className="safe-area-inset-bottom">
         <div className="flex justify-around items-center py-2">
           {navItems.map(({ path, icon: Icon, label, color, restricted }) => {
@@ -221,9 +316,9 @@ const BottomNavigation = () => {
               indigo: 'text-indigo-600 dark:text-indigo-400',
               purple: 'text-purple-600 dark:text-purple-400',
               green: 'text-green-600 dark:text-green-400',
-              black: 'text-gray-900 dark:text-gray-100'
+              black: 'text-ink'
             };
-            const inactiveColorClasses = 'text-gray-400 dark:text-gray-500';
+            const inactiveColorClasses = 'text-ink-faint';
 
             // Check if user can access this feature
             const canAccess = !restricted || (user && (
@@ -241,7 +336,7 @@ const BottomNavigation = () => {
                 end={path === '/'}
                 className={({ isActive }) => {
                   const baseClasses = `flex flex-col items-center space-y-1 px-3 py-2 rounded-xl transition-all duration-200 min-w-[44px] min-h-[44px]`;
-                  const stateClasses = isActive ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800';
+                  const stateClasses = isActive ? 'bg-surface-sunken' : 'hover:bg-surface-muted';
                   const accessClasses = !canAccess ? 'opacity-50 cursor-not-allowed' : '';
                   return `${baseClasses} ${stateClasses} ${accessClasses}`;
                 }}
@@ -302,12 +397,12 @@ class AppErrorBoundary extends React.Component<
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900 dark:to-red-800 flex items-center justify-center p-4">
-          <div className="text-center bg-white dark:bg-gray-800 rounded-xl shadow-xl p-8 max-w-md">
+          <div className="text-center bg-surface rounded-xl shadow-xl p-8 max-w-md">
             <div className="w-16 h-16 bg-red-100 dark:bg-red-800 rounded-full flex items-center justify-center mx-auto mb-4">
               <span className="text-2xl">⚠️</span>
             </div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Something went wrong</h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
+            <h2 className="text-xl font-bold text-ink mb-2">Something went wrong</h2>
+            <p className="text-ink-muted mb-4">
               The app encountered an unexpected error. Please try refreshing the page.
             </p>
             <button
@@ -474,18 +569,23 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   }, [platform, handleBackButton, showExitDialog]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900 transition-colors duration-300">
-      {/* Enhanced Status bar */}
-      <StatusBar />
-      
-      {/* Main content with top padding for status bar */}
-      <main className="pt-14 sm:pt-8 pb-20 min-h-screen">
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
-          {children}
-        </div>
-      </main>
+    <div className="app-canvas min-h-screen text-ink transition-colors duration-300">
+      {/* Sidebar (lg) / icon rail (md) — hidden on phones */}
+      <SidebarNavigation />
 
-      {/* Bottom Navigation */}
+      <div className="md:pl-[var(--rail-width)] lg:pl-[var(--nav-width)]">
+        {/* Enhanced Status bar */}
+        <StatusBar />
+
+        {/* Main content: padded for the status bar on phones, for the top bar on md+ */}
+        <main className="app-main min-h-screen pt-14 pb-20 sm:pt-8 md:pt-[calc(var(--topbar-height)+0.5rem)] md:pb-10">
+          <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+            {children}
+          </div>
+        </main>
+      </div>
+
+      {/* Bottom Navigation (phones only) */}
       <BottomNavigation />
 
       {/* Exit Confirmation Dialog */}
@@ -531,10 +631,10 @@ const PropertiesWrapper = () => {
   if (limits && limits.properties.exceeded) {
     return (
       <div className="p-4">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-center">
-          <Crown className="w-12 h-12 text-yellow-600 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-yellow-800 mb-2">Property Limit Reached</h3>
-          <p className="text-yellow-700 mb-4">
+        <div className="bg-yellow-50 dark:bg-yellow-500/10 border border-yellow-200 dark:border-yellow-500/25 rounded-xl p-6 text-center">
+          <Crown className="w-12 h-12 text-yellow-600 dark:text-yellow-400 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-yellow-800 dark:text-yellow-300 mb-2">Property Limit Reached</h3>
+          <p className="text-yellow-700 dark:text-yellow-300 mb-4">
             You've reached the maximum number of properties for your {user?.tier} plan.
             You can view your existing {limits.properties.max} properties, but to add more, please upgrade your plan.
           </p>

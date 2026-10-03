@@ -73,19 +73,19 @@ const StatsCard: React.FC<{
 }> = ({ title, value, icon: Icon, trend, color, loading, subtitle, percentage }) => {
   if (loading) {
     return (
-      <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-4 shadow-lg border border-gray-200/50 dark:border-gray-700/50">
+      <div className="ui-card p-4">
         <div className="animate-pulse">
-          <div className="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-lg mb-3"></div>
-          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded mb-2 w-2/3"></div>
-          <div className="h-7 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
-          {subtitle && <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded mt-2 w-1/2"></div>}
+          <div className="w-10 h-10 bg-track rounded-lg mb-3"></div>
+          <div className="h-4 bg-track rounded mb-2 w-2/3"></div>
+          <div className="h-7 bg-track rounded w-3/4"></div>
+          {subtitle && <div className="h-3 bg-track rounded mt-2 w-1/2"></div>}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-4 shadow-lg border border-gray-200/50 dark:border-gray-700/50 hover:shadow-xl hover:scale-[1.02] transition-all duration-300">
+    <div className="ui-card ui-card-hover p-4">
       <div className="flex items-start justify-between mb-3">
         <div className={`p-2.5 rounded-xl ${color} shadow-lg`}>
           <Icon className="w-6 h-6 text-white" />
@@ -97,22 +97,22 @@ const StatsCard: React.FC<{
               : 'text-red-700 bg-red-100 dark:text-red-400 dark:bg-red-900/30'
           }`}>
             {trend >= 0 ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
-            {Math.abs(trend)}%
+            {Math.abs(trend).toFixed(1)}%
           </div>
         )}
       </div>
       <div>
-        <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">{title}</p>
+        <p className="text-sm font-medium text-ink-muted mb-1">{title}</p>
         <div className="flex items-baseline space-x-2">
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+          <p className="text-2xl font-bold text-ink">{value}</p>
           {percentage !== undefined && (
-            <span className="text-lg font-semibold text-gray-500 dark:text-gray-400">
+            <span className="text-lg font-semibold text-ink-subtle">
               ({percentage.toFixed(1)}%)
             </span>
           )}
         </div>
         {subtitle && (
-          <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{subtitle}</p>
+          <p className="text-xs text-ink-subtle mt-1">{subtitle}</p>
         )}
       </div>
     </div>
@@ -161,10 +161,10 @@ const PropertySelector: React.FC<{
 
   if (loading) {
     return (
-      <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-4 shadow-lg border border-gray-200/50 dark:border-gray-700/50">
+      <div className="ui-card p-4">
         <div className="animate-pulse">
-          <div className="h-5 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-2"></div>
-          <div className="h-12 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          <div className="h-5 bg-track rounded w-1/3 mb-2"></div>
+          <div className="h-12 bg-track rounded"></div>
         </div>
       </div>
     );
@@ -172,19 +172,19 @@ const PropertySelector: React.FC<{
 
   return (
     <>
-      <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-4 shadow-lg border border-gray-200/50 dark:border-gray-700/50">
-        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+      <div className="ui-card p-4">
+        <label className="block text-sm font-semibold text-ink-soft mb-3">
           Property Filter
         </label>
         <button
           ref={buttonRef}
           onClick={handleToggle}
-          className="w-full flex items-center justify-between p-3.5 bg-white dark:bg-gray-700 border-2 border-gray-200 dark:border-gray-600 rounded-xl hover:border-blue-300 dark:hover:border-blue-500 hover:bg-gray-50 dark:hover:bg-gray-600 transition-all duration-200 shadow-sm"
+          className="w-full flex items-center justify-between p-3.5 bg-surface border-2 border-line rounded-xl hover:border-blue-300 dark:hover:border-blue-500 hover:bg-surface-muted transition-all duration-200 shadow-sm"
         >
-          <span className="font-medium text-gray-900 dark:text-white">
+          <span className="font-medium text-ink">
             {selectedProperty ? selectedProperty.name : 'All Properties'}
           </span>
-          <ChevronDown className={`w-5 h-5 text-gray-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+          <ChevronDown className={`w-5 h-5 text-ink-subtle transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
         </button>
       </div>
 
@@ -194,7 +194,7 @@ const PropertySelector: React.FC<{
           onClick={handleClose}
         >
           <div 
-            className="absolute bg-white dark:bg-gray-700 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-600 max-h-80 overflow-hidden"
+            className="absolute bg-surface rounded-xl shadow-2xl border border-line max-h-80 overflow-hidden"
             style={{
               top: dropdownPosition.top + 'px',
               left: dropdownPosition.left + 'px',
@@ -202,15 +202,15 @@ const PropertySelector: React.FC<{
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-3 border-b border-gray-200 dark:border-gray-600">
+            <div className="p-3 border-b border-line">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-ink-faint" />
                 <input
                   type="text"
                   placeholder="Search properties..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  className="w-full pl-10 pr-3 py-2.5 border border-line-strong rounded-lg bg-surface text-ink focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 />
               </div>
             </div>
@@ -220,7 +220,7 @@ const PropertySelector: React.FC<{
                   onSelect(null);
                   handleClose();
                 }}
-                className="w-full px-4 py-3 text-left hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-900 dark:text-white transition-colors duration-150 font-medium"
+                className="w-full px-4 py-3 text-left hover:bg-surface-sunken text-ink transition-colors duration-150 font-medium"
               >
                 All Properties
               </button>
@@ -231,16 +231,16 @@ const PropertySelector: React.FC<{
                     onSelect(property);
                     handleClose();
                   }}
-                  className="w-full px-4 py-3 text-left hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-900 dark:text-white transition-colors duration-150"
+                  className="w-full px-4 py-3 text-left hover:bg-surface-sunken text-ink transition-colors duration-150"
                 >
                   <div className="font-medium">{property.name}</div>
                   {property.address && (
-                    <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">{property.address}</div>
+                    <div className="text-sm text-ink-subtle mt-1">{property.address}</div>
                   )}
                 </button>
               ))}
               {filteredProperties.length === 0 && (
-                <div className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                <div className="px-4 py-8 text-center text-ink-subtle">
                   <Building className="w-8 h-8 mx-auto mb-2 opacity-50" />
                   <p>No properties found</p>
                 </div>
@@ -280,28 +280,28 @@ const MonthYearNav: React.FC<{
   };
 
   return (
-    <div className="flex items-center justify-between bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-4 shadow-lg border border-gray-200/50 dark:border-gray-700/50">
+    <div className="flex items-center justify-between ui-card p-4">
       <button
         onClick={() => navigateMonth('prev')}
-        className="p-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 hover:scale-105"
+        className="p-2.5 rounded-xl hover:bg-surface-sunken transition-colors duration-200 hover:scale-105"
       >
-        <ChevronLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+        <ChevronLeft className="w-5 h-5 text-ink-muted" />
       </button>
       
       <div className="flex items-center space-x-3">
         <div className="p-2 rounded-xl bg-blue-100 dark:bg-blue-900/30">
           <Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400" />
         </div>
-        <span className="font-bold text-lg text-gray-900 dark:text-white">
+        <span className="font-bold text-lg text-ink">
           {formatMonth(currentDate)}
         </span>
       </div>
       
       <button
         onClick={() => navigateMonth('next')}
-        className="p-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 hover:scale-105"
+        className="p-2.5 rounded-xl hover:bg-surface-sunken transition-colors duration-200 hover:scale-105"
       >
-        <ChevronRight className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+        <ChevronRight className="w-5 h-5 text-ink-muted" />
       </button>
     </div>
   );
@@ -314,10 +314,10 @@ const RevenueChart: React.FC<{
 }> = ({ data, loading }) => {
   if (loading) {
     return (
-      <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-4 shadow-lg border border-gray-200/50 dark:border-gray-700/50">
+      <div className="ui-card p-4">
         <div className="animate-pulse">
-          <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-4"></div>
-          <div className="h-80 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          <div className="h-6 bg-track rounded w-1/3 mb-4"></div>
+          <div className="h-80 bg-track rounded"></div>
         </div>
       </div>
     );
@@ -333,26 +333,26 @@ const RevenueChart: React.FC<{
   }));
 
   return (
-    <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-4 shadow-lg border border-gray-200/50 dark:border-gray-700/50">
+    <div className="ui-card p-4">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-3">
-          <div className="p-2 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600">
+          <div className="p-2 rounded-xl bg-gradient-to-r from-brand-500 to-indigo-600">
             <BarChart3 className="w-5 h-5 text-white" />
           </div>
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white">Financial Overview</h3>
+          <h3 className="text-lg font-bold text-ink">Financial Overview</h3>
         </div>
         <div className="flex items-center space-x-4 text-sm">
           <div className="flex items-center">
             <div className="w-3 h-3 bg-blue-500 rounded mr-2"></div>
-            <span className="text-gray-600 dark:text-gray-400 font-medium">Revenue</span>
+            <span className="text-ink-muted font-medium">Revenue</span>
           </div>
           <div className="flex items-center">
             <div className="w-3 h-3 bg-green-500 rounded mr-2"></div>
-            <span className="text-gray-600 dark:text-gray-400 font-medium">Profit</span>
+            <span className="text-ink-muted font-medium">Profit</span>
           </div>
           <div className="flex items-center">
             <div className="w-3 h-3 bg-orange-500 rounded mr-2"></div>
-            <span className="text-gray-600 dark:text-gray-400 font-medium">Expenses</span>
+            <span className="text-ink-muted font-medium">Expenses</span>
           </div>
         </div>
       </div>
@@ -421,10 +421,10 @@ const PaymentStatusChart: React.FC<{
 }> = ({ paidCount, unpaidCount, loading }) => {
   if (loading) {
     return (
-      <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-4 shadow-lg border border-gray-200/50 dark:border-gray-700/50">
+      <div className="ui-card p-4">
         <div className="animate-pulse">
-          <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mb-4"></div>
-          <div className="h-48 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          <div className="h-6 bg-track rounded w-1/2 mb-4"></div>
+          <div className="h-48 bg-track rounded"></div>
         </div>
       </div>
     );
@@ -439,22 +439,22 @@ const PaymentStatusChart: React.FC<{
   ];
 
   return (
-    <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-4 shadow-lg border border-gray-200/50 dark:border-gray-700/50">
+    <div className="ui-card p-4">
       <div className="flex items-center space-x-3 mb-4">
-        <div className="p-2 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600">
+        <div className="p-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600">
           <PieChartIcon className="w-5 h-5 text-white" />
         </div>
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Payment Status</h3>
+        <h3 className="text-lg font-bold text-ink">Payment Status</h3>
       </div>
       <div className="flex items-center justify-between">
         <div className="space-y-3 flex-1">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
-              <span className="text-gray-600 dark:text-gray-400 font-medium">Paid</span>
+              <span className="text-ink-muted font-medium">Paid</span>
             </div>
             <div className="text-right">
-              <span className="font-bold text-gray-900 dark:text-white text-lg">{paidCount}</span>
+              <span className="font-bold text-ink text-lg">{paidCount}</span>
               <span className="text-sm text-green-600 dark:text-green-400 ml-2">
                 ({paidPercentage.toFixed(1)}%)
               </span>
@@ -463,19 +463,19 @@ const PaymentStatusChart: React.FC<{
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <XCircle className="w-5 h-5 text-red-500 mr-2" />
-              <span className="text-gray-600 dark:text-gray-400 font-medium">Unpaid</span>
+              <span className="text-ink-muted font-medium">Unpaid</span>
             </div>
             <div className="text-right">
-              <span className="font-bold text-gray-900 dark:text-white text-lg">{unpaidCount}</span>
+              <span className="font-bold text-ink text-lg">{unpaidCount}</span>
               <span className="text-sm text-red-600 dark:text-red-400 ml-2">
                 ({(100 - paidPercentage).toFixed(1)}%)
               </span>
             </div>
           </div>
-          <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
+          <div className="pt-3 border-t border-line">
             <div className="flex items-center justify-between">
-              <span className="font-bold text-gray-900 dark:text-white">Total</span>
-              <span className="font-bold text-xl text-gray-900 dark:text-white">{total}</span>
+              <span className="font-bold text-ink">Total</span>
+              <span className="font-bold text-xl text-ink">{total}</span>
             </div>
           </div>
         </div>
@@ -514,12 +514,12 @@ const RecentActivity: React.FC<{
 }> = ({ recentInvoices, loading }) => {
   if (loading) {
     return (
-      <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-4 shadow-lg border border-gray-200/50 dark:border-gray-700/50">
+      <div className="ui-card p-4">
         <div className="animate-pulse">
-          <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-4"></div>
+          <div className="h-6 bg-track rounded w-1/3 mb-4"></div>
           <div className="space-y-3">
             {[1, 2, 3, 4].map(i => (
-              <div key={i} className="h-16 bg-gray-200 dark:bg-gray-700 rounded"></div>
+              <div key={i} className="h-16 bg-track rounded"></div>
             ))}
           </div>
         </div>
@@ -528,26 +528,26 @@ const RecentActivity: React.FC<{
   }
 
   return (
-    <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-4 shadow-lg border border-gray-200/50 dark:border-gray-700/50">
+    <div className="ui-card p-4">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-3">
-          <div className="p-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600">
+          <div className="p-2 rounded-xl bg-gradient-to-r from-brand-500 to-indigo-600">
             <Activity className="w-5 h-5 text-white" />
           </div>
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white">Recent Activity</h3>
+          <h3 className="text-lg font-bold text-ink">Recent Activity</h3>
         </div>
-        <Eye className="w-5 h-5 text-gray-500" />
+        <Eye className="w-5 h-5 text-ink-subtle" />
       </div>
       <div className="space-y-3 max-h-80 overflow-y-auto">
         {recentInvoices.length === 0 ? (
-          <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+          <div className="text-center py-12 text-ink-subtle">
             <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
             <p className="font-medium">No recent activity</p>
             <p className="text-sm mt-1">Invoice data will appear here</p>
           </div>
         ) : (
           recentInvoices.map(invoice => (
-            <div key={invoice.id} className="flex items-center justify-between p-3 bg-gray-50/80 dark:bg-gray-700/50 rounded-xl hover:bg-gray-100/80 dark:hover:bg-gray-600/50 transition-colors duration-200">
+            <div key={invoice.id} className="flex items-center justify-between p-3 bg-surface-muted/80 rounded-xl hover:bg-surface-sunken/80 transition-colors duration-200">
               <div className="flex items-center space-x-3 flex-1">
                 <div className={`p-2.5 rounded-xl shadow-sm ${
                   invoice.isPaid 
@@ -561,10 +561,10 @@ const RecentActivity: React.FC<{
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-900 dark:text-white text-sm truncate">
+                  <p className="font-semibold text-ink text-sm truncate">
                     {invoice.tenantName}
                   </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                  <p className="text-xs text-ink-subtle truncate">
                     {invoice.propertyName} • {invoice.billingMonth}
                   </p>
                   <div className="flex items-center mt-1 space-x-2">
@@ -579,7 +579,7 @@ const RecentActivity: React.FC<{
                 </div>
               </div>
               <div className="text-right ml-3">
-                <p className="font-bold text-gray-900 dark:text-white text-sm">
+                <p className="font-bold text-ink text-sm">
                   ${invoice.totalAmount.toLocaleString()}
                 </p>
                 {invoice.arrears > 0 && (
@@ -747,12 +747,12 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
       onTouchMove={handleTouchMove}
     >
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="ui-page-title">
             Dashboard
           </h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
+          <p className="ui-page-subtitle">
             Welcome back! Here's your property overview.
           </p>
         </div>
@@ -760,13 +760,13 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="p-3 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 hover:shadow-xl hover:scale-105 transition-all duration-200"
+            className="p-3 ui-card ui-card-hover"
           >
-            <RefreshCw className={`w-5 h-5 text-gray-600 dark:text-gray-400 ${refreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-5 h-5 text-ink-muted  ${refreshing ? 'animate-spin' : ''}`} />
           </button>
           <button
             onClick={handleExportReports}
-            className="p-3 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
+            className="p-3 bg-gradient-to-r from-brand-500 to-indigo-600 rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
           >
             <Download className="w-5 h-5 text-white" />
           </button>
@@ -775,6 +775,8 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
 
       <TrialStatsBanner userId={userData?.id} />
 
+      {/* Filters: side by side on large screens */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
       {/* Property Selector */}
       <PropertySelector
         properties={properties}
@@ -788,14 +790,15 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
         currentMonth={currentMonth}
         onMonthChange={setCurrentMonth}
       />
+      </div>
 
       {/* Enhanced Quick Stats Cards Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4 xl:gap-6">
         <StatsCard
           title="Properties"
           value={properties.length || 0}
           icon={Building}
-          color="bg-gradient-to-r from-blue-500 to-indigo-600"
+          color="bg-gradient-to-r from-brand-500 to-indigo-600"
           loading={loading}
           subtitle={`${properties.length} total managed`}
         />
@@ -803,7 +806,7 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
           title="Active Tenants"
           value={dashboardData?.totalTenants || 0}
           icon={Users}
-          color="bg-gradient-to-r from-indigo-500 to-purple-600"
+          color="bg-gradient-to-r from-brand-500 to-indigo-600"
           loading={loading}
           percentage={dashboardData?.occupancyRate}
           subtitle="Occupancy rate"
@@ -813,7 +816,7 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
           value={`${(dashboardData?.monthlyRevenue || 0).toLocaleString()}`}
           icon={DollarSign}
           trend={revenueTrend}
-          color="bg-gradient-to-r from-green-500 to-emerald-600"
+          color="bg-gradient-to-r from-emerald-500 to-teal-600"
           loading={loading}
           subtitle={`Avg: ${averageRent.toLocaleString()}/tenant`}
         />
@@ -821,7 +824,7 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
           title="Outstanding"
           value={`${(dashboardData?.totalArrears || 0).toLocaleString()}`}
           icon={AlertTriangle}
-          color="bg-gradient-to-r from-red-500 to-pink-600"
+          color="bg-gradient-to-r from-red-500 to-rose-600"
           loading={loading}
           percentage={dashboardData?.totalArrears && dashboardData?.monthlyRevenue ? 
             (dashboardData.totalArrears / dashboardData.monthlyRevenue) * 100 : 0}
@@ -829,49 +832,15 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
         />
       </div>
 
-      {/* Collection Rate Card */}
-      <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-6 shadow-lg border border-gray-200/50 dark:border-gray-700/50">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-3">
-            <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600">
-              <Percent className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white">Collection Rate</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Payment collection efficiency</p>
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
-              {loading ? '...' : `${collectionRate.toFixed(1)}%`}
-            </div>
-            <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              {loading ? 'Loading...' : `${dashboardData?.paidInvoices || 0} of ${(dashboardData?.paidInvoices || 0) + (dashboardData?.unpaidInvoices || 0)} paid`}
-            </div>
-          </div>
-        </div>
-        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4 shadow-inner">
-          <div 
-            className="bg-gradient-to-r from-emerald-500 to-teal-600 h-4 rounded-full transition-all duration-1000 ease-out shadow-sm"
-            style={{ width: loading ? '0%' : `${collectionRate}%` }}
-          ></div>
-        </div>
-        <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400 mt-2">
-          <span>0%</span>
-          <span>Target: 85%</span>
-          <span>100%</span>
-        </div>
-      </div>
-
       {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Revenue Chart - Takes 2 columns on large screens */}
-        <div className="lg:col-span-2">
+        <div className="xl:col-span-2 [&>*]:h-full">
           <RevenueChart data={monthlyStats} loading={loading} />
         </div>
         
         {/* Payment Status Chart */}
-        <div className="lg:col-span-1">
+        <div className="xl:col-span-1 [&>*]:h-full">
           <PaymentStatusChart
             paidCount={dashboardData?.paidInvoices || 0}
             unpaidCount={dashboardData?.unpaidInvoices || 0}
@@ -880,32 +849,66 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
         </div>
       </div>
 
-      {/* Occupancy and Performance Metrics */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Collection, occupancy and performance metrics */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        {/* Collection Rate Card */}
+      <div className="ui-card p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-3">
+            <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600">
+              <Percent className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-ink">Collection Rate</h3>
+              <p className="text-sm text-ink-subtle">Payment collection efficiency</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
+              {loading ? '...' : `${collectionRate.toFixed(1)}%`}
+            </div>
+            <div className="text-sm text-ink-subtle mt-1">
+              {loading ? 'Loading...' : `${dashboardData?.paidInvoices || 0} of ${(dashboardData?.paidInvoices || 0) + (dashboardData?.unpaidInvoices || 0)} paid`}
+            </div>
+          </div>
+        </div>
+        <div className="w-full bg-track rounded-full h-4 shadow-inner">
+          <div 
+            className="bg-gradient-to-r from-emerald-500 to-teal-600 h-4 rounded-full transition-all duration-1000 ease-out shadow-sm"
+            style={{ width: loading ? '0%' : `${collectionRate}%` }}
+          ></div>
+        </div>
+        <div className="flex justify-between text-sm text-ink-subtle mt-2">
+          <span>0%</span>
+          <span>Target: 85%</span>
+          <span>100%</span>
+        </div>
+      </div>
+
         {/* Occupancy Rate Card */}
-        <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-6 shadow-lg border border-gray-200/50 dark:border-gray-700/50">
+        <div className="ui-card p-6">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-3">
-              <div className="p-3 rounded-xl bg-gradient-to-r from-purple-500 to-pink-600">
+              <div className="p-3 rounded-xl bg-gradient-to-r from-brand-500 to-indigo-600">
                 <Building className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white">Occupancy Rate</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Property utilization</p>
+                <h3 className="text-lg font-bold text-ink">Occupancy Rate</h3>
+                <p className="text-sm text-ink-subtle">Property utilization</p>
               </div>
             </div>
             <div className="text-3xl font-bold text-purple-600 dark:text-purple-400">
               {loading ? '...' : `${(dashboardData?.occupancyRate || 0).toFixed(1)}%`}
             </div>
           </div>
-          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4 shadow-inner">
+          <div className="w-full bg-track rounded-full h-4 shadow-inner">
             <div 
-              className="bg-gradient-to-r from-purple-500 to-pink-600 h-4 rounded-full transition-all duration-1000 ease-out shadow-sm"
+              className="bg-gradient-to-r from-brand-500 to-indigo-600 h-4 rounded-full transition-all duration-1000 ease-out shadow-sm"
               style={{ width: loading ? '0%' : `${dashboardData?.occupancyRate || 0}%` }}
             ></div>
           </div>
           <div className="flex justify-between items-center mt-4">
-            <div className="text-sm text-gray-600 dark:text-gray-400">
+            <div className="text-sm text-ink-muted">
               {loading ? 'Loading...' : `${dashboardData?.totalTenants || 0} of ${dashboardData?.totalProperties || 0} units occupied`}
             </div>
             <div className="text-sm font-medium text-purple-600 dark:text-purple-400">
@@ -915,48 +918,48 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
         </div>
 
         {/* Performance Summary */}
-        <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-6 shadow-lg border border-gray-200/50 dark:border-gray-700/50">
+        <div className="ui-card p-6 xl:col-span-2">
           <div className="flex items-center space-x-3 mb-6">
-            <div className="p-3 rounded-xl bg-gradient-to-r from-orange-500 to-red-600">
+            <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600">
               <TrendingUp className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white">Performance</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Key metrics summary</p>
+              <h3 className="text-xl font-bold text-ink">Performance</h3>
+              <p className="text-sm text-ink-subtle">Key metrics summary</p>
             </div>
           </div>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 bg-gray-50/80 dark:bg-gray-700/50 rounded-xl">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="flex items-center justify-between p-3 bg-surface-muted/80 rounded-xl">
               <div className="flex items-center space-x-3">
                 <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Average Rent</span>
+                <span className="text-sm font-medium text-ink-soft">Average Rent</span>
               </div>
-              <span className="font-bold text-gray-900 dark:text-white">
+              <span className="font-bold text-ink">
                 ${loading ? '...' : averageRent.toLocaleString()}
               </span>
             </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50/80 dark:bg-gray-700/50 rounded-xl">
+            <div className="flex items-center justify-between p-3 bg-surface-muted/80 rounded-xl">
               <div className="flex items-center space-x-3">
                 <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Collection Rate</span>
+                <span className="text-sm font-medium text-ink-soft">Collection Rate</span>
               </div>
-              <span className="font-bold text-gray-900 dark:text-white">
+              <span className="font-bold text-ink">
                 {loading ? '...' : `${collectionRate.toFixed(1)}%`}
               </span>
             </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50/80 dark:bg-gray-700/50 rounded-xl">
+            <div className="flex items-center justify-between p-3 bg-surface-muted/80 rounded-xl">
               <div className="flex items-center space-x-3">
                 <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Occupancy</span>
+                <span className="text-sm font-medium text-ink-soft">Occupancy</span>
               </div>
-              <span className="font-bold text-gray-900 dark:text-white">
+              <span className="font-bold text-ink">
                 {loading ? '...' : `${(dashboardData?.occupancyRate || 0).toFixed(1)}%`}
               </span>
             </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50/80 dark:bg-gray-700/50 rounded-xl">
+            <div className="flex items-center justify-between p-3 bg-surface-muted/80 rounded-xl">
               <div className="flex items-center space-x-3">
                 <div className={`w-3 h-3 rounded-full ${revenueTrend >= 0 ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Revenue Trend</span>
+                <span className="text-sm font-medium text-ink-soft">Revenue Trend</span>
               </div>
               <span className={`font-bold ${revenueTrend >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                 {loading ? '...' : `${revenueTrend >= 0 ? '+' : ''}${revenueTrend.toFixed(1)}%`}
@@ -966,19 +969,22 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
         </div>
       </div>
 
-      {/* Recent Activity */}
+      {/* Recent Activity + Quick Actions */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+      <div className="xl:col-span-2">
       <RecentActivity recentInvoices={recentInvoices} loading={loading} />
+      </div>
 
       {/* Quick Actions */}
       {/* {userData.storage && ( */}
-        <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-6 shadow-lg border border-gray-200/50 dark:border-gray-700/50">
-        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-          <div className="p-2 rounded-xl bg-gradient-to-r from-indigo-500 to-blue-600 mr-3">
+        <div className="ui-card p-6">
+        <h3 className="text-xl font-bold text-ink mb-4 flex items-center">
+          <div className="p-2 rounded-xl bg-gradient-to-r from-brand-500 to-indigo-600 mr-3">
             <Activity className="w-5 h-5 text-white" />
           </div>
           Quick Actions
         </h3>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           {/* <button className="p-4 text-center bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
             <FileText className="w-6 h-6 mx-auto mb-2" />
             <span className="text-sm font-medium">Create Invoice on tab 3</span>
@@ -987,17 +993,18 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
             <Users className="w-6 h-6 mx-auto mb-2" />
             <span className="text-sm font-medium">Add Property tab 2</span>
           </button> */}
-          <button onClick={handleDownload} className="p-4 text-center bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
+          <button onClick={handleDownload} className="p-4 text-center bg-gradient-to-r from-brand-500 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
             <DownloadCloud className="w-6 h-6 mx-auto mb-2" />
             <span className="text-sm font-medium"> DOWNLOAD DATA</span>
           </button>
-          <button onClick={handleSave} className="p-4 text-center bg-gradient-to-r from-red-500 to-orange-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
+          <button onClick={handleSave} className="p-4 text-center bg-gradient-to-r from-red-500 to-rose-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
             <UploadCloud className="w-6 h-6 mx-auto mb-2" />
             <span className="text-sm font-medium">SAVE DATA</span>
           </button>
         </div>
       </div>
       {/* )}; */}
+      </div>
     </div>
   );
 };
