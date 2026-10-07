@@ -17,7 +17,7 @@ export const CONTACT = {
   whatsapp: '+254791286165',
   whatsappHref: 'https://wa.me/254791286165',
   website: 'https://cogvana.co.ke/',
-  appUrl: 'https://plot.myregister.co.ke/',
+  appUrl: 'https://plot.samuhia.co.ke/',
 };
 
 export const TRIAL_OFFER = 'Get 3 months of Business tier free when you sign up — no card needed';

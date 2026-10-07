@@ -112,7 +112,7 @@ const AuthWrapperScreen = () => {
   };
 
   return (
-    <div className="bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-800">
+    <div className="force-light bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-800">
       <MarketingNav
         onGetStarted={() => goToAuth(true)}
         onSignIn={() => goToAuth(false)}

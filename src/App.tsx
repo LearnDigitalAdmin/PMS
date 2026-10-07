@@ -141,7 +141,7 @@ const StatusBar = () => {
   const trialUrgent = info?.isTrial && daysRemaining !== null && daysRemaining <= 7;
 
   return (
-    <div className="app-chrome fixed top-0 left-0 right-0 z-50 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 bg-gradient-to-r from-brand-600 to-indigo-600 px-3 py-1.5 text-xs text-white md:left-[var(--rail-width)] md:min-h-[var(--topbar-height)] md:flex-nowrap md:border-b md:border-line md:bg-surface/80 md:bg-none md:px-6 md:py-0 md:text-ink-soft md:backdrop-blur-xl lg:left-[var(--nav-width)]">
+    <div className="app-chrome fixed top-0 left-0 right-0 z-50 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 bg-gradient-to-r from-brand-600 to-indigo-600 px-3 pb-1.5 pt-[calc(0.375rem+env(safe-area-inset-top,0px))] text-xs text-white md:left-[var(--rail-width)] md:min-h-[calc(var(--topbar-height)+env(safe-area-inset-top,0px))] md:flex-nowrap md:border-b md:border-line md:bg-surface/80 md:bg-none md:px-6 md:pb-0 md:pt-[env(safe-area-inset-top,0px)] md:text-ink-soft md:backdrop-blur-xl lg:left-[var(--nav-width)]">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 md:flex-nowrap md:gap-3">
         <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium capitalize md:px-3 md:py-1 ${getTierBadgeClasses(user.tier)}`}>
           {getTierIcon(user.tier)}
@@ -226,7 +226,7 @@ const SidebarNavigation = () => {
   const initial = (user?.name || user?.email || '?').trim().charAt(0).toUpperCase();
 
   return (
-    <aside className="app-chrome fixed inset-y-0 left-0 z-40 hidden w-[var(--rail-width)] flex-col border-r border-line bg-surface/80 backdrop-blur-xl md:flex lg:w-[var(--nav-width)]">
+    <aside className="app-chrome fixed inset-y-0 left-0 z-40 hidden w-[var(--rail-width)] flex-col border-r border-line bg-surface/80 pt-[env(safe-area-inset-top,0px)] backdrop-blur-xl md:flex lg:w-[var(--nav-width)]">
       {/* Brand */}
       <div className="flex h-[var(--topbar-height)] shrink-0 items-center justify-center gap-3 border-b border-line px-3 lg:justify-start lg:px-5">
         <span className="ui-chip ui-chip-brand h-9 w-9">
@@ -578,7 +578,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <StatusBar />
 
         {/* Main content: padded for the status bar on phones, for the top bar on md+ */}
-        <main className="app-main min-h-screen pt-14 pb-20 sm:pt-8 md:pt-[calc(var(--topbar-height)+0.5rem)] md:pb-10">
+        <main className="app-main min-h-screen pt-[calc(3.5rem+env(safe-area-inset-top,0px))] pb-20 sm:pt-[calc(2rem+env(safe-area-inset-top,0px))] md:pt-[calc(var(--topbar-height)+0.5rem+env(safe-area-inset-top,0px))] md:pb-10">
           <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
             {children}
           </div>

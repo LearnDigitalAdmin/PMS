@@ -1,14 +1,14 @@
 // public/service-worker.js
-const CACHE_NAME = 'plot-yangu-v1';
-const RUNTIME_CACHE = 'plot-yangu-runtime-v1';
+const CACHE_NAME = 'plot-yangu-v2';
+const RUNTIME_CACHE = 'plot-yangu-runtime-v2';
 
 // Assets to cache on install
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png'
+  '/icons/manifest-icon-192.maskable.png',
+  '/icons/manifest-icon-512.maskable.png'
 ];
 
 // WA-SQLite WASM files to cache

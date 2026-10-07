@@ -15,9 +15,11 @@
 
 @custom-variant dark {
   @media (prefers-color-scheme: dark) {
-    @slot;
+    &:where(:not(.force-light, .force-light *)) {
+      @slot;
+    }
   }
-  &:where(.dark, .dark *) {
+  &:where(.dark, .dark *):where(:not(.force-light, .force-light *)) {
     @slot;
   }
 }
@@ -63,7 +65,12 @@
   --color-ink-faint: var(--c-ink-faint);
 }
 
-:root {
+/* `.force-light` pins a subtree to the light palette (used for the pre-login
+   marketing / sign-in / sign-up screens, which are a light-only design on a
+   colour gradient). It re-declares the light tokens, so anything inside that
+   inherits colour (inputs, plain text) stays readable under a dark OS theme. */
+:root,
+.force-light {
   color-scheme: light;
 
   --c-canvas: linear-gradient(135deg, #eff6ff 0%, #eef2ff 48%, #f5f3ff 100%);
@@ -84,9 +91,16 @@
   --c-ink-subtle: #6b7280;
   --c-ink-faint: #9ca3af;
 
+}
+
+:root {
   --nav-width: 16.5rem;
   --rail-width: 5.25rem;
   --topbar-height: 3.5rem;
+}
+
+.force-light {
+  color: var(--c-ink);
 }
 
 @media (prefers-color-scheme: dark) {

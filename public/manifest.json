@@ -1,12 +1,13 @@
 {
   "name": "Plot Yangu - Property Management",
   "short_name": "Plot Yangu",
+  "id": "/",
   "description": "Complete property management solution for landlords and property managers",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#2563eb",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "scope": "/",
   "icons": [
     {
@@ -109,7 +110,6 @@
     }
   },
   "display_override": [
-    "window-controls-overlay",
     "standalone",
     "minimal-ui"
   ],

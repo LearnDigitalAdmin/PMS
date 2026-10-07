@@ -1,0 +1,490 @@
+diff --git a/index.html b/index.html
+index 1527f79..4890d53 100644
+--- a/index.html
++++ b/index.html
+@@ -8,10 +8,12 @@
+     <meta name="description" content="Plot Yangu is property management software for landlords and agents in Kenya. Track properties and tenants, generate invoices, collect M-Pesa payments, and notify tenants automatically — offline-first, with 3 months of Business tier free." />
+     <meta name="keywords" content="property management software Kenya, landlord app Kenya, rental property management, tenant management software, rent collection M-Pesa, invoice software for landlords, property agent software Kenya, Plot Yangu, Cogvana" />
+     <meta name="robots" content="index, follow" />
+-    <link rel="canonical" href="https://plot.myregister.co.ke/" />
+-    <link rel="alternate" hreflang="en-KE" href="https://plot.myregister.co.ke/" />
+-    <link rel="alternate" hreflang="x-default" href="https://plot.myregister.co.ke/" />
+-    <meta name="theme-color" content="#2563eb" />
++    <link rel="canonical" href="https://plot.samuhia.co.ke/" />
++    <link rel="alternate" hreflang="en-KE" href="https://plot.samuhia.co.ke/" />
++    <link rel="alternate" hreflang="x-default" href="https://plot.samuhia.co.ke/" />
++    <meta name="theme-color" content="#2563eb" media="(prefers-color-scheme: light)" />
++    <meta name="theme-color" content="#0b1224" media="(prefers-color-scheme: dark)" />
++    <meta name="mobile-web-app-capable" content="yes" />
+     <meta name="apple-mobile-web-app-capable" content="yes" />
+     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+     <meta name="apple-mobile-web-app-title" content="Plot Yangu" />
+@@ -91,8 +93,8 @@
+     <meta property="og:site_name" content="Plot Yangu" />
+     <meta property="og:title" content="Plot Yangu — Property Management Software for Landlords in Kenya" />
+     <meta property="og:description" content="Track properties and tenants, generate invoices, collect M-Pesa payments, and notify tenants automatically — offline-first, with 3 months of Business tier free." />
+-    <meta property="og:url" content="https://plot.myregister.co.ke/" />
+-    <meta property="og:image" content="https://plot.myregister.co.ke/social/og-image.jpg" />
++    <meta property="og:url" content="https://plot.samuhia.co.ke/" />
++    <meta property="og:image" content="https://plot.samuhia.co.ke/social/og-image.jpg" />
+     <meta property="og:image:width" content="1200" />
+     <meta property="og:image:height" content="630" />
+     <meta property="og:image:alt" content="Plot Yangu — property management software for landlords in Kenya" />
+@@ -102,7 +104,7 @@
+     <meta name="twitter:card" content="summary_large_image" />
+     <meta name="twitter:title" content="Plot Yangu — Property Management Software for Landlords in Kenya" />
+     <meta name="twitter:description" content="Track properties and tenants, generate invoices, collect M-Pesa payments, and notify tenants automatically — offline-first, with 3 months of Business tier free." />
+-    <meta name="twitter:image" content="https://plot.myregister.co.ke/social/og-image.jpg" />
++    <meta name="twitter:image" content="https://plot.samuhia.co.ke/social/og-image.jpg" />
+     <meta name="twitter:image:alt" content="Plot Yangu — property management software for landlords in Kenya" />
+ 
+     <!-- Structured data (JSON-LD) -->
+@@ -125,15 +127,15 @@
+       "@graph": [
+         {
+           "@type": "Organization",
+-          "@id": "https://plot.myregister.co.ke/#organization",
++          "@id": "https://plot.samuhia.co.ke/#organization",
+           "name": "Cogvana Technologies",
+           "legalName": "SMB Kenya Ltd",
+           "alternateName": ["Cogvana", "Cogvana Corporation"],
+           "url": "https://cogvana.co.ke/",
+-          "logo": "https://plot.myregister.co.ke/icons/manifest-icon-512.maskable.png",
++          "logo": "https://plot.samuhia.co.ke/icons/manifest-icon-512.maskable.png",
+           "sameAs": [
+             "https://cogvana.co.ke/",
+-            "https://plot.myregister.co.ke/"
++            "https://plot.samuhia.co.ke/"
+           ],
+           "contactPoint": [
+             {
+@@ -152,27 +154,27 @@
+         },
+         {
+           "@type": "WebSite",
+-          "@id": "https://plot.myregister.co.ke/#website",
+-          "url": "https://plot.myregister.co.ke/",
++          "@id": "https://plot.samuhia.co.ke/#website",
++          "url": "https://plot.samuhia.co.ke/",
+           "name": "Plot Yangu",
+           "inLanguage": "en-KE",
+-          "publisher": { "@id": "https://plot.myregister.co.ke/#organization" }
++          "publisher": { "@id": "https://plot.samuhia.co.ke/#organization" }
+         },
+         {
+           "@type": "SoftwareApplication",
+-          "@id": "https://plot.myregister.co.ke/#software",
++          "@id": "https://plot.samuhia.co.ke/#software",
+           "name": "Plot Yangu",
+-          "url": "https://plot.myregister.co.ke/",
++          "url": "https://plot.samuhia.co.ke/",
+           "applicationCategory": "BusinessApplication",
+           "applicationSubCategory": "Property Management Software",
+           "operatingSystem": "Web, Android, Windows, macOS, Linux",
+           "description": "Property management software for landlords and property agents in Kenya. Tracks properties, tenants, invoices, and M-Pesa payments, works offline-first, and syncs across devices in the cloud.",
+-          "publisher": { "@id": "https://plot.myregister.co.ke/#organization" },
+-          "creator": { "@id": "https://plot.myregister.co.ke/#organization" },
+-          "image": "https://plot.myregister.co.ke/social/og-image.jpg",
++          "publisher": { "@id": "https://plot.samuhia.co.ke/#organization" },
++          "creator": { "@id": "https://plot.samuhia.co.ke/#organization" },
++          "image": "https://plot.samuhia.co.ke/social/og-image.jpg",
+           "screenshot": [
+-            "https://plot.myregister.co.ke/screenshots/dashboard.png",
+-            "https://plot.myregister.co.ke/screenshots/mobile-dashboard.png"
++            "https://plot.samuhia.co.ke/screenshots/dashboard.png",
++            "https://plot.samuhia.co.ke/screenshots/mobile-dashboard.png"
+           ],
+           "featureList": [
+             "Offline-first property and tenant records",
+@@ -190,12 +192,12 @@
+             "price": "0",
+             "priceCurrency": "KES",
+             "category": "Free",
+-            "url": "https://plot.myregister.co.ke/#pricing"
++            "url": "https://plot.samuhia.co.ke/#pricing"
+           }
+         },
+         {
+           "@type": "FAQPage",
+-          "@id": "https://plot.myregister.co.ke/#faq",
++          "@id": "https://plot.samuhia.co.ke/#faq",
+           "mainEntity": [
+             {
+               "@type": "Question",
+diff --git a/public/llms.txt b/public/llms.txt
+index 99ed29f..7a55370 100644
+--- a/public/llms.txt
++++ b/public/llms.txt
+@@ -6,7 +6,7 @@
+ > syncs across devices in the cloud on paid tiers.
+ 
+ Plot Yangu is built and operated by Cogvana Technologies (operated by SMB
+-Kenya Ltd). The web app is hosted at https://plot.myregister.co.ke/.
++Kenya Ltd). The web app is hosted at https://plot.samuhia.co.ke/.
+ 
+ ## Brand disambiguation
+ 
+@@ -57,12 +57,12 @@ sign up.
+ 
+ ## Key pages
+ 
+-- Home / marketing page: https://plot.myregister.co.ke/
+-- How it works: https://plot.myregister.co.ke/#how-it-works
+-- Features: https://plot.myregister.co.ke/#features
+-- Pricing: https://plot.myregister.co.ke/#pricing
+-- FAQ: https://plot.myregister.co.ke/#faq
+-- Contact: https://plot.myregister.co.ke/#contact
++- Home / marketing page: https://plot.samuhia.co.ke/
++- How it works: https://plot.samuhia.co.ke/#how-it-works
++- Features: https://plot.samuhia.co.ke/#features
++- Pricing: https://plot.samuhia.co.ke/#pricing
++- FAQ: https://plot.samuhia.co.ke/#faq
++- Contact: https://plot.samuhia.co.ke/#contact
+ 
+ ## Contact
+ 
+diff --git a/public/manifest.json b/public/manifest.json
+index 6d7364d..cfc4393 100644
+--- a/public/manifest.json
++++ b/public/manifest.json
+@@ -1,12 +1,13 @@
+ {
+   "name": "Plot Yangu - Property Management",
+   "short_name": "Plot Yangu",
++  "id": "/",
+   "description": "Complete property management solution for landlords and property managers",
+   "start_url": "/",
+   "display": "standalone",
+   "background_color": "#ffffff",
+   "theme_color": "#2563eb",
+-  "orientation": "portrait-primary",
++  "orientation": "any",
+   "scope": "/",
+   "icons": [
+     {
+@@ -109,11 +110,10 @@
+     }
+   },
+   "display_override": [
+-    "window-controls-overlay",
+     "standalone",
+     "minimal-ui"
+   ],
+   "launch_handler": {
+     "client_mode": "focus-existing"
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/public/robots.txt b/public/robots.txt
+index 39bebe3..72c404d 100644
+--- a/public/robots.txt
++++ b/public/robots.txt
+@@ -1,4 +1,4 @@
+-# Plot Yangu (https://plot.myregister.co.ke/)
++# Plot Yangu (https://plot.samuhia.co.ke/)
+ #
+ # This is a client-side single-page app. Every route (/, /properties,
+ # /invoices, /profile, /payments) is rendered by the same static HTML shell,
+@@ -61,8 +61,8 @@ Allow: /
+ User-agent: Amazonbot
+ Allow: /
+ 
+-Sitemap: https://plot.myregister.co.ke/sitemap.xml
++Sitemap: https://plot.samuhia.co.ke/sitemap.xml
+ 
+ # Machine-readable summary for AI assistants (no formal robots.txt directive
+ # exists for this yet, so it's noted here as a comment):
+-# https://plot.myregister.co.ke/llms.txt
++# https://plot.samuhia.co.ke/llms.txt
+diff --git a/public/service-worker.js b/public/service-worker.js
+index 9208bbe..5e31481 100644
+--- a/public/service-worker.js
++++ b/public/service-worker.js
+@@ -1,14 +1,14 @@
+ // public/service-worker.js
+-const CACHE_NAME = 'plot-yangu-v1';
+-const RUNTIME_CACHE = 'plot-yangu-runtime-v1';
++const CACHE_NAME = 'plot-yangu-v2';
++const RUNTIME_CACHE = 'plot-yangu-runtime-v2';
+ 
+ // Assets to cache on install
+ const PRECACHE_ASSETS = [
+   '/',
+   '/index.html',
+   '/manifest.json',
+-  '/icons/icon-192x192.png',
+-  '/icons/icon-512x512.png'
++  '/icons/manifest-icon-192.maskable.png',
++  '/icons/manifest-icon-512.maskable.png'
+ ];
+ 
+ // WA-SQLite WASM files to cache
+diff --git a/public/sitemap.xml b/public/sitemap.xml
+index 158adcd..a89178b 100644
+--- a/public/sitemap.xml
++++ b/public/sitemap.xml
+@@ -8,7 +8,7 @@
+ -->
+ <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+   <url>
+-    <loc>https://plot.myregister.co.ke/</loc>
++    <loc>https://plot.samuhia.co.ke/</loc>
+     <changefreq>weekly</changefreq>
+     <priority>1.0</priority>
+   </url>
+diff --git a/src/App.tsx b/src/App.tsx
+index 3d12469..0c441d1 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -141,7 +141,7 @@ const StatusBar = () => {
+   const trialUrgent = info?.isTrial && daysRemaining !== null && daysRemaining <= 7;
+ 
+   return (
+-    <div className="app-chrome fixed top-0 left-0 right-0 z-50 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 bg-gradient-to-r from-brand-600 to-indigo-600 px-3 py-1.5 text-xs text-white md:left-[var(--rail-width)] md:min-h-[var(--topbar-height)] md:flex-nowrap md:border-b md:border-line md:bg-surface/80 md:bg-none md:px-6 md:py-0 md:text-ink-soft md:backdrop-blur-xl lg:left-[var(--nav-width)]">
++    <div className="app-chrome fixed top-0 left-0 right-0 z-50 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 bg-gradient-to-r from-brand-600 to-indigo-600 px-3 pb-1.5 pt-[calc(0.375rem+env(safe-area-inset-top,0px))] text-xs text-white md:left-[var(--rail-width)] md:min-h-[calc(var(--topbar-height)+env(safe-area-inset-top,0px))] md:flex-nowrap md:border-b md:border-line md:bg-surface/80 md:bg-none md:px-6 md:pb-0 md:pt-[env(safe-area-inset-top,0px)] md:text-ink-soft md:backdrop-blur-xl lg:left-[var(--nav-width)]">
+       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 md:flex-nowrap md:gap-3">
+         <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium capitalize md:px-3 md:py-1 ${getTierBadgeClasses(user.tier)}`}>
+           {getTierIcon(user.tier)}
+@@ -226,7 +226,7 @@ const SidebarNavigation = () => {
+   const initial = (user?.name || user?.email || '?').trim().charAt(0).toUpperCase();
+ 
+   return (
+-    <aside className="app-chrome fixed inset-y-0 left-0 z-40 hidden w-[var(--rail-width)] flex-col border-r border-line bg-surface/80 backdrop-blur-xl md:flex lg:w-[var(--nav-width)]">
++    <aside className="app-chrome fixed inset-y-0 left-0 z-40 hidden w-[var(--rail-width)] flex-col border-r border-line bg-surface/80 pt-[env(safe-area-inset-top,0px)] backdrop-blur-xl md:flex lg:w-[var(--nav-width)]">
+       {/* Brand */}
+       <div className="flex h-[var(--topbar-height)] shrink-0 items-center justify-center gap-3 border-b border-line px-3 lg:justify-start lg:px-5">
+         <span className="ui-chip ui-chip-brand h-9 w-9">
+@@ -578,7 +578,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+         <StatusBar />
+ 
+         {/* Main content: padded for the status bar on phones, for the top bar on md+ */}
+-        <main className="app-main min-h-screen pt-14 pb-20 sm:pt-8 md:pt-[calc(var(--topbar-height)+0.5rem)] md:pb-10">
++        <main className="app-main min-h-screen pt-[calc(3.5rem+env(safe-area-inset-top,0px))] pb-20 sm:pt-[calc(2rem+env(safe-area-inset-top,0px))] md:pt-[calc(var(--topbar-height)+0.5rem+env(safe-area-inset-top,0px))] md:pb-10">
+           <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+             {children}
+           </div>
+diff --git a/src/components/auh/AuthWrapper.tsx b/src/components/auh/AuthWrapper.tsx
+index 9792eb3..834c264 100644
+--- a/src/components/auh/AuthWrapper.tsx
++++ b/src/components/auh/AuthWrapper.tsx
+@@ -112,7 +112,7 @@ const AuthWrapperScreen = () => {
+   };
+ 
+   return (
+-    <div className="bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-800">
++    <div className="force-light bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-800">
+       <MarketingNav
+         onGetStarted={() => goToAuth(true)}
+         onSignIn={() => goToAuth(false)}
+diff --git a/src/components/auh/SignInScreen.tsx b/src/components/auh/SignInScreen.tsx
+index 041c16a..8b745da 100644
+--- a/src/components/auh/SignInScreen.tsx
++++ b/src/components/auh/SignInScreen.tsx
+@@ -187,7 +187,7 @@ const SignInScreen: React.FC<SignInScreenProps> = ({ onSwitchToSignUp }) => {
+                     type="email"
+                     value={formData.email}
+                     onChange={handleInputChange('email')}
+-                    className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
++                    className="w-full pl-11 pr-4 py-3 bg-white text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                     placeholder="Enter your email"
+                     disabled={isLoading}
+                     autoComplete="email"
+@@ -208,7 +208,7 @@ const SignInScreen: React.FC<SignInScreenProps> = ({ onSwitchToSignUp }) => {
+                     type={showPassword ? 'text' : 'password'}
+                     value={formData.password}
+                     onChange={handleInputChange('password')}
+-                    className="w-full pl-11 pr-11 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
++                    className="w-full pl-11 pr-11 py-3 bg-white text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                     placeholder="Enter your password"
+                     disabled={isLoading}
+                     autoComplete="current-password"
+@@ -326,7 +326,7 @@ const SignInScreen: React.FC<SignInScreenProps> = ({ onSwitchToSignUp }) => {
+                       setResetEmail(e.target.value);
+                       if (resetError) setResetError('');
+                     }}
+-                    className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
++                    className="w-full pl-11 pr-4 py-3 bg-white text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                     placeholder="Enter your email"
+                     disabled={resetLoading}
+                     autoComplete="email"
+diff --git a/src/components/auh/SignUpScreen.tsx b/src/components/auh/SignUpScreen.tsx
+index 22eed6d..86efb67 100644
+--- a/src/components/auh/SignUpScreen.tsx
++++ b/src/components/auh/SignUpScreen.tsx
+@@ -284,7 +284,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
+                       type="text"
+                       value={formData.name}
+                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+-                      className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
++                      className="w-full pl-11 pr-4 py-3 bg-white text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                       placeholder="Enter your full name"
+                       required
+                     />
+@@ -301,7 +301,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
+                       type="email"
+                       value={formData.email}
+                       onChange={(e) => setFormData({ ...formData, email: e.target.value.toLowerCase() })}
+-                      className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
++                      className="w-full pl-11 pr-4 py-3 bg-white text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                       placeholder="Enter your email"
+                       required
+                     />
+@@ -322,7 +322,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
+                         const value = e.target.value.replace(/\D/g, '');
+                         setFormData({ ...formData, phone: value ? parseInt(value, 10) : 0 });
+                       }}
+-                      className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
++                      className="w-full pl-11 pr-4 py-3 bg-white text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                       placeholder="Enter your phone number"
+                       minLength={9}
+                       maxLength={13}
+@@ -344,7 +344,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
+                         const value = e.target.value.replace(/\D/g, '');
+                         setFormData({ ...formData, id: value ? parseInt(value, 10) : 0 });
+                       }}
+-                      className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
++                      className="w-full pl-11 pr-4 py-3 bg-white text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                       placeholder="Enter your national ID number"
+                       minLength={7}
+                       maxLength={10}
+@@ -363,7 +363,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
+                       type={showPassword ? 'text' : 'password'}
+                       value={formData.password}
+                       onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+-                      className="w-full pl-11 pr-11 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
++                      className="w-full pl-11 pr-11 py-3 bg-white text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                       placeholder="Create a password"
+                       required
+                     />
+@@ -388,7 +388,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
+                       type={showConfirmPassword ? 'text' : 'password'}
+                       value={formData.confirmPassword}
+                       onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+-                      className="w-full pl-11 pr-11 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
++                      className="w-full pl-11 pr-11 py-3 bg-white text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                       placeholder="Confirm your password"
+                       required
+                     />
+@@ -428,7 +428,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
+                       type="text"
+                       value={formData.companyName}
+                       onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+-                      className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
++                      className="w-full pl-11 pr-4 py-3 bg-white text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                       placeholder="Enter company name (optional)"
+                     />
+                   </div>
+@@ -443,7 +443,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
+                     <textarea
+                       value={formData.companyAddress}
+                       onChange={(e) => setFormData({ ...formData, companyAddress: e.target.value })}
+-                      className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors resize-none"
++                      className="w-full pl-11 pr-4 py-3 bg-white text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors resize-none"
+                       placeholder="Enter company address (optional)"
+                       rows={3}
+                     />
+@@ -460,7 +460,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
+                       type="tel"
+                       value={formData.companyPhone}
+                       onChange={(e) => setFormData({ ...formData, companyPhone: e.target.value })}
+-                      className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
++                      className="w-full pl-11 pr-4 py-3 bg-white text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                       placeholder="Enter company phone (optional)"
+                     />
+                   </div>
+@@ -476,7 +476,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
+                       type="email"
+                       value={formData.companyEmail}
+                       onChange={(e) => setFormData({ ...formData, companyEmail: e.target.value.toLowerCase() })}
+-                      className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
++                      className="w-full pl-11 pr-4 py-3 bg-white text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                       placeholder="Enter company email (optional)"
+                     />
+                   </div>
+@@ -534,7 +534,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
+                 </a>
+                 
+                 <a 
+-                  href="https://plot.myregister.co.ke/"
++                  href="https://plot.samuhia.co.ke/"
+                   className="block mt-2 text-xs text-purple-600 hover:text-purple-700 font-medium transition-colors"
+                 >
+                   Use website →
+diff --git a/src/components/marketing/MarketingNav.tsx b/src/components/marketing/MarketingNav.tsx
+index 72b611c..c451c78 100644
+--- a/src/components/marketing/MarketingNav.tsx
++++ b/src/components/marketing/MarketingNav.tsx
+@@ -19,7 +19,7 @@ const MarketingNav: React.FC<MarketingNavProps> = ({ onGetStarted, onSignIn }) =
+   const [menuOpen, setMenuOpen] = useState(false);
+ 
+   return (
+-    <header className="sticky top-0 z-40 bg-indigo-950/60 backdrop-blur-lg border-b border-white/10">
++    <header className="sticky top-0 z-40 bg-indigo-950/60 backdrop-blur-lg border-b border-white/10 pt-safe">
+       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+         <div className="flex items-center justify-between h-16">
+           <div className="flex items-center gap-2.5">
+diff --git a/src/components/marketing/marketingContent.ts b/src/components/marketing/marketingContent.ts
+index ea87369..944526a 100644
+--- a/src/components/marketing/marketingContent.ts
++++ b/src/components/marketing/marketingContent.ts
+@@ -17,7 +17,7 @@ export const CONTACT = {
+   whatsapp: '+254791286165',
+   whatsappHref: 'https://wa.me/254791286165',
+   website: 'https://cogvana.co.ke/',
+-  appUrl: 'https://plot.myregister.co.ke/',
++  appUrl: 'https://plot.samuhia.co.ke/',
+ };
+ 
+ export const TRIAL_OFFER = 'Get 3 months of Business tier free when you sign up — no card needed';
+diff --git a/src/index.css b/src/index.css
+index 4dd6db3..284e08f 100644
+--- a/src/index.css
++++ b/src/index.css
+@@ -15,9 +15,11 @@
+ 
+ @custom-variant dark {
+   @media (prefers-color-scheme: dark) {
+-    @slot;
++    &:where(:not(.force-light, .force-light *)) {
++      @slot;
++    }
+   }
+-  &:where(.dark, .dark *) {
++  &:where(.dark, .dark *):where(:not(.force-light, .force-light *)) {
+     @slot;
+   }
+ }
+@@ -63,7 +65,12 @@
+   --color-ink-faint: var(--c-ink-faint);
+ }
+ 
+-:root {
++/* `.force-light` pins a subtree to the light palette (used for the pre-login
++   marketing / sign-in / sign-up screens, which are a light-only design on a
++   colour gradient). It re-declares the light tokens, so anything inside that
++   inherits colour (inputs, plain text) stays readable under a dark OS theme. */
++:root,
++.force-light {
+   color-scheme: light;
+ 
+   --c-canvas: linear-gradient(135deg, #eff6ff 0%, #eef2ff 48%, #f5f3ff 100%);
+@@ -84,11 +91,18 @@
+   --c-ink-subtle: #6b7280;
+   --c-ink-faint: #9ca3af;
+ 
++}
++
++:root {
+   --nav-width: 16.5rem;
+   --rail-width: 5.25rem;
+   --topbar-height: 3.5rem;
+ }
+ 
++.force-light {
++  color: var(--c-ink);
++}
++
+ @media (prefers-color-scheme: dark) {
+   :root {
+     color-scheme: dark;

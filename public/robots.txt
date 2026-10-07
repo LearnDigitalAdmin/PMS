@@ -1,4 +1,4 @@
-# Plot Yangu (https://plot.myregister.co.ke/)
+# Plot Yangu (https://plot.samuhia.co.ke/)
 #
 # This is a client-side single-page app. Every route (/, /properties,
 # /invoices, /profile, /payments) is rendered by the same static HTML shell,
@@ -61,8 +61,8 @@ Allow: /
 User-agent: Amazonbot
 Allow: /
 
-Sitemap: https://plot.myregister.co.ke/sitemap.xml
+Sitemap: https://plot.samuhia.co.ke/sitemap.xml
 
 # Machine-readable summary for AI assistants (no formal robots.txt directive
 # exists for this yet, so it's noted here as a comment):
-# https://plot.myregister.co.ke/llms.txt
+# https://plot.samuhia.co.ke/llms.txt
