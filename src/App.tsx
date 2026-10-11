@@ -1,7 +1,7 @@
 // App.tsx - Updated with Enhanced User State Management, Sync Integration, and Exit Confirmation
 import React, { useState, useEffect, Suspense, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, NavLink } from 'react-router-dom';
-import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, DollarSign, MessageSquare } from 'lucide-react';
+import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, DollarSign, MessageSquare, Settings as SettingsIcon } from 'lucide-react';
 import { database } from './services/database/Database';
 import { firebaseSyncService } from './services/database/FirebaseSync';
 import Dashboard from './pages/Dashboard';
@@ -9,6 +9,8 @@ import AuthWrapper, { useAuth, AuthProvider } from './components/auh/AuthWrapper
 import Invoices from './pages/invoices/Invoices';
 import Properties from './pages/properties/PropertyList';
 import Profile from './pages/Profile';
+import Settings from './pages/settings/Settings';
+import DeskRequests from './pages/desk/DeskRequests';
 import type { User } from './services/database/Database';
 
 // Capacitor imports for platform detection and app handling
@@ -209,6 +211,7 @@ const NAV_ITEMS = [
   { path: '/invoices', icon: FileText, label: 'Invoices', color: 'purple', restricted: false },
   { path: '/profile', icon: UserIcon, label: 'Profile', color: 'green', restricted: false },
   { path: '/payments', icon: DollarSign, label: 'Payments', color: 'black', restricted: false },
+  { path: '/settings', icon: SettingsIcon, label: 'Settings', color: 'indigo', restricted: false },
 ];
 
 // Active-state colours for the sidebar (mirrors the per-item hues the bottom bar already uses)
@@ -725,6 +728,16 @@ const AppContent: React.FC = () => {
             <Route path="/payments" element={
               <Suspense fallback={<LoadingSpinner />}>
                 <AgentView />
+              </Suspense>
+            } />
+            <Route path="/settings" element={
+              <Suspense fallback={<LoadingSpinner />}>
+                <Settings />
+              </Suspense>
+            } />
+            <Route path="/desk-requests" element={
+              <Suspense fallback={<LoadingSpinner />}>
+                <DeskRequests />
               </Suspense>
             } />
             <Route path="*" element={<Navigate to="/" replace />} />

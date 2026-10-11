@@ -8,6 +8,10 @@ import * as admin from 'firebase-admin';
 import axios from 'axios';
 import crypto from 'crypto';
 import { defineSecret } from 'firebase-functions/params';
+import {
+  createDeskdelegate, createDeskScheduleRunner, resolveSubscriptionAttribution, firestoreAttributionDeps,
+  type DeskSmsWiring,
+} from './desk';
 
 // Initialize Firebase Admin SDK
 if (getApps().length === 0) {
@@ -75,7 +79,7 @@ interface ProcessWebSubscriptionRequest {
   billingCycle: 'monthly' | 'annual';
   amount: number;
   daysToAdd: number;
-  cyber?: any;
+  // NOTE: no client-supplied agent. Commission attribution is resolved on the server (see ./desk/attribution.ts).
 }
 
 
@@ -1219,7 +1223,7 @@ async function getOrCreateSplitCode(
       `${PAYSTACK_API_BASE}/split`,
       splitPayload,
       { headers: {
-        'Authorization': `Bearer ${PAYSTACK_SECRET_KEY}`,
+        'Authorization': `Bearer ${PAYSTACK_SECRET_KEY.value()}`,
         'Content-Type': 'application/json'
       } }
     );
@@ -1247,6 +1251,24 @@ async function getOrCreateSplitCode(
   }
 }
 
+/**
+ * Legacy agent attribution, behaviour unchanged: 45% to the agent through splitCodes/{agentId}. Resolves to undefined (payment goes
+ * ahead without a split) when the agent is missing or has no payment account, or the split cannot be created.
+ */
+async function legacyAgentSplitCode(agentId: string): Promise<string | undefined> {
+  const agentDoc = await db.collection("agents").doc(agentId).get();
+  if (!agentDoc.exists) {
+    console.warn(`Agent ${agentId} not found - processing payment without split`);
+    return undefined;
+  }
+  const subaccountCode = agentDoc.data()?.paymentInfo?.accountId;
+  if (!subaccountCode) {
+    console.warn(`Agent ${agentId} has not set up payment account - processing payment without split`);
+    return undefined;
+  }
+  return getOrCreateSplitCode(subaccountCode, 55, agentId);
+}
+
 export const processWebSubscription = onCall({
   timeoutSeconds: 60,
   memory: "512MiB",
@@ -1256,7 +1278,7 @@ export const processWebSubscription = onCall({
   secrets: [PAYSTACK_SECRET_KEY]
 }, async (request: CallableRequest<ProcessWebSubscriptionRequest>) => {
   try {
-    const { userId, userName, email, phone, planId, planName, billingCycle, amount, daysToAdd, cyber } = request.data;
+    const { userId, userName, email, phone, planId, planName, billingCycle, amount, daysToAdd } = request.data;
 
     if (!userId || !userName || !email || !phone || !planId || !planName || !amount) {
       throw new HttpsError(
@@ -1265,39 +1287,14 @@ export const processWebSubscription = onCall({
       );
     }
 
-    let splitCode: string | undefined;
-
-    if (cyber) {
-    try {
-        console.log(`Attempting to process with agent ${cyber.uid}`);
-        
-        // Get agent's payment info (subaccount)
-        const agentDoc = await db.collection("agents").doc(cyber.uid).get();
-
-        if (!agentDoc.exists) {
-        console.warn(`Agent ${cyber.uid} not found - processing payment without split`);
-        } else {
-        const agentData = agentDoc.data();
-        const paymentInfo = agentData?.paymentInfo;
-
-        if (!paymentInfo || !paymentInfo.accountId) {
-            console.warn(`Agent ${cyber.uid} has not set up payment account - processing payment without split`);
-        } else {
-            const subaccountCode = paymentInfo.accountId;
-            console.log(`Processing payment for user ${userId}, agent ${cyber.uid}, amount ${amount}`);
-
-            // Get or create split code
-            splitCode = await getOrCreateSplitCode(subaccountCode, 55, cyber.uid);
-            console.log(`Successfully created split code: ${splitCode}`);
-        }
-        }
-    } catch (agentError: any) {
-        console.error(`Error processing agent split for ${cyber.uid}:`, agentError);
-        console.log(`Continuing payment without agent split`);
-        // Don't throw - just continue without the split
-        splitCode = undefined;
-    }
-    }
+    // Who earns commission on this subscription is decided HERE, from our own records, never from the request:
+    // (a) the desk that owns this landlord, (b) the legacy agent on the landlord (users/{uid}.cyberId, unchanged 45% split),
+    // (c) nobody. A desk lookup failure never blocks the subscription.
+    const attribution = await resolveSubscriptionAttribution(
+      firestoreAttributionDeps(db, PAYSTACK_SECRET_KEY.value(), (agentId) => legacyAgentSplitCode(agentId)),
+      String(userId),
+    );
+    const splitCode: string | undefined = attribution.kind === "none" ? undefined : attribution.splitCode;
 
 console.log(`Processing web subscription for user ${userId}, plan ${planId}, amount ${amount}${splitCode ? ' with agent split' : ' without agent split'}`);
 
@@ -1344,8 +1341,14 @@ console.log(`Processing web subscription for user ${userId}, plan ${planId}, amo
     // Add split_code only if cyber agent is involved
     if (splitCode) {
       chargePayload.split_code = splitCode;
-      chargePayload.metadata.agentId = cyber.uid;
-        console.log(`Including split code in charge: ${splitCode}`);
+      if (attribution.kind === "legacy") {
+        chargePayload.metadata.agentId = attribution.agentId;
+      } else if (attribution.kind === "desk") {
+        chargePayload.metadata.deskAgentId = attribution.commission.agentId;
+        chargePayload.metadata.deskAgentCode = attribution.commission.agentCode;
+        chargePayload.metadata.deskSharePct = attribution.commission.sharePct;
+      }
+      console.log(`Including split code in charge: ${splitCode}`);
     }
 
     console.log('Paystack charge request:', JSON.stringify(chargePayload, null, 2));
@@ -1405,7 +1408,10 @@ console.log(`Processing web subscription for user ${userId}, plan ${planId}, amo
 
     await db.collection("subscriptions").doc(transactionData.reference).set({
         ...subscriptionRecord,
-        agentId: cyber?.uid || null, // Add agentId property
+        // Legacy agent keeps the old field; a desk-owned landlord records the desk commission instead (agentId stays null so
+        // the legacy agent flow never treats a desk subscription as its own).
+        agentId: attribution.kind === "legacy" ? attribution.agentId : null,
+        ...(attribution.kind === "desk" ? { deskCommission: attribution.commission } : {}),
     });
 
     //await db.collection("subscriptions").doc(transactionData.reference).set(subscriptionRecord);
@@ -2944,3 +2950,19 @@ export const healthCheck = onRequest({
         });
     }
 });
+
+// ============================================================
+// SAMUHIA DESK — Plot Yangu integration (see ./desk). Callables, the landlord-code trigger and the
+// reporting of desk requests are exported from ./desk/index; the two functions below need PMS's own SMS
+// machinery, so they are created here with it.
+// ============================================================
+const deskSmsWiring: DeskSmsWiring = {
+  normalizePhone: normalizeSmsPhone,
+  validateBody: validateStrictSmsBody,
+  tokensFor: tokensForMessage,
+  send: (mobile, message) => sendHostPinnacleSms({ mobile, message }),
+  secrets: [HP_SMS_USERID, HP_SMS_PASSWORD, HP_SMS_APIKEY, HP_SMS_SENDERID],
+};
+export const deskdelegate = createDeskdelegate(deskSmsWiring);
+export const runDeskSmsSchedules = createDeskScheduleRunner(deskSmsWiring);
+export { pmsAssignLandlordCode, addSupportAgent, removeSupportAgent, listSupportAgents, createDeskRequest, listDeskRequests } from './desk';

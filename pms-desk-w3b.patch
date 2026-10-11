@@ -1,0 +1,2771 @@
+diff --git a/firestore.indexes.json b/firestore.indexes.json
+index 0caa5dc..0621a61 100644
+--- a/firestore.indexes.json
++++ b/firestore.indexes.json
+@@ -33,7 +33,35 @@
+           "order": "ASCENDING"
+         }
+       ]
++    },
++    {
++      "collectionGroup": "desk_requests",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "entityCode",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "createdAt",
++          "order": "DESCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "deskSmsSchedules",
++      "queryScope": "COLLECTION_GROUP",
++      "fields": [
++        {
++          "fieldPath": "active",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "nextRunAt",
++          "order": "ASCENDING"
++        }
++      ]
+     }
+   ],
+   "fieldOverrides": []
+-}
+\ No newline at end of file
++}
+diff --git a/scripts/backfill-landlord-codes.mjs b/scripts/backfill-landlord-codes.mjs
+new file mode 100644
+index 0000000..ff8e697
+--- /dev/null
++++ b/scripts/backfill-landlord-codes.mjs
+@@ -0,0 +1,63 @@
++#!/usr/bin/env node
++/**
++ * Give every existing Plot Yangu landlord (a `users` document) its permanent PYL-#### code. Idempotent: documents that already have
++ * a code are skipped, and every assignment is one Firestore transaction on desk_counters/landlords, so the script can be re-run, run
++ * twice at once, or run while the creation trigger is live, and no code is ever duplicated or changed.
++ *
++ * Usage (from the repo root, with Application Default Credentials for the shared project):
++ *   node scripts/backfill-landlord-codes.mjs [--project <id>] [--dry-run]
++ * Needs the dependencies of the `whatsapp` functions folder (run `npm --prefix whatsapp ci` first).
++ */
++import { createRequire } from "node:module";
++import path from "node:path";
++import { fileURLToPath } from "node:url";
++
++const here = path.dirname(fileURLToPath(import.meta.url));
++const require = createRequire(path.join(here, "..", "whatsapp", "package.json"));
++const { initializeApp, applicationDefault } = require("firebase-admin/app");
++const { getFirestore, FieldValue } = require("firebase-admin/firestore");
++
++const args = process.argv.slice(2);
++const dryRun = args.includes("--dry-run");
++const pi = args.indexOf("--project");
++const projectId = pi >= 0 ? args[pi + 1] : process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
++initializeApp({ credential: applicationDefault(), ...(projectId ? { projectId } : {}) });
++const db = getFirestore();
++
++const CODE_RE = /^PYL-\d{4,}$/;
++const format = (n) => `PYL-${String(n).padStart(4, "0")}`;
++
++async function assign(uid) {
++  return db.runTransaction(async (tx) => {
++    const userRef = db.collection("users").doc(uid);
++    const counterRef = db.collection("desk_counters").doc("landlords");
++    const [user, counter] = await Promise.all([tx.get(userRef), tx.get(counterRef)]);
++    if (!user.exists) return null;
++    const existing = user.get("landlordCode");
++    if (typeof existing === "string" && CODE_RE.test(existing)) return null;
++    const last = counter.exists ? Number(counter.get("last")) : 0;
++    const code = format(last + 1);
++    tx.set(counterRef, { last: last + 1, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
++    tx.update(userRef, { landlordCode: code, landlordCodeAssignedAt: FieldValue.serverTimestamp() });
++    return code;
++  });
++}
++
++// Oldest accounts first so earlier landlords get the lower numbers. Documents are read in pages by id.
++let last = null, scanned = 0, assigned = 0, skipped = 0;
++for (;;) {
++  let q = db.collection("users").orderBy("__name__").limit(300);
++  if (last) q = q.startAfter(last);
++  const page = await q.get();
++  if (page.empty) break;
++  for (const doc of page.docs) {
++    scanned += 1;
++    const has = doc.get("landlordCode");
++    if (typeof has === "string" && CODE_RE.test(has)) { skipped += 1; continue; }
++    if (dryRun) { assigned += 1; continue; }
++    const code = await assign(doc.id);
++    if (code) { assigned += 1; console.log(`${doc.id} -> ${code}`); } else skipped += 1;
++  }
++  last = page.docs[page.docs.length - 1];
++}
++console.log(`${dryRun ? "[dry run] " : ""}scanned ${scanned}, ${dryRun ? "would assign" : "assigned"} ${assigned}, already had a code ${skipped}`);
+diff --git a/src/App.tsx b/src/App.tsx
+index 0c441d1..72e5689 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -1,7 +1,7 @@
+ // App.tsx - Updated with Enhanced User State Management, Sync Integration, and Exit Confirmation
+ import React, { useState, useEffect, Suspense, useCallback, useRef } from 'react';
+ import { BrowserRouter as Router, Routes, Route, Navigate, NavLink } from 'react-router-dom';
+-import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, DollarSign, MessageSquare } from 'lucide-react';
++import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, DollarSign, MessageSquare, Settings as SettingsIcon } from 'lucide-react';
+ import { database } from './services/database/Database';
+ import { firebaseSyncService } from './services/database/FirebaseSync';
+ import Dashboard from './pages/Dashboard';
+@@ -9,6 +9,8 @@ import AuthWrapper, { useAuth, AuthProvider } from './components/auh/AuthWrapper
+ import Invoices from './pages/invoices/Invoices';
+ import Properties from './pages/properties/PropertyList';
+ import Profile from './pages/Profile';
++import Settings from './pages/settings/Settings';
++import DeskRequests from './pages/desk/DeskRequests';
+ import type { User } from './services/database/Database';
+ 
+ // Capacitor imports for platform detection and app handling
+@@ -209,6 +211,7 @@ const NAV_ITEMS = [
+   { path: '/invoices', icon: FileText, label: 'Invoices', color: 'purple', restricted: false },
+   { path: '/profile', icon: UserIcon, label: 'Profile', color: 'green', restricted: false },
+   { path: '/payments', icon: DollarSign, label: 'Payments', color: 'black', restricted: false },
++  { path: '/settings', icon: SettingsIcon, label: 'Settings', color: 'indigo', restricted: false },
+ ];
+ 
+ // Active-state colours for the sidebar (mirrors the per-item hues the bottom bar already uses)
+@@ -727,6 +730,16 @@ const AppContent: React.FC = () => {
+                 <AgentView />
+               </Suspense>
+             } />
++            <Route path="/settings" element={
++              <Suspense fallback={<LoadingSpinner />}>
++                <Settings />
++              </Suspense>
++            } />
++            <Route path="/desk-requests" element={
++              <Suspense fallback={<LoadingSpinner />}>
++                <DeskRequests />
++              </Suspense>
++            } />
+             <Route path="*" element={<Navigate to="/" replace />} />
+           </Routes>
+         </AppLayout>
+diff --git a/src/pages/desk/DeskRequests.tsx b/src/pages/desk/DeskRequests.tsx
+new file mode 100644
+index 0000000..704f55f
+--- /dev/null
++++ b/src/pages/desk/DeskRequests.tsx
+@@ -0,0 +1,115 @@
++import React, { useCallback, useEffect, useState } from 'react';
++import { Loader2, Send } from 'lucide-react';
++import {
++  createDeskRequest, DESK_TOP_CODE, errorText, listDeskRequests, listSupportAgents, REQUEST_CATEGORIES,
++  type DeskRequest, type DeskRequestStatus, type DeskRequestsState, type SupportAgent,
++} from '../../services/desk';
++
++const STATUS_STYLE: Record<DeskRequestStatus, string> = {
++  new: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',
++  open: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
++  answered: 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300',
++  closed: 'bg-surface-sunken text-ink-muted',
++};
++const STATUS_LABEL: Record<DeskRequestStatus, string> = { new: 'Sent', open: 'Being handled', answered: 'Answered', closed: 'Closed' };
++const when = (ms: number) => new Date(ms).toLocaleString();
++
++const DeskRequests: React.FC = () => {
++  const [state, setState] = useState<DeskRequestsState | null>(null);
++  const [agents, setAgents] = useState<SupportAgent[]>([]);
++  const [loadError, setLoadError] = useState('');
++  const [category, setCategory] = useState('');
++  const [subject, setSubject] = useState('');
++  const [message, setMessage] = useState('');
++  const [deskCode, setDeskCode] = useState('');
++  const [includeTop, setIncludeTop] = useState(false);
++  const [sending, setSending] = useState(false);
++  const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
++
++  const load = useCallback(async () => {
++    setLoadError('');
++    try {
++      const [reqs, ag] = await Promise.all([listDeskRequests({}), listSupportAgents({})]);
++      setState(reqs); setAgents(ag.agents.filter((a) => a.agentCode !== DESK_TOP_CODE));
++    } catch (e) { setLoadError(errorText(e, 'Could not load your requests. Check your connection and try again.')); }
++  }, []);
++  useEffect(() => { void load(); }, [load]);
++
++  const submit = async (e: React.FormEvent) => {
++    e.preventDefault();
++    if (!category) { setNotice({ kind: 'error', text: 'Choose a category.' }); return; }
++    if (subject.trim().length < 3) { setNotice({ kind: 'error', text: 'Add a short subject (at least 3 characters).' }); return; }
++    if (message.trim().length < 5) { setNotice({ kind: 'error', text: 'Describe what you need help with.' }); return; }
++    setSending(true); setNotice(null);
++    try {
++      const out = await createDeskRequest({ category, subject: subject.trim(), message: message.trim(), deskCode: deskCode || undefined, includeTopDesk: includeTop });
++      setNotice({ kind: 'ok', text: `Request sent to ${out.targetDeskCodes.join(' and ')}.` });
++      setSubject(''); setMessage(''); setCategory(''); setIncludeTop(false);
++      await load();
++    } catch (err) { setNotice({ kind: 'error', text: errorText(err, 'Could not send your request. Please try again.') }); }
++    finally { setSending(false); }
++  };
++
++  return (
++    <div className="mx-auto max-w-3xl space-y-6">
++      <h1 className="text-2xl font-bold text-ink">Desk requests</h1>
++
++      <form onSubmit={submit} className="space-y-3 rounded-2xl border border-line bg-surface p-5">
++        <h2 className="text-lg font-semibold text-ink">Ask for help</h2>
++        <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-ink" aria-label="Category">
++          <option value="">What is this about?</option>
++          {REQUEST_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
++        </select>
++        <input value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={120} placeholder="Subject" className="w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-ink" />
++        <textarea value={message} onChange={(e) => setMessage(e.target.value)} maxLength={2000} rows={4} placeholder="Tell us what you need" className="w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-ink" />
++        {agents.length > 0 && (
++          <select value={deskCode} onChange={(e) => setDeskCode(e.target.value)} className="w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-ink" aria-label="Which desk">
++            <option value="">Send to my first connected desk ({agents[0].agentCode})</option>
++            {agents.map((a) => <option key={a.agentCode} value={a.agentCode}>{a.agentCode} · {a.name}</option>)}
++          </select>
++        )}
++        <label className="flex items-center gap-2 text-sm text-ink-soft">
++          <input type="checkbox" checked={includeTop} onChange={(e) => setIncludeTop(e.target.checked)} /> Also send to the Samuhia top desk ({DESK_TOP_CODE})
++        </label>
++        {agents.length === 0 && <p className="text-sm text-ink-muted">You have no connected desk, so this goes to the Samuhia top desk.</p>}
++        {notice && <p role="status" className={`text-sm ${notice.kind === 'ok' ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{notice.text}</p>}
++        <button type="submit" disabled={sending} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50">
++          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Send request
++        </button>
++        {state && <p className="text-xs text-ink-muted">You can send {state.dailyLimit} requests per day.</p>}
++      </form>
++
++      <section className="space-y-3">
++        <h2 className="text-lg font-semibold text-ink">Your requests</h2>
++        {loadError && (
++          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
++            {loadError} <button onClick={() => void load()} className="ml-2 font-semibold underline">Retry</button>
++          </div>
++        )}
++        {!state && !loadError && <div className="flex items-center gap-2 text-ink-muted"><Loader2 className="h-5 w-5 animate-spin" /> Loading…</div>}
++        {state && state.requests.length === 0 && <p className="rounded-xl border border-dashed border-line p-6 text-center text-ink-muted">You have not sent any requests yet.</p>}
++        {state?.requests.map((r: DeskRequest) => (
++          <article key={r.id} className="rounded-2xl border border-line bg-surface p-4">
++            <div className="flex flex-wrap items-start justify-between gap-2">
++              <h3 className="font-semibold text-ink">{r.subject}</h3>
++              <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLE[r.status] ?? STATUS_STYLE.new}`}>{STATUS_LABEL[r.status] ?? r.status}</span>
++            </div>
++            <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-soft">{r.message}</p>
++            <p className="mt-2 text-xs text-ink-muted">{when(r.createdAt)} · to {r.targetDeskCodes.join(', ')}</p>
++            {r.responses.length > 0 && (
++              <div className="mt-3 space-y-2 border-t border-line pt-3">
++                {r.responses.map((resp, i) => (
++                  <div key={i} className="rounded-lg bg-surface-sunken p-3 text-sm">
++                    <div className="text-xs text-ink-muted">{resp.byDeskCode} · {when(resp.at)}</div>
++                    <p className="mt-1 whitespace-pre-wrap break-words text-ink">{resp.text}</p>
++                  </div>
++                ))}
++              </div>
++            )}
++          </article>
++        ))}
++      </section>
++    </div>
++  );
++};
++export default DeskRequests;
+diff --git a/src/pages/settings/Settings.tsx b/src/pages/settings/Settings.tsx
+new file mode 100644
+index 0000000..61c86c3
+--- /dev/null
++++ b/src/pages/settings/Settings.tsx
+@@ -0,0 +1,115 @@
++import React, { useCallback, useEffect, useState } from 'react';
++import { Link } from 'react-router-dom';
++import { Copy, Lock, LifeBuoy, Loader2, Plus, Trash2, UserCheck } from 'lucide-react';
++import { addSupportAgent, DESK_TOP_CODE, errorText, listSupportAgents, removeSupportAgent, type SupportAgentsState } from '../../services/desk';
++
++const Settings: React.FC = () => {
++  const [state, setState] = useState<SupportAgentsState | null>(null);
++  const [loadError, setLoadError] = useState('');
++  const [code, setCode] = useState('');
++  const [busy, setBusy] = useState<string | null>(null);
++  const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
++  const [copied, setCopied] = useState(false);
++
++  const load = useCallback(async () => {
++    setLoadError('');
++    try { setState(await listSupportAgents({})); }
++    catch (e) { setLoadError(errorText(e, 'Could not load your settings. Check your connection and try again.')); }
++  }, []);
++  useEffect(() => { void load(); }, [load]);
++
++  const connected = state ? state.agents.filter((a) => a.agentCode !== DESK_TOP_CODE).length : 0;
++  const full = state ? connected >= state.maxAgents : false;
++
++  const add = async (e: React.FormEvent) => {
++    e.preventDefault();
++    const value = code.trim().toUpperCase();
++    if (!/^COG-\d{4,}$/.test(value)) { setMessage({ kind: 'error', text: 'Enter a desk code like COG-0001.' }); return; }
++    setBusy('add'); setMessage(null);
++    try { await addSupportAgent({ agentCode: value }); setCode(''); setMessage({ kind: 'ok', text: `${value} can now help with your account.` }); await load(); }
++    catch (err) { setMessage({ kind: 'error', text: errorText(err, 'Could not add that desk. Please try again.') }); }
++    finally { setBusy(null); }
++  };
++  const remove = async (agentCode: string) => {
++    if (!window.confirm(`Remove ${agentCode}? They will no longer be able to help with your account.`)) return;
++    setBusy(agentCode); setMessage(null);
++    try { await removeSupportAgent({ agentCode }); setMessage({ kind: 'ok', text: `${agentCode} was removed.` }); await load(); }
++    catch (err) { setMessage({ kind: 'error', text: errorText(err, 'Could not remove that desk. Please try again.') }); }
++    finally { setBusy(null); }
++  };
++  const copy = async () => {
++    if (!state) return;
++    try { await navigator.clipboard.writeText(state.landlordCode); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked: the code is visible on screen */ }
++  };
++
++  return (
++    <div className="mx-auto max-w-3xl space-y-6">
++      <h1 className="text-2xl font-bold text-ink">Settings</h1>
++
++      {loadError && (
++        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
++          {loadError} <button onClick={() => void load()} className="ml-2 font-semibold underline">Retry</button>
++        </div>
++      )}
++      {!state && !loadError && <div className="flex items-center gap-2 text-ink-muted"><Loader2 className="h-5 w-5 animate-spin" /> Loading…</div>}
++
++      {state && (
++        <>
++          <section className="rounded-2xl border border-line bg-surface p-5">
++            <h2 className="text-lg font-semibold text-ink">Your landlord code</h2>
++            <p className="mt-1 text-sm text-ink-muted">Share this code with a Samuhia desk agent so they can find your account. It never changes.</p>
++            <div className="mt-3 flex flex-wrap items-center gap-3">
++              <span className="rounded-lg bg-surface-sunken px-4 py-2 font-mono text-xl font-bold tracking-wider text-ink">{state.landlordCode}</span>
++              <button onClick={() => void copy()} className="inline-flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm text-ink-soft hover:bg-surface-sunken">
++                <Copy className="h-4 w-4" /> {copied ? 'Copied' : 'Copy'}
++              </button>
++            </div>
++          </section>
++
++          <section className="rounded-2xl border border-line bg-surface p-5">
++            <h2 className="text-lg font-semibold text-ink">Support agents</h2>
++            <p className="mt-1 text-sm text-ink-muted">Desks you allow to help with your account, such as importing tenants or sending reminders. You can connect up to {state.maxAgents}.</p>
++
++            <ul className="mt-4 divide-y divide-line">
++              {state.agents.map((a) => (
++                <li key={a.agentCode} className="flex items-center justify-between gap-3 py-3">
++                  <div className="flex min-w-0 items-center gap-3">
++                    {a.locked ? <Lock className="h-5 w-5 shrink-0 text-ink-muted" /> : <UserCheck className="h-5 w-5 shrink-0 text-green-600" />}
++                    <div className="min-w-0">
++                      <div className="font-mono font-semibold text-ink">{a.agentCode}</div>
++                      <div className="truncate text-sm text-ink-muted">{a.name}{a.locked ? ' · always connected' : ''}</div>
++                    </div>
++                  </div>
++                  {!a.locked && (
++                    <button onClick={() => void remove(a.agentCode)} disabled={busy !== null} aria-label={`Remove ${a.agentCode}`}
++                      className="rounded-lg p-2 text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-500/10">
++                      {busy === a.agentCode ? <Loader2 className="h-5 w-5 animate-spin" /> : <Trash2 className="h-5 w-5" />}
++                    </button>
++                  )}
++                </li>
++              ))}
++            </ul>
++            {connected === 0 && <p className="mt-2 text-sm text-ink-muted">No desk connected yet. Requests you send go to the Samuhia top desk.</p>}
++
++            <form onSubmit={add} className="mt-4 flex flex-col gap-2 sm:flex-row">
++              <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="COG-0001" maxLength={12} disabled={full || busy !== null}
++                className="w-full rounded-lg border border-line-strong bg-surface px-3 py-2 font-mono uppercase text-ink disabled:opacity-50" aria-label="Desk code" />
++              <button type="submit" disabled={full || busy !== null || !code.trim()}
++                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50">
++                {busy === 'add' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Add desk
++              </button>
++            </form>
++            {full && <p className="mt-2 text-sm text-ink-muted">You have connected {state.maxAgents} desks. Remove one to add another.</p>}
++            {message && <p role="status" className={`mt-3 text-sm ${message.kind === 'ok' ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{message.text}</p>}
++          </section>
++
++          <Link to="/desk-requests" className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-5 hover:bg-surface-sunken">
++            <LifeBuoy className="h-6 w-6 text-blue-600" />
++            <div><div className="font-semibold text-ink">Desk requests</div><div className="text-sm text-ink-muted">Ask a desk for help and see their replies.</div></div>
++          </Link>
++        </>
++      )}
++    </div>
++  );
++};
++export default Settings;
+diff --git a/src/services/desk.ts b/src/services/desk.ts
+new file mode 100644
+index 0000000..e68ad1e
+--- /dev/null
++++ b/src/services/desk.ts
+@@ -0,0 +1,33 @@
++import { httpsCallable } from 'firebase/functions';
++import { functions } from './database/FirebaseSync';
++
++export interface SupportAgent { agentCode: string; name: string; addedAt: number; locked?: boolean }
++export interface SupportAgentsState { agents: SupportAgent[]; landlordCode: string; maxAgents: number }
++export type DeskRequestStatus = 'new' | 'open' | 'answered' | 'closed';
++export interface DeskRequestResponse { at: number; byDeskCode: string; text: string }
++export interface DeskRequest {
++  id: string; category: string; subject: string; message: string; status: DeskRequestStatus;
++  targetDeskCodes: string[]; responses: DeskRequestResponse[]; createdAt: number; updatedAt: number;
++}
++export interface DeskRequestsState { requests: DeskRequest[]; landlordCode: string; dailyLimit: number }
++export interface CreateDeskRequestInput { category: string; subject: string; message: string; deskCode?: string; includeTopDesk: boolean }
++
++export const DESK_TOP_CODE = 'COG-0000';
++export const REQUEST_CATEGORIES: { value: string; label: string }[] = [
++  { value: 'setup', label: 'Setting up my account' }, { value: 'import', label: 'Importing tenants' },
++  { value: 'sms', label: 'SMS and credits' }, { value: 'payments', label: 'Payments' },
++  { value: 'reports', label: 'Reports' }, { value: 'account', label: 'My account' }, { value: 'other', label: 'Something else' },
++];
++
++/** Firebase callable errors carry the server's user-readable message; fall back to a generic one. */
++export function errorText(err: unknown, fallback: string): string {
++  const m = (err as { message?: string } | null)?.message;
++  return m && !/^internal$/i.test(m) ? m.replace(/^.*?:\s*(?=[A-Z])/, '') : fallback;
++}
++
++const call = <I, O>(name: string) => async (data: I): Promise<O> => (await httpsCallable<I, O>(functions, name)(data)).data;
++export const listSupportAgents = call<Record<string, never>, SupportAgentsState>('listSupportAgents');
++export const addSupportAgent = call<{ agentCode: string }, { ok: boolean }>('addSupportAgent');
++export const removeSupportAgent = call<{ agentCode: string }, { ok: boolean }>('removeSupportAgent');
++export const createDeskRequest = call<CreateDeskRequestInput, { id: string; targetDeskCodes: string[] }>('createDeskRequest');
++export const listDeskRequests = call<Record<string, never>, DeskRequestsState>('listDeskRequests');
+diff --git a/whatsapp/src/desk/attribution.spec.ts b/whatsapp/src/desk/attribution.spec.ts
+new file mode 100644
+index 0000000..8e58810
+--- /dev/null
++++ b/whatsapp/src/desk/attribution.spec.ts
+@@ -0,0 +1,82 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { resolveSubscriptionAttribution, legacyAgentId, type AttributionDeps } from "./attribution";
++import { DEFAULT_SHARE_CONFIG } from "./shares";
++
++interface World {
++  landlord?: { landlordCode?: string; cyberId?: unknown } | null;
++  customer?: { ownerAgentId?: string; selfOwned?: boolean } | null;
++  agent?: { agentCode?: string; status?: string; rank?: string } | null;
++  subaccount?: string;
++  legacySplit?: string | undefined;
++  splitThrows?: boolean; customerThrows?: boolean;
++}
++function deps(w: World, calls: string[] = []): AttributionDeps {
++  return {
++    getLandlord: async () => (w.landlord === undefined ? null : w.landlord),
++    getCustomer: async (key) => { calls.push(`customer:${key}`); if (w.customerThrows) throw new Error("boom"); return w.customer ?? null; },
++    getDeskAgent: async () => w.agent ?? null,
++    getMainSubaccount: async () => w.subaccount,
++    getShareConfig: async () => DEFAULT_SHARE_CONFIG,
++    getSplitCode: async (subs) => { if (w.splitThrows) throw new Error("paystack down"); calls.push(`split:${subs[0].subaccount}:${subs[0].sharePct}`); return "SPL_desk"; },
++    legacySplitCode: async (id) => { calls.push(`legacy:${id}`); return w.legacySplit; },
++  };
++}
++const deskWorld: World = {
++  landlord: { landlordCode: "PYL-0001", cyberId: "legacyAgent" },
++  customer: { ownerAgentId: "agentUid", selfOwned: false },
++  agent: { agentCode: "COG-0007", status: "active", rank: "senior" },
++  subaccount: "ACCT_main", legacySplit: "SPL_legacy",
++};
++
++test("(a) a desk-owned landlord pays the rank share through the shared split cache, even if a legacy agent is also recorded", async () => {
++  const calls: string[] = [];
++  const a = await resolveSubscriptionAttribution(deps(deskWorld, calls), "u1");
++  assert.deepEqual(a, { kind: "desk", splitCode: "SPL_desk", commission: { agentCode: "COG-0007", agentId: "agentUid", sharePct: 30, rule: "subscription", entityKey: "pms:PYL-0001" } });
++  assert.deepEqual(calls, ["customer:pms:PYL-0001", "split:ACCT_main:30"]);
++});
++test("(a) a clerk earns 25%", async () => {
++  const a = await resolveSubscriptionAttribution(deps({ ...deskWorld, agent: { agentCode: "COG-0002", status: "active", rank: "clerk" } }), "u1");
++  assert.equal(a.kind === "desk" && a.commission.sharePct, 25);
++});
++test("(b) no desk owner: the legacy agent keeps today's behaviour (split through the legacy path, agentId recorded)", async () => {
++  const calls: string[] = [];
++  const a = await resolveSubscriptionAttribution(deps({ ...deskWorld, customer: null }, calls), "u1");
++  assert.deepEqual(a, { kind: "legacy", agentId: "legacyAgent", splitCode: "SPL_legacy" });
++  assert.deepEqual(calls, ["customer:pms:PYL-0001", "legacy:legacyAgent"]);
++});
++test("(b) legacy agent without a payment account: still attributed, no split, subscription proceeds", async () => {
++  const a = await resolveSubscriptionAttribution(deps({ ...deskWorld, customer: null, legacySplit: undefined }), "u1");
++  assert.deepEqual(a, { kind: "legacy", agentId: "legacyAgent", splitCode: undefined });
++});
++test("(c) neither: no split", async () => {
++  assert.deepEqual(await resolveSubscriptionAttribution(deps({ landlord: { landlordCode: "PYL-0001" } }), "u1"), { kind: "none" });
++  assert.deepEqual(await resolveSubscriptionAttribution(deps({ landlord: null }), "u1"), { kind: "none" });
++});
++test("a self-owned, suspended, subaccount-less or unranked desk customer does not earn through desk", async () => {
++  for (const w of [
++    { ...deskWorld, customer: { ownerAgentId: "agentUid", selfOwned: true } },
++    { ...deskWorld, agent: { agentCode: "COG-0007", status: "suspended", rank: "senior" } },
++    { ...deskWorld, subaccount: undefined },
++    { ...deskWorld, agent: { agentCode: "COG-0007", status: "active", rank: "boss" } },
++  ] as World[]) {
++    assert.equal((await resolveSubscriptionAttribution(deps(w), "u1")).kind, "legacy");
++  }
++});
++test("a desk failure never blocks the subscription: it falls through to the legacy agent, then to none", async () => {
++  assert.equal((await resolveSubscriptionAttribution(deps({ ...deskWorld, splitThrows: true }), "u1")).kind, "legacy");
++  assert.equal((await resolveSubscriptionAttribution(deps({ ...deskWorld, customerThrows: true }), "u1")).kind, "legacy");
++  assert.equal((await resolveSubscriptionAttribution(deps({ landlord: { landlordCode: "PYL-0001" }, customerThrows: true }), "u1")).kind, "none");
++});
++test("a landlord with no code yet cannot be desk-owned", async () => {
++  const calls: string[] = [];
++  const a = await resolveSubscriptionAttribution(deps({ ...deskWorld, landlord: { cyberId: "legacyAgent" } }, calls), "u1");
++  assert.equal(a.kind, "legacy");
++  assert.ok(!calls.some((c) => c.startsWith("customer")));
++});
++test("the client can no longer choose the agent: only the stored cyberId counts", () => {
++  assert.equal(legacyAgentId("abc"), "abc");
++  assert.equal(legacyAgentId({ uid: "xyz" }), "xyz");
++  assert.equal(legacyAgentId(""), undefined);
++  assert.equal(legacyAgentId(undefined), undefined);
++});
+diff --git a/whatsapp/src/desk/attribution.ts b/whatsapp/src/desk/attribution.ts
+new file mode 100644
+index 0000000..1be58dd
+--- /dev/null
++++ b/whatsapp/src/desk/attribution.ts
+@@ -0,0 +1,79 @@
++/**
++ * Server-side subscription attribution. Replaces the old client-supplied `cyber` object, which let any caller choose who earned
++ * the commission. Resolution order for a landlord:
++ *   (a) the desk that owns the landlord (desk_customers/pms:<landlordCode>): rank share, split cached in desk_split_codes;
++ *   (b) the legacy agent recorded on the landlord (users/{uid}.cyberId): today's behaviour exactly (45%, agentId in metadata);
++ *   (c) nobody: no split.
++ * A desk failure never blocks the subscription: it is logged and resolution continues.
++ */
++import { sharePlan, type Rank, type ShareConfig } from "./shares";
++import type { SplitSub } from "./splitKey";
++
++export interface DeskCommission { agentCode: string; agentId: string; sharePct: number; rule: string; entityKey: string }
++export type Attribution =
++  | { kind: "desk"; splitCode: string; commission: DeskCommission }
++  | { kind: "legacy"; splitCode?: string; agentId: string }
++  | { kind: "none" };
++
++export interface AttributionDeps {
++  /** users/{uid}: only the two attribution fields are needed. */
++  getLandlord(uid: string): Promise<{ landlordCode?: string; cyberId?: unknown } | null>;
++  getCustomer(entityKey: string): Promise<{ ownerAgentId?: string; selfOwned?: boolean } | null>;
++  getDeskAgent(agentId: string): Promise<{ agentCode?: string; status?: string; rank?: string } | null>;
++  /** agents/{id}.paymentInfo.accountId: the agent's MAIN Paystack subaccount (Plot Yangu charges through the main account). */
++  getMainSubaccount(agentId: string): Promise<string | undefined>;
++  getShareConfig(): Promise<ShareConfig>;
++  getSplitCode(subs: SplitSub[], label: string): Promise<string>;
++  /** Today's legacy path (45% to the agent through splitCodes/{agentId}); resolves to undefined when the agent has no payment account. */
++  legacySplitCode(agentId: string): Promise<string | undefined>;
++}
++
++const RANKS: Rank[] = ["clerk", "senior", "lead"];
++
++/** `cyberId` is the legacy agent's uid, stored as a string (an object with `uid` is also accepted). */
++export function legacyAgentId(cyberId: unknown): string | undefined {
++  if (typeof cyberId === "string" && cyberId.trim()) return cyberId.trim();
++  const uid = (cyberId as { uid?: unknown } | null | undefined)?.uid;
++  return typeof uid === "string" && uid.trim() ? uid.trim() : undefined;
++}
++
++async function resolveDesk(deps: AttributionDeps, landlordCode: string): Promise<Attribution | null> {
++  const entityKey = `pms:${landlordCode}`;
++  const customer = await deps.getCustomer(entityKey);
++  if (!customer || customer.selfOwned || !customer.ownerAgentId) return null;
++  const agent = await deps.getDeskAgent(customer.ownerAgentId);
++  if (!agent || agent.status !== "active" || !agent.agentCode || !RANKS.includes(agent.rank as Rank)) return null;
++  const subaccount = await deps.getMainSubaccount(customer.ownerAgentId);
++  if (!subaccount) return null;
++  const plan = sharePlan(agent.rank as Rank, "subscription", await deps.getShareConfig());
++  if (!(plan.agentSharePct > 0 && plan.agentSharePct < 100)) return null;
++  const splitCode = await deps.getSplitCode([{ subaccount, sharePct: plan.agentSharePct }], `pms ${agent.agentCode}`);
++  return {
++    kind: "desk", splitCode,
++    commission: { agentCode: agent.agentCode, agentId: customer.ownerAgentId, sharePct: plan.agentSharePct, rule: plan.rule, entityKey },
++  };
++}
++
++export async function resolveSubscriptionAttribution(deps: AttributionDeps, uid: string): Promise<Attribution> {
++  let landlord: Awaited<ReturnType<AttributionDeps["getLandlord"]>> = null;
++  try { landlord = await deps.getLandlord(uid); } catch (err) { console.error("attribution: landlord read failed", err); }
++
++  if (landlord?.landlordCode) {
++    try {
++      const desk = await resolveDesk(deps, landlord.landlordCode);
++      if (desk) return desk;
++    } catch (err) {
++      console.error(`attribution: desk resolution failed for ${landlord.landlordCode}; continuing without it`, err);
++    }
++  }
++
++  const legacyId = legacyAgentId(landlord?.cyberId);
++  if (legacyId) {
++    let splitCode: string | undefined;
++    try { splitCode = await deps.legacySplitCode(legacyId); } catch (err) {
++      console.error(`attribution: legacy split failed for agent ${legacyId}; continuing without a split`, err);
++    }
++    return { kind: "legacy", agentId: legacyId, splitCode };
++  }
++  return { kind: "none" };
++}
+diff --git a/whatsapp/src/desk/attributionDeps.ts b/whatsapp/src/desk/attributionDeps.ts
+new file mode 100644
+index 0000000..3958209
+--- /dev/null
++++ b/whatsapp/src/desk/attributionDeps.ts
+@@ -0,0 +1,34 @@
++import type { Firestore } from "firebase-admin/firestore";
++import type { AttributionDeps } from "./attribution";
++import { DESK } from "./constants";
++import { mergeShareConfig, type ShareConfig } from "./shares";
++import { getOrCreateDeskSplitCode } from "./splitCodes";
++
++/** Production readers over the shared database. `legacy` is supplied by index.ts so today's legacy code path is reused untouched. */
++export function firestoreAttributionDeps(store: Firestore, secretKey: string, legacy: AttributionDeps["legacySplitCode"]): AttributionDeps {
++  return {
++    async getLandlord(uid) {
++      const s = await store.collection("users").doc(uid).get();
++      return s.exists ? { landlordCode: s.get("landlordCode"), cyberId: s.get("cyberId") } : null;
++    },
++    async getCustomer(entityKey) {
++      const s = await store.collection(DESK.customers).doc(entityKey.replace(/\//g, "_")).get();
++      return s.exists ? { ownerAgentId: s.get("ownerAgentId"), selfOwned: s.get("selfOwned") } : null;
++    },
++    async getDeskAgent(agentId) {
++      const s = await store.collection(DESK.agents).doc(agentId).get();
++      return s.exists ? { agentCode: s.get("agentCode"), status: s.get("status"), rank: s.get("rank") } : null;
++    },
++    async getMainSubaccount(agentId) {
++      const s = await store.collection("agents").doc(agentId).get();
++      const id = s.exists ? s.get("paymentInfo.accountId") : undefined;
++      return typeof id === "string" && id ? id : undefined;
++    },
++    async getShareConfig() {
++      const s = await store.collection(DESK.config).doc("global").get();
++      return mergeShareConfig(s.exists ? (s.data() as Partial<ShareConfig>) : undefined);
++    },
++    getSplitCode: (subs, label) => getOrCreateDeskSplitCode(store, secretKey, subs, label),
++    legacySplitCode: legacy,
++  };
++}
+diff --git a/whatsapp/src/desk/audiences.ts b/whatsapp/src/desk/audiences.ts
+new file mode 100644
+index 0000000..f717495
+--- /dev/null
++++ b/whatsapp/src/desk/audiences.ts
+@@ -0,0 +1,25 @@
++/** Who an SMS goes to. Pure. */
++export const AUDIENCES = ["all_tenants", "tenants_with_arrears"] as const;
++export type Audience = typeof AUDIENCES[number];
++export interface TenantRec { id: string; propertyId: string; name: string; phone: string; isRestricted: boolean; isActive: boolean }
++export interface InvoiceRec { tenantId: string; totalAmount: number; amountPaid: number }
++export interface Recipient { id: string; name: string; phone: string }
++
++export const isAudience = (s: unknown): s is Audience => typeof s === "string" && (AUDIENCES as readonly string[]).includes(s);
++
++/**
++ * Tenants with a phone number, in a property that is not restricted, not restricted themselves and not deactivated.
++ * `tenants_with_arrears` = at least one invoice with more billed than paid (the same test the app uses for overdue checks).
++ * `memberIds`, when given, narrows the audience to those tenants.
++ */
++export function selectRecipients(
++  audience: Audience, tenants: TenantRec[], invoices: InvoiceRec[], restrictedProperties: ReadonlySet<string>, memberIds?: readonly string[],
++): Recipient[] {
++  const owing = new Set(invoices.filter((i) => Number(i.totalAmount) > Number(i.amountPaid)).map((i) => String(i.tenantId)));
++  const only = memberIds && memberIds.length > 0 ? new Set(memberIds.map(String)) : null;
++  return tenants
++    .filter((t) => !t.isRestricted && t.isActive && !restrictedProperties.has(t.propertyId) && t.phone.trim() !== "")
++    .filter((t) => (audience === "tenants_with_arrears" ? owing.has(t.id) : true))
++    .filter((t) => (only ? only.has(t.id) : true))
++    .map((t) => ({ id: t.id, name: t.name, phone: t.phone }));
++}
+diff --git a/whatsapp/src/desk/codes.spec.ts b/whatsapp/src/desk/codes.spec.ts
+new file mode 100644
+index 0000000..3d6b327
+--- /dev/null
++++ b/whatsapp/src/desk/codes.spec.ts
+@@ -0,0 +1,45 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { formatLandlordCode, isLandlordCode, nairobiDayKey, normaliseDeskCode, routeDeskCodes } from "./codes";
++import { PMS_SIGNUP_FREE_TOKENS, PMS_USER_LIMITS } from "./constants";
++import { DeskError } from "./errors";
++
++test("landlord codes are PYL-0001, zero padded to 4 digits and growing", () => {
++  assert.equal(formatLandlordCode(1), "PYL-0001");
++  assert.equal(formatLandlordCode(9999), "PYL-9999");
++  assert.equal(formatLandlordCode(10000), "PYL-10000");
++  assert.throws(() => formatLandlordCode(0));
++  assert.throws(() => formatLandlordCode(1.5));
++  assert.ok(isLandlordCode("PYL-0042") && isLandlordCode("PYL-123456") && !isLandlordCode("PYL-42") && !isLandlordCode("SMC-0001"));
++});
++test("desk codes are normalised before use", () => {
++  assert.equal(normaliseDeskCode("  cog-0007 "), "COG-0007");
++  assert.equal(normaliseDeskCode(undefined), "");
++});
++test("routing: first connected non-top desk, else COG-0000", () => {
++  assert.deepEqual(routeDeskCodes({ connected: ["COG-0003", "COG-0001"], includeTop: false }), ["COG-0003"]);
++  assert.deepEqual(routeDeskCodes({ connected: [], includeTop: false }), ["COG-0000"]);
++  assert.deepEqual(routeDeskCodes({ connected: ["COG-0000", "COG-0002"], includeTop: false }), ["COG-0002"]);
++});
++test("routing: a chosen desk must be connected; opt-in adds COG-0000 once", () => {
++  assert.deepEqual(routeDeskCodes({ connected: ["COG-0003", "COG-0001"], chosen: "cog-0001", includeTop: false }), ["COG-0001"]);
++  assert.deepEqual(routeDeskCodes({ connected: ["COG-0003"], chosen: "COG-0003", includeTop: true }), ["COG-0003", "COG-0000"]);
++  assert.deepEqual(routeDeskCodes({ connected: ["COG-0003"], chosen: "COG-0000", includeTop: true }), ["COG-0000"]);
++  assert.deepEqual(routeDeskCodes({ connected: [], includeTop: true }), ["COG-0000"]);
++  assert.throws(() => routeDeskCodes({ connected: ["COG-0003"], chosen: "COG-0009", includeTop: false }), (e) => e instanceof DeskError && e.code === "invalid_argument");
++});
++test("the per-day limit rolls over at midnight Nairobi time (UTC+3)", () => {
++  assert.equal(nairobiDayKey(Date.UTC(2026, 9, 11, 20, 59, 59)), "2026-10-11");
++  assert.equal(nairobiDayKey(Date.UTC(2026, 9, 11, 21, 0, 0)), "2026-10-12");
++});
++test("signup free tokens constant is 50", () => assert.equal(PMS_SIGNUP_FREE_TOKENS, 50));
++test("plan limits equal the app's USER_LIMITS (src/services/database/FirebaseSync.tsx)", () => {
++  assert.deepEqual(PMS_USER_LIMITS, {
++    free: { properties: 1, tenantsPerProperty: 5, totalTenants: 5 },
++    low: { properties: 3, tenantsPerProperty: 10, totalTenants: 30 },
++    business: { properties: 9, tenantsPerProperty: 14, totalTenants: 126 },
++    solo: { properties: 1, tenantsPerProperty: 20, totalTenants: 20 },
++    pro: { properties: 16, tenantsPerProperty: 20, totalTenants: 300 },
++    enterprise: { properties: -1, tenantsPerProperty: -1, totalTenants: -1 },
++  });
++});
+diff --git a/whatsapp/src/desk/codes.ts b/whatsapp/src/desk/codes.ts
+new file mode 100644
+index 0000000..892b204
+--- /dev/null
++++ b/whatsapp/src/desk/codes.ts
+@@ -0,0 +1,42 @@
++/** Pure helpers: no Firebase imports, safe to unit-test directly. */
++import { DESK_CODE_RE, DESK_TOP_CODE, EAT_OFFSET_MS, LANDLORD_CODE_PREFIX, LANDLORD_CODE_RE } from "./constants";
++import { DeskError } from "./errors";
++
++/** PYL-0001 … zero-padded to at least 4 digits; grows (PYL-10000) without truncation. */
++export function formatLandlordCode(n: number): string {
++  if (!Number.isSafeInteger(n) || n < 1) throw new RangeError(`landlord counter must be a positive integer, got ${n}`);
++  return `${LANDLORD_CODE_PREFIX}${String(n).padStart(4, "0")}`;
++}
++export const isLandlordCode = (s: unknown): s is string => typeof s === "string" && LANDLORD_CODE_RE.test(s);
++
++/** Trim and upper-case a desk code typed by a person. Does not judge validity. */
++export const normaliseDeskCode = (raw: unknown): string => (typeof raw === "string" ? raw.trim().toUpperCase() : "");
++export const isDeskCode = (s: string): boolean => s === DESK_TOP_CODE || DESK_CODE_RE.test(s);
++
++/** The calendar day in Nairobi (YYYY-MM-DD) for an epoch-ms instant; used for the per-day request limit. */
++export function nairobiDayKey(nowMs: number): string {
++  return new Date(nowMs + EAT_OFFSET_MS).toISOString().slice(0, 10);
++}
++
++/**
++ * Where a request goes, exactly like Chama:
++ *  - the chosen desk (must be one of the landlord's connected desks), else the FIRST connected non-top desk,
++ *  - else the top desk when no desk is connected,
++ *  - plus the top desk when the landlord opts in.
++ * `connected` is ordered by when each desk was added and never contains the top desk.
++ */
++export function routeDeskCodes(p: { connected: readonly string[]; chosen?: string; includeTop: boolean }): string[] {
++  const connected = p.connected.filter((c) => c !== DESK_TOP_CODE);
++  const chosen = normaliseDeskCode(p.chosen);
++  let targets: string[];
++  if (chosen && chosen !== DESK_TOP_CODE) {
++    if (!connected.includes(chosen)) throw new DeskError("invalid_argument", "That desk is not one of your support agents");
++    targets = [chosen];
++  } else if (chosen === DESK_TOP_CODE) {
++    targets = [];
++  } else {
++    targets = connected.length > 0 ? [connected[0]] : [];
++  }
++  if (targets.length === 0 || p.includeTop) targets = [...targets, DESK_TOP_CODE];
++  return Array.from(new Set(targets));
++}
+diff --git a/whatsapp/src/desk/constants.ts b/whatsapp/src/desk/constants.ts
+new file mode 100644
+index 0000000..e208797
+--- /dev/null
++++ b/whatsapp/src/desk/constants.ts
+@@ -0,0 +1,48 @@
++/** Samuhia Desk integration for Plot Yangu (PMS). Single place for every constant the desk modules share. */
++
++export const DESK_REGION = "africa-south1";
++
++/** The company's top desk: always authorised on every landlord, cannot be added or removed. */
++export const DESK_TOP_CODE = "COG-0000";
++/** Desk codes: COG-0001, COG-0002 … (at least 4 digits). */
++export const DESK_CODE_RE = /^COG-\d{4,}$/;
++
++export const LANDLORD_CODE_PREFIX = "PYL-";
++export const LANDLORD_CODE_RE = /^PYL-\d{4,}$/;
++
++export const MAX_SUPPORT_AGENTS = 5;
++export const DESK_REQUESTS_PER_DAY = 5;
++
++/** SMS tokens granted to a new Plot Yangu account at signup. The grant itself is made by PAY's createUserWithFirebaseAuth. */
++export const PMS_SIGNUP_FREE_TOKENS = 50;
++
++/** Desk-owned collections this codebase touches (same Firestore database; names fixed by the desk contract). */
++export const DESK = {
++  counters: "desk_counters",
++  agents: "desk_agents",
++  customers: "desk_customers",
++  requests: "desk_requests",
++  audit: "desk_audit",
++  config: "desk_config",
++  splitCodes: "desk_split_codes",
++} as const;
++
++export const REQUEST_CATEGORIES = ["setup", "import", "sms", "payments", "reports", "account", "other"] as const;
++export type RequestCategory = typeof REQUEST_CATEGORIES[number];
++
++/** Africa/Nairobi has no daylight saving: a fixed UTC+3 offset. */
++export const EAT_OFFSET_MS = 3 * 60 * 60 * 1000;
++
++/**
++ * Plan limits. These MUST equal USER_LIMITS in src/services/database/FirebaseSync.tsx (the app's own table);
++ * the server cannot import the app bundle. A test pins the values so a change in one is noticed.
++ */
++export const PMS_USER_LIMITS = {
++  free: { properties: 1, tenantsPerProperty: 5, totalTenants: 5 },
++  low: { properties: 3, tenantsPerProperty: 10, totalTenants: 30 },
++  business: { properties: 9, tenantsPerProperty: 14, totalTenants: 126 },
++  solo: { properties: 1, tenantsPerProperty: 20, totalTenants: 20 },
++  pro: { properties: 16, tenantsPerProperty: 20, totalTenants: 300 },
++  enterprise: { properties: -1, tenantsPerProperty: -1, totalTenants: -1 },
++} as const;
++export type PmsTier = keyof typeof PMS_USER_LIMITS;
+diff --git a/whatsapp/src/desk/csv.ts b/whatsapp/src/desk/csv.ts
+new file mode 100644
+index 0000000..6b0df78
+--- /dev/null
++++ b/whatsapp/src/desk/csv.ts
+@@ -0,0 +1,9 @@
++/** CSV writer for exports. Cells that a spreadsheet would execute as a formula are neutralised with a leading apostrophe. */
++export function csvCell(v: unknown): string {
++  let s = v === null || v === undefined ? "" : String(v);
++  if (/^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = `'${s}`;
++  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
++}
++export function toCsv(header: readonly string[], rows: readonly (readonly unknown[])[]): string {
++  return [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
++}
+diff --git a/whatsapp/src/desk/db.ts b/whatsapp/src/desk/db.ts
+new file mode 100644
+index 0000000..1377e5d
+--- /dev/null
++++ b/whatsapp/src/desk/db.ts
+@@ -0,0 +1,28 @@
++import { getApps, initializeApp } from "firebase-admin/app";
++import { getFirestore, type Firestore } from "firebase-admin/firestore";
++import { DESK } from "./constants";
++
++export function fs(): Firestore {
++  if (getApps().length === 0) initializeApp();
++  return getFirestore();
++}
++
++export interface AuditInput {
++  action: string;
++  agentId?: string;
++  entityKey?: string;
++  meta?: Record<string, unknown>;
++}
++
++/** Append-only audit row in desk's own `desk_audit` collection (same shape desk's kernel writes). Never throws into the caller's main flow unless `strict`. */
++export async function writeAudit(entry: AuditInput, strict = false): Promise<void> {
++  try {
++    const clean: Record<string, unknown> = { action: entry.action, meta: entry.meta ?? {}, at: Date.now() };
++    if (entry.agentId) clean.agentId = entry.agentId;
++    if (entry.entityKey) clean.entityKey = entry.entityKey;
++    await fs().collection(DESK.audit).doc().create(clean);
++  } catch (err) {
++    console.error("desk audit write failed", entry.action, err);
++    if (strict) throw err;
++  }
++}
+diff --git a/whatsapp/src/desk/delegate.spec.ts b/whatsapp/src/desk/delegate.spec.ts
+new file mode 100644
+index 0000000..fcba118
+--- /dev/null
++++ b/whatsapp/src/desk/delegate.spec.ts
+@@ -0,0 +1,181 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { handleDelegate, fingerprintOf, type ClaimResult, type DelegateDeps, type DelegateResponse, type DelegateStore, type Landlord, type ScheduleDoc, type SmsPort } from "./delegate";
++import type { NewTenant } from "./tenantRules";
++
++// ---- test doubles (test file only) ----
++function world(over: Partial<Landlord> = {}) {
++  const landlord: Landlord = { uid: "u1", code: "PYL-0001", name: "Mary Landlord", company: "Mary Rentals", phone: "0700111222", tier: "business", tokens: 100, supportAgents: { "COG-0001": { name: "Desk One" } }, ...over };
++  const s = {
++    landlord, activeDesks: new Set(["COG-0001", "COG-0002"]),
++    tenants: [
++      { id: "11111111", propertyId: "1", name: "Ann Wangui", phone: "0711000001", isRestricted: false, isActive: true, unitNumber: "A1", email: "", rentAmount: 1, standingFees: 0, depositAmount: 0, leaseStart: "", leaseEnd: "" },
++      { id: "22222222", propertyId: "1", name: "Bob Otieno", phone: "0711000002", isRestricted: false, isActive: true, unitNumber: "A2", email: "", rentAmount: 1, standingFees: 0, depositAmount: 0, leaseStart: "", leaseEnd: "" },
++    ],
++    invoices: [{ tenantId: "22222222", totalAmount: 1000, amountPaid: 200 }, { tenantId: "11111111", totalAmount: 1000, amountPaid: 1000 }],
++    claims: new Map<string, { fp: string; response?: DelegateResponse<unknown> }>(),
++    created: [] as NewTenant[], schedules: [] as ScheduleDoc[], audits: [] as string[], sent: [] as string[], smsLog: 0, exports: 0,
++    failPhones: new Set<string>(),
++  };
++  const store: DelegateStore = {
++    findLandlord: async (c) => (c === landlord.code ? landlord : null),
++    isActiveDesk: async (c) => s.activeDesks.has(c),
++    listProperties: async () => [{ id: "1", name: "Sunrise", isRestricted: false }],
++    listTenants: async () => [...s.tenants, ...s.created.map((t) => ({ id: String(t.id), propertyId: t.propertyId, name: t.name, phone: t.phone, isRestricted: false, isActive: true, unitNumber: t.unitNumber, email: "", rentAmount: t.rentAmount, standingFees: 0, depositAmount: 0, leaseStart: "", leaseEnd: "" }))],
++    listInvoices: async () => s.invoices,
++    createTenants: async (_u, ts) => { s.created.push(...ts); return { created: ts.map((t) => String(t.id)), existing: [] }; },
++    claimRequest: async (_u, id, fp): Promise<ClaimResult> => {
++      const c = s.claims.get(id);
++      if (!c) { s.claims.set(id, { fp }); return { state: "claimed" }; }
++      if (c.fp !== fp) return { state: "conflict" };
++      return c.response ? { state: "replay", response: c.response } : { state: "in_progress" };
++    },
++    completeRequest: async (_u, id, r) => { s.claims.get(id)!.response = r; },
++    releaseRequest: async (_u, id) => { s.claims.delete(id); },
++    reserveTokens: async (_u, n) => { if (landlord.tokens < n) return { insufficient: landlord.tokens }; landlord.tokens -= n; return { remaining: landlord.tokens }; },
++    refundTokens: async (_u, n) => { landlord.tokens += n; },
++    recordSmsSent: async () => { s.smsLog += 1; },
++    countActiveSchedules: async () => s.schedules.filter((x) => x.active).length,
++    saveSchedule: async (_u, d) => { s.schedules.push(d); },
++    putExport: async (_u, name, csv) => { s.exports += 1; s.lastCsv = csv; return { downloadUrl: `https://files.test/${name}`, expiresAt: 1 }; },
++    audit: async (e) => { s.audits.push(e.action); },
++  } as DelegateStore;
++  const sms: SmsPort = {
++    normalizePhone: (r) => r.replace(/^0/, "254"),
++    validateBody: (r) => (/^[A-Za-z0-9 .,'\-!?():/]*$/.test(r) && r.trim() ? { valid: true } : { valid: false, reason: "Message contains characters that are not allowed (no emojis, symbols, or special characters)." }),
++    tokensFor: (m) => Math.max(1, Math.ceil(m.length / 150)),
++    send: async (mobile, message) => { if (s.failPhones.has(mobile)) return { success: false, error: "provider said no" }; s.sent.push(`${mobile}|${message}`); return { success: true }; },
++  };
++  const deps: DelegateDeps = { store, sms, now: () => Date.UTC(2026, 9, 11, 9, 0) };
++  return Object.assign(s, { deps, lastCsv: "" });
++}
++const call = (w: ReturnType<typeof world>, over: Record<string, unknown>) =>
++  handleDelegate(w.deps, { action: "entity_info", entityCode: "PYL-0001", agentCode: "COG-0001", requestId: "req-00000001", payload: {}, ...over });
++const good = { name: "Jane Wanjiru", id: "33333333", phone: "0712345678", unitNumber: "B1", rentAmount: 9000 };
++
++test("an unauthorised desk is refused on every action", async () => {
++  const w = world();
++  for (const action of ["entity_info", "validate_records", "commit_records", "send_sms_now", "export_data", "run_report", "schedule_sms"]) {
++    const r = await call(w, { action, agentCode: "COG-0002", payload: { rows: [good], source: "manual", message: "Hi", audience: "all_tenants", kind: "tenants" } });
++    assert.deepEqual(r.ok === false && r.error.code, "permission_denied", action);
++  }
++  assert.equal(w.created.length, 0);
++  assert.equal(w.sent.length, 0);
++});
++test("a connected desk that has been suspended is refused", async () => {
++  const w = world(); w.activeDesks.delete("COG-0001");
++  const r = await call(w, {});
++  assert.ok(!r.ok && r.error.code === "permission_denied");
++});
++test("COG-0000 is always authorised, even when the landlord has no support agents", async () => {
++  const w = world({ supportAgents: {} });
++  const r = await call(w, { agentCode: "COG-0000" });
++  assert.ok(r.ok);
++  assert.deepEqual(r.ok && (r.result as { adminName: string; plan: string; creditsBalance: number; audiences: string[]; reportTypes: string[]; exportKinds: string[] }), {
++    displayName: "Mary Rentals", adminName: "Mary Landlord", adminPhone: "0700111222", agentAuthorised: true, plan: "business",
++    creditsBalance: 100, audiences: ["all_tenants", "tenants_with_arrears"], reportTypes: [], exportKinds: ["tenants"],
++  });
++});
++test("unknown landlord, malformed requests and unknown actions are rejected cleanly", async () => {
++  const w = world();
++  assert.ok(!(await call(w, { entityCode: "PYL-9999" })).ok);
++  assert.ok(!(await call(w, { entityCode: "nonsense" })).ok);
++  assert.ok(!(await call(w, { agentCode: "AGT-1" })).ok);
++  assert.ok(!(await call(w, { requestId: "x" })).ok);
++  assert.ok(!(await call(w, { action: "drop_tables" })).ok);
++  assert.ok(!(await handleDelegate(w.deps, null)).ok);
++});
++test("run_report is not_found because PMS has no report engine", async () => {
++  const r = await call(world(), { action: "run_report", payload: { reportType: "x", params: {} } });
++  assert.ok(!r.ok && r.error.code === "not_found");
++});
++test("validate_records returns canonical valid rows and row errors, writes nothing", async () => {
++  const w = world();
++  const r = await call(w, { action: "validate_records", payload: { rows: [good, { ...good, id: "1" }] } });
++  assert.ok(r.ok);
++  const res = r.ok ? (r.result as { valid: unknown[]; errors: { row: number; field: string }[] }) : null;
++  assert.equal(res?.valid.length, 1);
++  assert.deepEqual(res?.errors.map((e) => `${e.row}:${e.field}`), ["2:id"]);
++  assert.equal(w.created.length, 0);
++});
++test("commit_records is idempotent by requestId: a replay creates nothing more and returns the same answer", async () => {
++  const w = world();
++  const payload = { rows: [good], source: "excel" };
++  const a = await call(w, { action: "commit_records", payload });
++  const b = await call(w, { action: "commit_records", payload });
++  assert.deepEqual(a, b);
++  assert.equal(w.created.length, 1);
++  assert.deepEqual(a.ok && a.result, { created: 1, skipped: 0, errors: [] });
++});
++test("reusing a requestId for a different request is refused", async () => {
++  const w = world();
++  await call(w, { action: "commit_records", payload: { rows: [good], source: "excel" } });
++  const r = await call(w, { action: "commit_records", payload: { rows: [{ ...good, id: "44444444" }], source: "excel" } });
++  assert.ok(!r.ok && r.error.code === "invalid_argument");
++  assert.equal(w.created.length, 1);
++});
++test("commit_records re-validates: duplicates and invalid rows are skipped and reported", async () => {
++  const w = world();
++  const r = await call(w, { action: "commit_records", payload: { rows: [good, good, { ...good, id: "55555555", rentAmount: -1 }], source: "manual" } });
++  assert.deepEqual(r.ok && r.result, { created: 1, skipped: 2, errors: [{ row: 2, field: "id", reason: "A tenant with this ID already exists" }, { row: 3, field: "rentAmount", reason: "Please enter a valid rent amount" }] });
++});
++test("send_sms_now dryRun counts recipients and credits without sending or charging", async () => {
++  const w = world();
++  const r = await call(w, { action: "send_sms_now", payload: { message: "Rent is due", audience: "all_tenants", dryRun: true } });
++  assert.deepEqual(r.ok && r.result, { queued: 2, creditsUsed: 2, creditsRemaining: 100 });
++  assert.equal(w.sent.length, 0);
++  assert.equal(w.landlord.tokens, 100);
++});
++test("send_sms_now composes like sendPmsSms, deducts tokens, and is idempotent", async () => {
++  const w = world();
++  const p = { message: "Rent is due", audience: "tenants_with_arrears" };
++  const a = await call(w, { action: "send_sms_now", payload: p });
++  const b = await call(w, { action: "send_sms_now", payload: p });
++  assert.deepEqual(a, b);
++  assert.deepEqual(w.sent, ["254711000002|Dear Bob Otieno, Rent is due - Mary Rentals, 0700111222"]);
++  assert.deepEqual(a.ok && a.result, { queued: 1, creditsUsed: 1, creditsRemaining: 99 });
++  assert.equal(w.landlord.tokens, 99);
++  assert.equal(w.smsLog, 1);
++});
++test("failed sends are refunded; nothing delivered ends as an error that keeps the credits", async () => {
++  const w = world();
++  w.failPhones.add("254711000001");
++  const half = await call(w, { action: "send_sms_now", payload: { message: "Hello all", audience: "all_tenants" } });
++  assert.deepEqual(half.ok && half.result, { queued: 1, creditsUsed: 1, creditsRemaining: 99 });
++  const w2 = world(); w2.failPhones.add("254711000001"); w2.failPhones.add("254711000002");
++  const none = await call(w2, { action: "send_sms_now", payload: { message: "Hello all", audience: "all_tenants" } });
++  assert.ok(!none.ok && /No messages could be sent/.test(none.error.message));
++  assert.equal(w2.landlord.tokens, 100);
++});
++test("PMS SMS rules: strict body, credit balance", async () => {
++  const w = world({ tokens: 1 });
++  const bad = await call(w, { action: "send_sms_now", payload: { message: "Pay now 😀", audience: "all_tenants" } });
++  assert.ok(!bad.ok && /not allowed/.test(bad.error.message));
++  const poor = await call(w, { action: "send_sms_now", payload: { message: "Hello all", audience: "all_tenants" }, requestId: "req-00000002" });
++  assert.ok(!poor.ok && poor.error.message === "Insufficient SMS credits. Required: 2, available: 1.");
++  assert.equal(w.sent.length, 0);
++});
++test("schedule_sms stores one schedule per requestId and quotes the credits per run", async () => {
++  const w = world();
++  const payload = { name: "Rent reminder", message: "Rent is due on the 5th", audience: "all_tenants", schedule: { kind: "monthly", at: "09:00", days: [3] } };
++  const a = await call(w, { action: "schedule_sms", payload });
++  const b = await call(w, { action: "schedule_sms", payload });
++  assert.deepEqual(a, b);
++  assert.deepEqual(a.ok && a.result, { scheduleId: "sch_req-00000001", recipients: 2, creditsPerRun: 2 });
++  assert.equal(w.schedules.length, 1);
++  assert.equal(w.schedules[0].nextRunAt, Date.UTC(2026, 10, 3, 6, 0));
++  assert.equal(w.landlord.tokens, 100);
++});
++test("export_data builds a CSV of the landlord's tenants and neutralises formulas", async () => {
++  const w = world(); w.tenants[0].name = "=cmd|' /C calc'!A0";
++  const r = await call(w, { action: "export_data", payload: { kind: "tenants" } });
++  assert.ok(r.ok);
++  assert.match(w.lastCsv, /^property,id,name,phone/);
++  assert.match(w.lastCsv, /'=cmd/);
++  assert.equal(w.exports, 1);
++  const rep = await call(w, { action: "export_data", payload: { kind: "reports" }, requestId: "req-00000009" });
++  assert.ok(!rep.ok && rep.error.code === "not_found");
++});
++test("fingerprints ignore key order", () => {
++  assert.equal(fingerprintOf("a", "PYL-0001", "COG-0001", { x: 1, y: [1, 2] }), fingerprintOf("a", "PYL-0001", "COG-0001", { y: [1, 2], x: 1 }));
++});
+diff --git a/whatsapp/src/desk/delegate.ts b/whatsapp/src/desk/delegate.ts
+new file mode 100644
+index 0000000..1ba1b2e
+--- /dev/null
++++ b/whatsapp/src/desk/delegate.ts
+@@ -0,0 +1,320 @@
++/**
++ * Plot Yangu's side of the desk delegate API (contract: DelegateAction). Desk never writes PMS data itself: it calls this and PMS
++ * runs its OWN rules. All Firestore/SMS access goes through the ports below so the rules are unit-testable; the production
++ * implementations are in delegateStore.ts and index.ts.
++ */
++import { createHash } from "node:crypto";
++import { DESK_CODE_RE, DESK_TOP_CODE, LANDLORD_CODE_RE } from "./constants";
++import { isAudience, selectRecipients, AUDIENCES, type Audience, type InvoiceRec, type Recipient, type TenantRec } from "./audiences";
++import { toCsv } from "./csv";
++import { DeskError } from "./errors";
++import { nextRunAt, validateSchedule, type ScheduleSpec } from "./schedule";
++import { toImportRow, validateTenantRows, type ExistingTenant, type ImportError, type ImportRow, type NewTenant, type PropertyRec } from "./tenantRules";
++
++export const DELEGATE_ACTIONS = ["entity_info", "validate_records", "commit_records", "schedule_sms", "send_sms_now", "run_report", "export_data"] as const;
++export type DelegateAction = typeof DELEGATE_ACTIONS[number];
++export type DelegateResponse<T> = { ok: true; result: T } | { ok: false; error: { code: string; message: string } };
++
++export const MAX_ROWS = 500;
++export const MAX_SMS_RECIPIENTS = 200; // sendPmsSms: "Maximum 200 recipients per send."
++export const MAX_ACTIVE_SCHEDULES = 20;
++export const EXPORT_KINDS = ["tenants"] as const;
++export const EXPORT_TTL_MS = 60 * 60 * 1000;
++const REQUEST_ID_RE = /^[A-Za-z0-9_-]{8,128}$/;
++
++export interface Landlord {
++  uid: string; code: string; name: string; company: string; phone: string; tier: string; tokens: number;
++  supportAgents: Record<string, unknown>;
++}
++export interface ScheduleDoc {
++  id: string; name: string; message: string; audience: Audience; memberIds: string[]; schedule: ScheduleSpec;
++  active: boolean; nextRunAt: number | null; createdByAgent: string; createdAt: number; runs: number;
++}
++export type ClaimResult = { state: "claimed" } | { state: "replay"; response: DelegateResponse<unknown> } | { state: "conflict" } | { state: "in_progress" };
++export interface SmsLogEntry { recipientCount: number; tokensCharged: number; successCount: number; failCount: number; via: string; agentCode?: string; scheduleId?: string }
++
++export interface DelegateStore {
++  findLandlord(code: string): Promise<Landlord | null>;
++  isActiveDesk(agentCode: string): Promise<boolean>;
++  listProperties(uid: string): Promise<PropertyRec[]>;
++  listTenants(uid: string): Promise<(TenantRec & { unitNumber: string; email: string; rentAmount: number; standingFees: number; depositAmount: number; leaseStart: string; leaseEnd: string })[]>;
++  listInvoices(uid: string): Promise<InvoiceRec[]>;
++  /** Create-only: a tenant document that already exists is left untouched and reported back in `existing`. */
++  createTenants(uid: string, tenants: NewTenant[], agentCode: string): Promise<{ created: string[]; existing: string[] }>;
++  claimRequest(uid: string, requestId: string, fingerprint: string): Promise<ClaimResult>;
++  completeRequest(uid: string, requestId: string, response: DelegateResponse<unknown>): Promise<void>;
++  releaseRequest(uid: string, requestId: string): Promise<void>;
++  /** Atomically deduct `n` tokens when the balance covers them: the balance after, or `insufficient` carrying the balance that was available. */
++  reserveTokens(uid: string, n: number): Promise<{ remaining: number } | { insufficient: number }>;
++  refundTokens(uid: string, n: number): Promise<void>;
++  recordSmsSent(uid: string, entry: SmsLogEntry): Promise<void>;
++  countActiveSchedules(uid: string): Promise<number>;
++  saveSchedule(uid: string, doc: ScheduleDoc): Promise<void>;
++  putExport(uid: string, fileName: string, csv: string, ttlMs: number): Promise<{ downloadUrl: string; expiresAt: number }>;
++  audit(entry: { action: string; entityKey: string; agentCode: string; requestId: string; meta: Record<string, unknown> }): Promise<void>;
++}
++export interface SmsPort {
++  normalizePhone(raw: string): string;
++  validateBody(raw: string): { valid: boolean; reason?: string };
++  tokensFor(fullMessage: string): number;
++  send(mobile: string, message: string): Promise<{ success: boolean; error?: string }>;
++}
++export interface DelegateDeps { store: DelegateStore; sms: SmsPort; now: () => number }
++
++const ok = <T>(result: T): DelegateResponse<T> => ({ ok: true, result });
++const fail = (code: string, message: string): DelegateResponse<never> => ({ ok: false, error: { code, message } });
++
++/** Deterministic JSON so the same payload always hashes the same. */
++export function stableStringify(v: unknown): string {
++  if (Array.isArray(v)) return `[${v.map(stableStringify).join(",")}]`;
++  if (v && typeof v === "object") {
++    return `{${Object.keys(v as object).sort().map((k) => `${JSON.stringify(k)}:${stableStringify((v as Record<string, unknown>)[k])}`).join(",")}}`;
++  }
++  return JSON.stringify(v) ?? "null";
++}
++export const fingerprintOf = (action: string, entityCode: string, agentCode: string, payload: unknown): string =>
++  createHash("sha256").update(stableStringify({ action, entityCode, agentCode, payload })).digest("hex");
++
++export const isAuthorised = (landlord: Landlord, agentCode: string): boolean =>
++  agentCode === DESK_TOP_CODE || Object.prototype.hasOwnProperty.call(landlord.supportAgents ?? {}, agentCode);
++
++interface Parsed { action: DelegateAction; entityCode: string; agentCode: string; requestId: string; payload: Record<string, unknown> }
++function parseRequest(body: unknown): Parsed {
++  const b = body as Record<string, unknown> | null;
++  if (!b || typeof b !== "object") throw new DeskError("invalid_argument", "Request body must be a JSON object");
++  const action = String(b.action ?? "") as DelegateAction;
++  if (!DELEGATE_ACTIONS.includes(action)) throw new DeskError("invalid_argument", `Unknown action "${String(b.action ?? "")}"`);
++  const entityCode = String(b.entityCode ?? "").trim().toUpperCase();
++  if (!LANDLORD_CODE_RE.test(entityCode)) throw new DeskError("invalid_argument", "entityCode must be a landlord code like PYL-0001");
++  const agentCode = String(b.agentCode ?? "").trim().toUpperCase();
++  if (agentCode !== DESK_TOP_CODE && !DESK_CODE_RE.test(agentCode)) throw new DeskError("invalid_argument", "agentCode must be a desk code like COG-0001");
++  const requestId = String(b.requestId ?? "");
++  if (!REQUEST_ID_RE.test(requestId)) throw new DeskError("invalid_argument", "requestId must be 8-128 letters, digits, - or _");
++  const payload = b.payload === undefined ? {} : b.payload;
++  if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new DeskError("invalid_argument", "payload must be an object");
++  return { action, entityCode, agentCode, requestId, payload: payload as Record<string, unknown> };
++}
++
++const EFFECTFUL: ReadonlySet<DelegateAction> = new Set(["commit_records", "schedule_sms", "send_sms_now", "export_data"]);
++
++export async function handleDelegate(deps: DelegateDeps, body: unknown): Promise<DelegateResponse<unknown>> {
++  let req: Parsed;
++  try { req = parseRequest(body); } catch (e) { return toFailure(e); }
++  const { store } = deps;
++  try {
++    const landlord = await store.findLandlord(req.entityCode);
++    if (!landlord) throw new DeskError("not_found", "No Plot Yangu landlord has that code");
++    if (!isAuthorised(landlord, req.agentCode)) throw new DeskError("permission_denied", "This desk is not one of the landlord's support agents");
++    if (req.agentCode !== DESK_TOP_CODE && !(await store.isActiveDesk(req.agentCode))) throw new DeskError("permission_denied", "This desk is not active");
++
++    const dryRun = req.action === "send_sms_now" && req.payload.dryRun === true;
++    const effectful = EFFECTFUL.has(req.action) && !dryRun;
++    if (!effectful) return ok(await run(deps, landlord, req));
++
++    const claim = await store.claimRequest(landlord.uid, req.requestId, fingerprintOf(req.action, req.entityCode, req.agentCode, req.payload));
++    if (claim.state === "replay") return claim.response;
++    if (claim.state === "conflict") throw new DeskError("invalid_argument", "This requestId was already used for a different request");
++    if (claim.state === "in_progress") throw new DeskError("failed_precondition", "This request is still being processed. Wait and retry with the same requestId");
++
++    let response: DelegateResponse<unknown>;
++    try {
++      response = ok(await run(deps, landlord, req));
++    } catch (e) {
++      if (e instanceof DeskError) {
++        response = toFailure(e); // deterministic refusal: replayed identically
++      } else if (req.action === "send_sms_now") {
++        console.error("deskdelegate send_sms_now failed after claim", e);
++        response = fail("internal", "The send may have partly completed. Check the landlord's message history before sending again");
++      } else {
++        console.error(`deskdelegate ${req.action} failed`, e);
++        await store.releaseRequest(landlord.uid, req.requestId); // nothing partial to protect: let the same requestId retry
++        return fail("internal", "Plot Yangu could not complete the request. Please try again");
++      }
++    }
++    await store.completeRequest(landlord.uid, req.requestId, response);
++    return response;
++  } catch (e) {
++    return toFailure(e);
++  }
++}
++
++function toFailure(e: unknown): DelegateResponse<never> {
++  if (e instanceof DeskError) return fail(e.code, e.message);
++  console.error("deskdelegate unexpected error", e);
++  return fail("internal", "Plot Yangu could not complete the request. Please try again");
++}
++
++async function run(deps: DelegateDeps, l: Landlord, req: Parsed): Promise<unknown> {
++  const { store } = deps;
++  const entityKey = `pms:${l.code}`;
++  const audit = (action: string, meta: Record<string, unknown>) =>
++    store.audit({ action: `pms.delegate.${action}`, entityKey, agentCode: req.agentCode, requestId: req.requestId, meta });
++
++  switch (req.action) {
++    case "entity_info": {
++      const out = {
++        displayName: l.company || l.name || l.code, adminName: l.name, adminPhone: l.phone, agentAuthorised: true, plan: l.tier,
++        creditsBalance: l.tokens, audiences: [...AUDIENCES] as string[],
++        reportTypes: [] as string[], // PMS has no server-side report engine (reports are built inside the app from local data)
++        exportKinds: [...EXPORT_KINDS] as string[],
++      };
++      await audit("entity_info", {});
++      return out;
++    }
++
++    case "validate_records": {
++      const rows = rowsOf(req.payload);
++      const { valid, errors } = validateTenantRows(rows, await tenantContext(store, l));
++      await audit("validate_records", { rows: rows.length, valid: valid.length, errors: errors.length });
++      return { valid: valid.map((v) => toImportRow(v.tenant)), errors };
++    }
++
++    case "commit_records": {
++      const rows = rowsOf(req.payload);
++      const source = req.payload.source;
++      if (source !== "excel" && source !== "manual") throw new DeskError("invalid_argument", 'payload.source must be "excel" or "manual"');
++      // Never trust an earlier validation: re-validate against the landlord's current data, then create.
++      const { valid, errors } = validateTenantRows(rows, await tenantContext(store, l));
++      const { created, existing } = valid.length > 0 ? await store.createTenants(l.uid, valid.map((v) => v.tenant), req.agentCode) : { created: [], existing: [] as string[] };
++      const lost = new Set(existing);
++      const raceErrors: ImportError[] = valid.filter((v) => lost.has(String(v.tenant.id))).map((v) => ({ row: v.index + 1, field: "id", reason: "A tenant with this ID already exists" }));
++      const allErrors = [...errors, ...raceErrors].sort((a, b) => a.row - b.row);
++      const result = { created: created.length, skipped: rows.length - created.length, errors: allErrors };
++      await audit("commit_records", { source, rows: rows.length, created: created.length, errors: allErrors.length });
++      return result;
++    }
++
++    case "send_sms_now": {
++      const p = smsPayload(req.payload);
++      const plan = await planSend(deps, l, p.message, p.audience, p.memberIds);
++      if (p.dryRun) {
++        await audit("send_sms_now.dry_run", { audience: p.audience, recipients: plan.items.length, credits: plan.totalTokens });
++        return { queued: plan.items.length, creditsUsed: plan.totalTokens, creditsRemaining: l.tokens };
++      }
++      const out = await sendPlan(deps, l, plan, { via: "desk", agentCode: req.agentCode });
++      await audit("send_sms_now", { audience: p.audience, recipients: plan.items.length, queued: out.queued, credits: out.creditsUsed });
++      return out;
++    }
++
++    case "schedule_sms": {
++      const name = String(req.payload.name ?? "").trim();
++      if (name.length < 1 || name.length > 60) throw new DeskError("invalid_argument", "Schedule name must be 1-60 characters");
++      const message = String(req.payload.message ?? "");
++      const audience = req.payload.audience;
++      if (!isAudience(audience)) throw new DeskError("invalid_argument", `Audience must be one of: ${AUDIENCES.join(", ")}`);
++      const memberIds = idList(req.payload.memberIds);
++      const now = deps.now();
++      const spec = validateSchedule(req.payload.schedule, now);
++      const plan = await planSend(deps, l, message, audience, memberIds);
++      if ((await store.countActiveSchedules(l.uid)) >= MAX_ACTIVE_SCHEDULES) {
++        throw new DeskError("failed_precondition", `This landlord already has ${MAX_ACTIVE_SCHEDULES} active schedules. Remove one first`);
++      }
++      const scheduleId = `sch_${req.requestId}`; // deterministic: a retried request can never create a second schedule
++      await store.saveSchedule(l.uid, {
++        id: scheduleId, name, message: message.trim(), audience, memberIds, schedule: spec, active: true,
++        nextRunAt: nextRunAt(spec, now), createdByAgent: req.agentCode, createdAt: now, runs: 0,
++      });
++      await audit("schedule_sms", { scheduleId, audience, kind: spec.kind, recipients: plan.items.length, creditsPerRun: plan.totalTokens });
++      return { scheduleId, recipients: plan.items.length, creditsPerRun: plan.totalTokens };
++    }
++
++    case "export_data": {
++      const kind = String(req.payload.kind ?? "");
++      if (kind === "reports") throw new DeskError("not_found", "Plot Yangu has no server-side report engine, so there is nothing to export for reports");
++      if (!(EXPORT_KINDS as readonly string[]).includes(kind)) throw new DeskError("invalid_argument", `Export kind must be one of: ${EXPORT_KINDS.join(", ")}`);
++      const [props, tenants] = await Promise.all([store.listProperties(l.uid), store.listTenants(l.uid)]);
++      const names = new Map(props.map((p) => [p.id, p.name]));
++      const live = tenants.filter((t) => !t.isRestricted && !props.find((p) => p.id === t.propertyId)?.isRestricted);
++      const csv = toCsv(
++        ["property", "id", "name", "phone", "email", "unit", "rent", "standing_fees", "deposit", "lease_start", "lease_end"],
++        live.map((t) => [names.get(t.propertyId) ?? t.propertyId, t.id, t.name, t.phone, t.email, t.unitNumber, t.rentAmount, t.standingFees, t.depositAmount, t.leaseStart, t.leaseEnd]),
++      );
++      const file = await store.putExport(l.uid, `${l.code}-tenants-${req.requestId}.csv`, csv, EXPORT_TTL_MS);
++      await audit("export_data", { kind, rows: live.length });
++      return file;
++    }
++
++    case "run_report":
++      throw new DeskError("not_found", "Plot Yangu has no server-side report engine; reports are produced inside the app. No report types are available");
++  }
++}
++
++function rowsOf(payload: Record<string, unknown>): ImportRow[] {
++  const rows = payload.rows;
++  if (!Array.isArray(rows) || rows.length === 0) throw new DeskError("invalid_argument", "payload.rows must be a non-empty list");
++  if (rows.length > MAX_ROWS) throw new DeskError("invalid_argument", `Send at most ${MAX_ROWS} rows at a time`);
++  if (rows.some((r) => !r || typeof r !== "object" || Array.isArray(r))) throw new DeskError("invalid_argument", "Every row must be an object");
++  return rows as ImportRow[];
++}
++function idList(v: unknown): string[] {
++  if (v === undefined || v === null) return [];
++  if (!Array.isArray(v) || v.length > 1000) throw new DeskError("invalid_argument", "memberIds must be a list of tenant ids");
++  return v.map((x) => String(x));
++}
++function smsPayload(p: Record<string, unknown>): { message: string; audience: Audience; memberIds: string[]; dryRun: boolean } {
++  if (!isAudience(p.audience)) throw new DeskError("invalid_argument", `Audience must be one of: ${AUDIENCES.join(", ")}`);
++  return { message: String(p.message ?? ""), audience: p.audience, memberIds: idList(p.memberIds), dryRun: p.dryRun === true };
++}
++
++async function tenantContext(store: DelegateStore, l: Landlord) {
++  const [properties, tenants] = await Promise.all([store.listProperties(l.uid), store.listTenants(l.uid)]);
++  const existingTenants: ExistingTenant[] = tenants.map((t) => ({ id: t.id, propertyId: t.propertyId, isRestricted: t.isRestricted }));
++  return { tier: l.tier, properties, existingTenants };
++}
++
++interface SendItem { recipient: Recipient; mobile: string; full: string; tokens: number }
++interface SendPlan { items: SendItem[]; totalTokens: number }
++
++/** Same composition and validation as PMS's sendPmsSms: "Dear {name}, {message} - {sender, phone}", whole message validated, priced on the final text. */
++async function planSend(deps: DelegateDeps, l: Landlord, message: string, audience: Audience, memberIds: string[]): Promise<SendPlan> {
++  const { store, sms } = deps;
++  const body = sms.validateBody(message);
++  if (!body.valid) throw new DeskError("invalid_argument", body.reason || "Invalid message.");
++  const [props, tenants, invoices] = await Promise.all([store.listProperties(l.uid), store.listTenants(l.uid), audience === "tenants_with_arrears" ? store.listInvoices(l.uid) : Promise.resolve([] as InvoiceRec[])]);
++  const restricted = new Set(props.filter((p) => p.isRestricted).map((p) => p.id));
++  const recipients = selectRecipients(audience, tenants, invoices, restricted, memberIds);
++  if (recipients.length === 0) throw new DeskError("failed_precondition", "No tenants match this audience");
++  if (recipients.length > MAX_SMS_RECIPIENTS) throw new DeskError("invalid_argument", `Maximum ${MAX_SMS_RECIPIENTS} recipients per send. Narrow the audience`);
++  const senderName = l.company || l.name || "Property Manager";
++  const signature = l.phone ? `${senderName}, ${l.phone}` : senderName;
++  const items: SendItem[] = recipients.map((r) => {
++    const nameCheck = sms.validateBody(r.name);
++    if (!nameCheck.valid) throw new DeskError("invalid_argument", `Recipient name "${r.name}" contains disallowed characters.`);
++    const full = `Dear ${r.name}, ${message.trim()} - ${signature}`;
++    const finalCheck = sms.validateBody(full);
++    if (!finalCheck.valid) throw new DeskError("invalid_argument", finalCheck.reason || "Composed message is invalid.");
++    return { recipient: r, mobile: sms.normalizePhone(r.phone), full, tokens: sms.tokensFor(full) };
++  });
++  return { items, totalTokens: items.reduce((s, i) => s + i.tokens, 0) };
++}
++
++/** Reserve tokens up front, send each message, refund the ones that failed (the sendPmsSms pattern, with an atomic reservation). */
++export async function sendPlan(
++  deps: DelegateDeps, l: Pick<Landlord, "uid" | "tokens">, plan: SendPlan, meta: { via: string; agentCode?: string; scheduleId?: string },
++): Promise<{ queued: number; creditsUsed: number; creditsRemaining: number }> {
++  const { store, sms } = deps;
++  const reservation = await store.reserveTokens(l.uid, plan.totalTokens);
++  if ("insufficient" in reservation) {
++    throw new DeskError("failed_precondition", `Insufficient SMS credits. Required: ${plan.totalTokens}, available: ${reservation.insufficient}.`);
++  }
++  let refund = 0, success = 0, firstError = "";
++  for (const item of plan.items) {
++    let r: { success: boolean; error?: string };
++    try { r = await sms.send(item.mobile, item.full); } catch (e) { r = { success: false, error: (e as Error).message }; }
++    if (r.success) success += 1; else { refund += item.tokens; firstError ||= r.error ?? "SMS provider error"; }
++  }
++  let remaining = reservation.remaining;
++  try {
++    if (refund > 0) { await store.refundTokens(l.uid, refund); remaining += refund; }
++    await store.recordSmsSent(l.uid, { recipientCount: plan.items.length, tokensCharged: plan.totalTokens - refund, successCount: success, failCount: plan.items.length - success, ...meta });
++  } catch (e) { console.error("deskdelegate SMS bookkeeping failed", e); }
++  if (success === 0) throw new DeskError("failed_precondition", `No messages could be sent: ${firstError}. Your credits were not used`);
++  return { queued: success, creditsUsed: plan.totalTokens - refund, creditsRemaining: remaining };
++}
++
++/** Used by the schedule runner: resolve the audience fresh and send. */
++export async function runScheduledSend(deps: DelegateDeps, l: Landlord, s: ScheduleDoc): Promise<{ queued: number; creditsUsed: number }> {
++  const plan = await planSend(deps, l, s.message, s.audience, s.memberIds);
++  const out = await sendPlan(deps, l, plan, { via: "desk_schedule", agentCode: s.createdByAgent, scheduleId: s.id });
++  return { queued: out.queued, creditsUsed: out.creditsUsed };
++}
+diff --git a/whatsapp/src/desk/delegateStore.ts b/whatsapp/src/desk/delegateStore.ts
+new file mode 100644
+index 0000000..9317ff8
+--- /dev/null
++++ b/whatsapp/src/desk/delegateStore.ts
+@@ -0,0 +1,151 @@
++/** Production implementation of DelegateStore over the shared Firestore database and the default Storage bucket. */
++import { randomUUID } from "node:crypto";
++import { FieldValue, type DocumentSnapshot, type Firestore } from "firebase-admin/firestore";
++import { getStorage } from "firebase-admin/storage";
++import { DESK } from "./constants";
++import { writeAudit } from "./db";
++import type { ClaimResult, DelegateResponse, DelegateStore, Landlord, ScheduleDoc } from "./delegate";
++import type { NewTenant } from "./tenantRules";
++
++const num = (v: unknown): number => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
++const text = (v: unknown): string => (v === null || v === undefined ? "" : String(v));
++const WRITE_CHUNK = 400;
++
++export function landlordFromSnap(s: DocumentSnapshot): Landlord | null {
++  if (!s.exists) return null;
++  const d = s.data() ?? {};
++  return {
++    uid: s.id, code: text(d.landlordCode), name: text(d.name), company: text(d.company?.name), phone: text(d.phone),
++    tier: text(d.tier) || "free", tokens: num(d.tokens), supportAgents: (d.supportAgents ?? {}) as Record<string, unknown>,
++  };
++}
++
++export function firestoreDelegateStore(store: Firestore): DelegateStore {
++  const user = (uid: string) => store.collection("users").doc(uid);
++  return {
++    async findLandlord(code) {
++      const q = await store.collection("users").where("landlordCode", "==", code).limit(1).get();
++      return q.empty ? null : landlordFromSnap(q.docs[0]);
++    },
++    async isActiveDesk(agentCode) {
++      const q = await store.collection(DESK.agents).where("agentCode", "==", agentCode).limit(1).get();
++      return !q.empty && q.docs[0].get("status") === "active";
++    },
++    async listProperties(uid) {
++      const q = await user(uid).collection("properties").get();
++      return q.docs.map((d) => ({ id: d.id, name: text(d.get("name")), isRestricted: d.get("isRestricted") === true }));
++    },
++    async listTenants(uid) {
++      const q = await user(uid).collection("tenants").get();
++      return q.docs.map((d) => ({
++        id: d.id, propertyId: text(d.get("propertyId")), name: text(d.get("name")), phone: text(d.get("phone")),
++        isRestricted: d.get("isRestricted") === true, isActive: d.get("isActive") !== false,
++        unitNumber: text(d.get("unitNumber")), email: text(d.get("email")), rentAmount: num(d.get("rentAmount")),
++        standingFees: num(d.get("standingFees")), depositAmount: num(d.get("depositAmount")),
++        leaseStart: text(d.get("leaseStart")), leaseEnd: text(d.get("leaseEnd")),
++      }));
++    },
++    async listInvoices(uid) {
++      const q = await user(uid).collection("invoices").get();
++      return q.docs.map((d) => ({ tenantId: text(d.get("tenantId")), totalAmount: num(d.get("totalAmount")), amountPaid: num(d.get("amountPaid")) }));
++    },
++
++    /**
++     * Tenants are created client-side in the app today (local SQLite, then synced to users/{uid}/tenants/{id}). This writes the
++     * identical document the app's sync writes (same fields, id = the tenant's ID number) so the app's next sync downloads it.
++     */
++    async createTenants(uid, tenants: NewTenant[], agentCode) {
++      const created: string[] = [], existing: string[] = [];
++      const nowIso = new Date().toISOString();
++      for (let i = 0; i < tenants.length; i += WRITE_CHUNK) {
++        const chunk = tenants.slice(i, i + WRITE_CHUNK);
++        const refs = chunk.map((t) => user(uid).collection("tenants").doc(String(t.id)));
++        const snaps = await store.getAll(...refs);
++        const batch = store.batch();
++        chunk.forEach((t, k) => {
++          if (snaps[k].exists) { existing.push(String(t.id)); return; }
++          batch.create(refs[k], {
++            id: t.id, localId: t.id, userId: uid, propertyId: Number(t.propertyId) || t.propertyId, name: t.name, phone: t.phone, email: t.email,
++            unitNumber: t.unitNumber, rentAmount: t.rentAmount, standingFees: t.standingFees, depositAmount: t.depositAmount,
++            leaseStart: t.leaseStart, leaseEnd: t.leaseEnd, isActive: true, isRestricted: false, createdAt: nowIso, updatedAt: nowIso,
++            lastSyncTime: FieldValue.serverTimestamp(), lastModified: nowIso, createdBy: "desk", deskAgentCode: agentCode,
++          });
++          created.push(String(t.id));
++        });
++        await batch.commit();
++      }
++      return { created, existing };
++    },
++
++    async claimRequest(uid, requestId, fingerprint): Promise<ClaimResult> {
++      const ref = user(uid).collection("deskDelegateRequests").doc(requestId);
++      return store.runTransaction(async (tx) => {
++        const s = await tx.get(ref);
++        if (!s.exists) {
++          tx.create(ref, { fingerprint, status: "processing", createdAt: Date.now(), updatedAt: Date.now() });
++          return { state: "claimed" } as ClaimResult;
++        }
++        if (s.get("fingerprint") !== fingerprint) return { state: "conflict" } as ClaimResult;
++        if (s.get("status") === "done") return { state: "replay", response: JSON.parse(String(s.get("response"))) as DelegateResponse<unknown> } as ClaimResult;
++        return { state: "in_progress" } as ClaimResult;
++      });
++    },
++    async completeRequest(uid, requestId, response) {
++      await user(uid).collection("deskDelegateRequests").doc(requestId).update({ status: "done", response: JSON.stringify(response), updatedAt: Date.now() });
++    },
++    async releaseRequest(uid, requestId) {
++      await user(uid).collection("deskDelegateRequests").doc(requestId).delete();
++    },
++
++    async reserveTokens(uid, n) {
++      const ref = user(uid);
++      return store.runTransaction(async (tx) => {
++        const available = num((await tx.get(ref)).get("tokens"));
++        if (available < n) return { insufficient: available };
++        tx.update(ref, { tokens: FieldValue.increment(-n) });
++        return { remaining: available - n };
++      });
++    },
++    async refundTokens(uid, n) { await user(uid).update({ tokens: FieldValue.increment(n) }); },
++    async recordSmsSent(uid, e) {
++      await user(uid).collection("sms-sent-log").add({
++        propertyId: null, recipientCount: e.recipientCount, tokensCharged: e.tokensCharged, successCount: e.successCount, failCount: e.failCount,
++        sentAt: FieldValue.serverTimestamp(), via: e.via, deskAgentCode: e.agentCode ?? null, scheduleId: e.scheduleId ?? null,
++      });
++      if (e.successCount > 0) await user(uid).update({ smsSentTotal: FieldValue.increment(e.successCount) });
++    },
++
++    async countActiveSchedules(uid) {
++      const c = await user(uid).collection("deskSmsSchedules").where("active", "==", true).count().get();
++      return c.data().count;
++    },
++    async saveSchedule(uid, doc: ScheduleDoc) { await user(uid).collection("deskSmsSchedules").doc(doc.id).set(doc); },
++
++    async putExport(uid, fileName, csv, ttlMs) {
++      const bucket = getStorage().bucket();
++      const path = `deskExports/${uid}/${fileName}`;
++      const token = randomUUID();
++      const expiresAt = Date.now() + ttlMs;
++      await bucket.file(path).save(csv, {
++        resumable: false, contentType: "text/csv; charset=utf-8",
++        metadata: { metadata: { firebaseStorageDownloadTokens: token, expiresAt: String(expiresAt) } },
++      });
++      return { downloadUrl: `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media&token=${token}`, expiresAt };
++    },
++
++    async audit(e) {
++      await writeAudit({ action: e.action, entityKey: e.entityKey, meta: { ...e.meta, agentCode: e.agentCode, requestId: e.requestId } });
++    },
++  };
++}
++
++/** Delete exported files past their expiry (the download link carries a token and no signature, so expiry is enforced by deletion). */
++export async function purgeExpiredExports(now = Date.now()): Promise<number> {
++  const [files] = await getStorage().bucket().getFiles({ prefix: "deskExports/" });
++  let removed = 0;
++  for (const f of files) {
++    const exp = Number((f.metadata.metadata as Record<string, string> | undefined)?.expiresAt ?? 0);
++    if (exp > 0 && exp < now) { await f.delete({ ignoreNotFound: true }); removed += 1; }
++  }
++  return removed;
++}
+diff --git a/whatsapp/src/desk/desk.emu.spec.ts b/whatsapp/src/desk/desk.emu.spec.ts
+new file mode 100644
+index 0000000..89b83b4
+--- /dev/null
++++ b/whatsapp/src/desk/desk.emu.spec.ts
+@@ -0,0 +1,116 @@
++/**
++ * Emulator tests: real Firestore transactions. Run with the Firestore emulator up:
++ *   firebase emulators:exec --only firestore "cd whatsapp && npm run build && node --test lib/desk/"
++ * They skip themselves when FIRESTORE_EMULATOR_HOST is not set. (This spec is excluded from the build by tsconfig's **\/*.spec.ts;
++ * to run it, compile with tsx: `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npx tsx --test src/desk/desk.emu.spec.ts`.)
++ */
++import test from "node:test";
++import assert from "node:assert/strict";
++import { getApps, initializeApp } from "firebase-admin/app";
++import { getFirestore } from "firebase-admin/firestore";
++import { assignLandlordCode } from "./landlordCode";
++import { addSupportAgent, listSupportAgents, removeSupportAgent } from "./supportAgents";
++import { createDeskRequest, listDeskRequests } from "./requests";
++import { firestoreDelegateStore } from "./delegateStore";
++import { handleDelegate } from "./delegate";
++
++const enabled = !!process.env.FIRESTORE_EMULATOR_HOST;
++const opts = { skip: enabled ? false : "Firestore emulator not running (FIRESTORE_EMULATOR_HOST unset)" };
++if (enabled && getApps().length === 0) initializeApp({ projectId: "demo-pms-desk" });
++const fs = () => getFirestore();
++const callable = (fn: unknown, uid: string, data: unknown) =>
++  (fn as { run: (r: unknown) => Promise<any> }).run({ data, auth: { uid, token: {} }, rawRequest: {} });
++async function reset() {
++  for (const c of ["users", "desk_counters", "desk_agents", "desk_requests", "desk_audit"]) await fs().recursiveDelete(fs().collection(c));
++}
++
++test("landlord codes: 25 simultaneous creations get 25 distinct, gap-free codes; a re-run changes nothing", opts, async () => {
++  await reset();
++  const uids = Array.from({ length: 25 }, (_, i) => `landlord${i}`);
++  await Promise.all(uids.map((u) => fs().collection("users").doc(u).set({ name: u })));
++  const codes = await Promise.all(uids.map((u) => assignLandlordCode(u)));
++  assert.equal(new Set(codes).size, 25);
++  assert.deepEqual([...codes].sort(), Array.from({ length: 25 }, (_, i) => `PYL-${String(i + 1).padStart(4, "0")}`).sort());
++  const again = await Promise.all(uids.map((u) => assignLandlordCode(u)));
++  assert.deepEqual(again, codes);
++  assert.equal((await fs().collection("desk_counters").doc("landlords").get()).get("last"), 25);
++});
++
++test("support agents: unknown / inactive codes rejected, COG-0000 locked, cap of 5, remove works", opts, async () => {
++  await reset();
++  await fs().collection("users").doc("u1").set({ name: "Mary", phone: "0700" });
++  for (let i = 1; i <= 7; i++) await fs().collection("desk_agents").doc(`a${i}`).set({ agentCode: `COG-000${i}`, name: `Desk ${i}`, status: i === 7 ? "suspended" : "active" });
++  await assert.rejects(callable(addSupportAgent, "u1", { agentCode: "COG-0000" }), /always connected/);
++  await assert.rejects(callable(addSupportAgent, "u1", { agentCode: "COG-0099" }), /No desk with that code/);
++  await assert.rejects(callable(addSupportAgent, "u1", { agentCode: "COG-0007" }), /not active/);
++  for (let i = 1; i <= 5; i++) await callable(addSupportAgent, "u1", { agentCode: `COG-000${i}` });
++  await callable(addSupportAgent, "u1", { agentCode: "COG-0001" }); // idempotent
++  await assert.rejects(callable(addSupportAgent, "u1", { agentCode: "COG-0006" }), /up to 5/);
++  await assert.rejects(callable(removeSupportAgent, "u1", { agentCode: "COG-0000" }), /cannot be removed/);
++  const list = await callable(listSupportAgents, "u1", {});
++  assert.equal(list.agents[0].agentCode, "COG-0000");
++  assert.equal(list.agents[0].locked, true);
++  assert.equal(list.agents.length, 6);
++  await callable(removeSupportAgent, "u1", { agentCode: "COG-0003" });
++  assert.equal((await callable(listSupportAgents, "u1", {})).agents.length, 5);
++});
++
++test("desk requests: written to desk_requests as pms_<code>_<id>, routed, listed, limited to 5 a day", opts, async () => {
++  await reset();
++  await fs().collection("users").doc("u1").set({ name: "Mary", phone: "0700", company: { name: "Mary Rentals" } });
++  await fs().collection("users").doc("u2").set({ name: "Other" });
++  await fs().collection("desk_agents").doc("a1").set({ agentCode: "COG-0001", name: "Desk 1", status: "active" });
++  await fs().collection("desk_agents").doc("a2").set({ agentCode: "COG-0002", name: "Desk 2", status: "active" });
++  const none = await callable(createDeskRequest, "u1", { category: "sms", subject: "No agent yet", message: "Please help" });
++  assert.deepEqual(none.targetDeskCodes, ["COG-0000"]);
++  await callable(addSupportAgent, "u1", { agentCode: "COG-0002" });
++  await callable(addSupportAgent, "u1", { agentCode: "COG-0001" });
++  const first = await callable(createDeskRequest, "u1", { category: "import", subject: "Import tenants", message: "Need help importing" });
++  assert.deepEqual(first.targetDeskCodes, ["COG-0002"]);
++  const both = await callable(createDeskRequest, "u1", { category: "other", subject: "Both desks", message: "Ask the top desk too", includeTopDesk: true });
++  assert.deepEqual(both.targetDeskCodes, ["COG-0002", "COG-0000"]);
++  assert.match(first.id, /^pms_PYL-0001_.+/);
++  const doc = (await fs().collection("desk_requests").doc(first.id).get()).data()!;
++  assert.equal(doc.source, "pms"); assert.equal(doc.status, "new"); assert.equal(doc.entityCode, "PYL-0001"); assert.equal(doc.entityName, "Mary Rentals");
++  // desk writes back; the landlord sees it
++  await fs().collection("desk_requests").doc(first.id).update({ status: "answered", responses: [{ at: 1, byDeskCode: "COG-0002", text: "Done" }] });
++  const listed = await callable(listDeskRequests, "u1", {});
++  assert.equal(listed.requests.length, 3);
++  const mine = listed.requests.find((r: { id: string }) => r.id === first.id);
++  assert.equal(mine.status, "answered"); assert.equal(mine.responses[0].text, "Done");
++  assert.equal((await callable(listDeskRequests, "u2", {})).requests.length, 0);
++  // limit: 3 used so far; two more fit, the sixth is refused, simultaneous sends cannot exceed it
++  const burst = await Promise.allSettled(Array.from({ length: 6 }, (_, i) => callable(createDeskRequest, "u1", { category: "other", subject: `Burst ${i}`, message: "Burst message" })));
++  assert.equal(burst.filter((r) => r.status === "fulfilled").length, 2);
++  assert.equal((await callable(listDeskRequests, "u1", {})).requests.length, 5);
++});
++
++test("deskdelegate on real Firestore: COG-0000 allowed, unconnected desk refused, commit idempotent, tokens deducted atomically", opts, async () => {
++  await reset();
++  await fs().collection("users").doc("u1").set({ name: "Mary", phone: "0700", tier: "business", tokens: 10, landlordCode: "PYL-0001", supportAgents: {} });
++  await fs().collection("users").doc("u1").collection("properties").doc("1").set({ name: "Sunrise", isRestricted: false });
++  await fs().collection("desk_agents").doc("a1").set({ agentCode: "COG-0001", status: "active" });
++  const sent: string[] = [];
++  const deps = {
++    store: firestoreDelegateStore(fs()), now: () => Date.now(),
++    sms: { normalizePhone: (r: string) => r, validateBody: () => ({ valid: true }), tokensFor: () => 1, send: async (m: string) => { sent.push(m); return { success: true }; } },
++  };
++  const base = { entityCode: "PYL-0001", payload: {} };
++  const refused = await handleDelegate(deps, { ...base, action: "entity_info", agentCode: "COG-0001", requestId: "req-aaaaaaaa" });
++  assert.ok(!refused.ok && refused.error.code === "permission_denied");
++  const top = await handleDelegate(deps, { ...base, action: "entity_info", agentCode: "COG-0000", requestId: "req-aaaaaaab" });
++  assert.ok(top.ok);
++  const commit = { ...base, action: "commit_records", agentCode: "COG-0000", requestId: "req-aaaaaaac", payload: { source: "manual", rows: [{ name: "Jane Wanjiru", id: "33333333", phone: "0712345678", unitNumber: "B1", rentAmount: 9000 }] } };
++  const [c1, c2] = await Promise.all([handleDelegate(deps, commit), handleDelegate(deps, commit)]);
++  assert.ok(c1.ok || c2.ok);
++  const replay = await handleDelegate(deps, commit);
++  assert.deepEqual(replay.ok && replay.result, { created: 1, skipped: 0, errors: [] });
++  assert.equal((await fs().collection("users").doc("u1").collection("tenants").get()).size, 1);
++  const send = { ...base, action: "send_sms_now", agentCode: "COG-0000", requestId: "req-aaaaaaad", payload: { message: "Rent is due", audience: "all_tenants" } };
++  const s1 = await handleDelegate(deps, send);
++  assert.ok(s1.ok);
++  assert.deepEqual(await handleDelegate(deps, send), s1);
++  assert.equal(sent.length, 1);
++  assert.equal((await fs().collection("users").doc("u1").get()).get("tokens"), 9);
++  assert.ok((await fs().collection("desk_audit").get()).size >= 3);
++});
+diff --git a/whatsapp/src/desk/errors.ts b/whatsapp/src/desk/errors.ts
+new file mode 100644
+index 0000000..4feb4c3
+--- /dev/null
++++ b/whatsapp/src/desk/errors.ts
+@@ -0,0 +1,9 @@
++export type DeskErrorCode = "invalid_argument" | "permission_denied" | "not_found" | "failed_precondition" | "internal";
++
++/** One error type for every desk module. Delegate maps it to the contract's DelegateError, callables map it to HttpsError. */
++export class DeskError extends Error {
++  constructor(public readonly code: DeskErrorCode, message: string) {
++    super(message);
++    this.name = "DeskError";
++  }
++}
+diff --git a/whatsapp/src/desk/functions.ts b/whatsapp/src/desk/functions.ts
+new file mode 100644
+index 0000000..ac71180
+--- /dev/null
++++ b/whatsapp/src/desk/functions.ts
+@@ -0,0 +1,40 @@
++import { onRequest } from "firebase-functions/v2/https";
++import { onSchedule } from "firebase-functions/v2/scheduler";
++import type { defineSecret } from "firebase-functions/params";
++import { DESK_REGION } from "./constants";
++import { fs } from "./db";
++import { handleDelegate, type DelegateDeps, type SmsPort } from "./delegate";
++import { firestoreDelegateStore, purgeExpiredExports } from "./delegateStore";
++import { runDueSchedules } from "./scheduleRunner";
++
++/** PMS's own SMS machinery (validation, phone normalising, token pricing, HostPinnacle sender) and the secrets that sender needs. */
++export interface DeskSmsWiring extends SmsPort { secrets: ReturnType<typeof defineSecret>[] }
++
++const deps = (sms: SmsPort): DelegateDeps => ({ store: firestoreDelegateStore(fs()), sms, now: () => Date.now() });
++
++/**
++ * `deskdelegate`: private Cloud Run service (invoker "private" => only callers holding run.invoker, i.e. desk's service account,
++ * get through; everyone else receives 403 from Google's front end before this code runs).
++ */
++export function createDeskdelegate(w: DeskSmsWiring) {
++  return onRequest(
++    { region: DESK_REGION, invoker: "private", cors: false, timeoutSeconds: 300, memory: "512MiB", maxInstances: 5, secrets: w.secrets },
++    async (req, res) => {
++      if (req.method !== "POST") { res.status(405).json({ ok: false, error: { code: "invalid_argument", message: "Use POST" } }); return; }
++      if (!req.body || typeof req.body !== "object") { res.status(400).json({ ok: false, error: { code: "invalid_argument", message: "Send a JSON body" } }); return; }
++      res.status(200).json(await handleDelegate(deps(w), req.body));
++    },
++  );
++}
++
++/** Runs due desk-created SMS schedules and removes expired export files. (Cloud Scheduler is not offered in africa-south1: same region as PMS's other schedules.) */
++export function createDeskScheduleRunner(w: DeskSmsWiring) {
++  return onSchedule(
++    { schedule: "every 15 minutes", timeZone: "Africa/Nairobi", region: "us-central1", timeoutSeconds: 540, memory: "512MiB", secrets: w.secrets },
++    async () => {
++      const r = await runDueSchedules(fs(), deps(w));
++      const purged = await purgeExpiredExports();
++      console.log(`desk schedules: ran ${r.ran}, failed ${r.failed}, skipped ${r.skipped}; purged ${purged} exports`);
++    },
++  );
++}
+diff --git a/whatsapp/src/desk/httpsErrors.ts b/whatsapp/src/desk/httpsErrors.ts
+new file mode 100644
+index 0000000..a1b72c5
+--- /dev/null
++++ b/whatsapp/src/desk/httpsErrors.ts
+@@ -0,0 +1,18 @@
++import { HttpsError } from "firebase-functions/v2/https";
++import { DeskError, type DeskErrorCode } from "./errors";
++
++const CALLABLE_CODE: Record<DeskErrorCode, "invalid-argument" | "permission-denied" | "not-found" | "failed-precondition" | "internal"> = {
++  invalid_argument: "invalid-argument",
++  permission_denied: "permission-denied",
++  not_found: "not-found",
++  failed_precondition: "failed-precondition",
++  internal: "internal",
++};
++
++/** Convert anything thrown inside a callable into an HttpsError with a user-readable message. */
++export function toHttpsError(err: unknown, fallback: string): HttpsError {
++  if (err instanceof HttpsError) return err;
++  if (err instanceof DeskError) return new HttpsError(CALLABLE_CODE[err.code], err.message);
++  console.error(fallback, err);
++  return new HttpsError("internal", fallback);
++}
+diff --git a/whatsapp/src/desk/index.ts b/whatsapp/src/desk/index.ts
+new file mode 100644
+index 0000000..c0f56f6
+--- /dev/null
++++ b/whatsapp/src/desk/index.ts
+@@ -0,0 +1,8 @@
++/** Barrel for the Plot Yangu desk integration. index.ts (the functions entry point) re-exports the function handles from here. */
++export { pmsAssignLandlordCode, assignLandlordCode } from "./landlordCode";
++export { addSupportAgent, removeSupportAgent, listSupportAgents } from "./supportAgents";
++export { createDeskRequest, listDeskRequests } from "./requests";
++export { createDeskdelegate, createDeskScheduleRunner, type DeskSmsWiring } from "./functions";
++export { resolveSubscriptionAttribution, type Attribution } from "./attribution";
++export { firestoreAttributionDeps } from "./attributionDeps";
++export { PMS_SIGNUP_FREE_TOKENS } from "./constants";
+diff --git a/whatsapp/src/desk/landlordCode.ts b/whatsapp/src/desk/landlordCode.ts
+new file mode 100644
+index 0000000..1f060f1
+--- /dev/null
++++ b/whatsapp/src/desk/landlordCode.ts
+@@ -0,0 +1,39 @@
++import { onDocumentCreated } from "firebase-functions/v2/firestore";
++import { FieldValue, type Firestore } from "firebase-admin/firestore";
++import { formatLandlordCode, isLandlordCode } from "./codes";
++import { DESK, DESK_REGION } from "./constants";
++import { fs } from "./db";
++import { DeskError } from "./errors";
++
++/**
++ * Give a landlord their permanent PYL-#### code. The counter `desk_counters/landlords` and the user document are read and
++ * written in ONE Firestore transaction, so two simultaneous creations can never take the same number, and a re-run (trigger
++ * retry, backfill, lazy assignment) returns the code already stored and never changes it.
++ */
++export async function assignLandlordCode(uid: string, store: Firestore = fs()): Promise<string> {
++  if (!uid) throw new DeskError("invalid_argument", "A landlord id is required");
++  return store.runTransaction(async (tx) => {
++    const userRef = store.collection("users").doc(uid);
++    const counterRef = store.collection(DESK.counters).doc("landlords");
++    const [user, counter] = await Promise.all([tx.get(userRef), tx.get(counterRef)]);
++    if (!user.exists) throw new DeskError("not_found", "Landlord account not found");
++    const existing = user.get("landlordCode");
++    if (isLandlordCode(existing)) return existing;
++    const last = counter.exists ? Number(counter.get("last")) : 0;
++    if (!Number.isSafeInteger(last) || last < 0) throw new DeskError("internal", "Landlord counter is corrupted");
++    const code = formatLandlordCode(last + 1);
++    tx.set(counterRef, { last: last + 1, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
++    tx.update(userRef, { landlordCode: code, landlordCodeAssignedAt: FieldValue.serverTimestamp() });
++    return code;
++  });
++}
++
++/** Covers landlords created by PAY's createUserWithFirebaseAuth and by the app: both create `users/{uid}`. */
++export const pmsAssignLandlordCode = onDocumentCreated(
++  { document: "users/{uid}", region: DESK_REGION, retry: true, memory: "256MiB" },
++  async (event) => {
++    const uid = event.params.uid;
++    const code = await assignLandlordCode(uid);
++    console.log(`landlord ${uid} has code ${code}`);
++  },
++);
+diff --git a/whatsapp/src/desk/requests.ts b/whatsapp/src/desk/requests.ts
+new file mode 100644
+index 0000000..fd903a9
+--- /dev/null
++++ b/whatsapp/src/desk/requests.ts
+@@ -0,0 +1,97 @@
++import { CallableRequest, HttpsError, onCall } from "firebase-functions/v2/https";
++import { nairobiDayKey, routeDeskCodes } from "./codes";
++import { DESK, DESK_REGION, DESK_REQUESTS_PER_DAY, REQUEST_CATEGORIES, type RequestCategory } from "./constants";
++import { fs, writeAudit } from "./db";
++import { DeskError } from "./errors";
++import { toHttpsError } from "./httpsErrors";
++import { assignLandlordCode } from "./landlordCode";
++import { orderedAgents } from "./supportAgents";
++
++export type RequestStatus = "new" | "open" | "answered" | "closed";
++export interface RequestResponse { at: number; byDeskCode: string; text: string }
++/** The shape of desk's own `desk_requests/{id}` documents (desk contract: DeskRequestDoc). */
++export interface DeskRequestDoc {
++  id: string; source: "pms"; entityCode: string; entityName: string;
++  requesterName: string; requesterPhone: string; category: string; subject: string; message: string;
++  status: RequestStatus; targetDeskCodes: string[]; responses: RequestResponse[];
++  createdAt: number; updatedAt: number; outboxId?: string;
++}
++export interface CreateDeskRequestIn { category?: string; subject?: string; message?: string; deskCode?: string; includeTopDesk?: boolean }
++export interface DeskRequestView extends Omit<DeskRequestDoc, "source" | "outboxId"> { }
++
++const callableOpts = { region: DESK_REGION, cors: true, memory: "256MiB" as const, timeoutSeconds: 30 };
++const SUBJECT_MIN = 3, SUBJECT_MAX = 120, MESSAGE_MIN = 5, MESSAGE_MAX = 2000, LIST_LIMIT = 50;
++
++/** Pure validation of what the landlord typed. Throws a message the person can act on. */
++export function validateRequestInput(d: CreateDeskRequestIn): { category: RequestCategory; subject: string; message: string } {
++  const category = String(d.category ?? "").trim() as RequestCategory;
++  if (!REQUEST_CATEGORIES.includes(category)) throw new DeskError("invalid_argument", "Choose a category for your request");
++  const subject = String(d.subject ?? "").trim();
++  if (subject.length < SUBJECT_MIN || subject.length > SUBJECT_MAX) throw new DeskError("invalid_argument", `Subject must be ${SUBJECT_MIN}-${SUBJECT_MAX} characters`);
++  const message = String(d.message ?? "").trim();
++  if (message.length < MESSAGE_MIN || message.length > MESSAGE_MAX) throw new DeskError("invalid_argument", `Message must be ${MESSAGE_MIN}-${MESSAGE_MAX} characters`);
++  return { category, subject, message };
++}
++
++/**
++ * Plot Yangu lives in desk's own database, so the request is written straight into desk_requests as
++ * `pms_<landlordCode>_<autoId>`. The per-day limit is a counter document in the same transaction as the write, so
++ * simultaneous submissions cannot exceed it.
++ */
++export const createDeskRequest = onCall(callableOpts, async (request: CallableRequest<CreateDeskRequestIn>) => {
++  try {
++    const uid = request.auth?.uid;
++    if (!uid) throw new HttpsError("unauthenticated", "Sign in to contact a desk");
++    const input = validateRequestInput(request.data ?? {});
++    const landlordCode = await assignLandlordCode(uid);
++    const store = fs();
++    const userRef = store.collection("users").doc(uid);
++    const now = Date.now();
++    const quotaRef = userRef.collection("deskRequestQuota").doc(nairobiDayKey(now));
++    const reqRef = store.collection(DESK.requests).doc();
++    const id = `pms_${landlordCode}_${reqRef.id}`;
++    const docRef = store.collection(DESK.requests).doc(id);
++
++    const targets = await store.runTransaction(async (tx) => {
++      const [user, quota] = await Promise.all([tx.get(userRef), tx.get(quotaRef)]);
++      if (!user.exists) throw new DeskError("not_found", "Account not found");
++      const used = quota.exists ? Number(quota.get("count") ?? 0) : 0;
++      if (used >= DESK_REQUESTS_PER_DAY) {
++        throw new DeskError("failed_precondition", `You can send ${DESK_REQUESTS_PER_DAY} requests per day. Please try again tomorrow`);
++      }
++      const connected = orderedAgents(user.get("supportAgents")).map((a) => a.agentCode);
++      const targetDeskCodes = routeDeskCodes({ connected, chosen: request.data?.deskCode, includeTop: request.data?.includeTopDesk === true });
++      const doc: DeskRequestDoc = {
++        id, source: "pms", entityCode: landlordCode,
++        entityName: String(user.get("company")?.name || user.get("name") || landlordCode),
++        requesterName: String(user.get("name") ?? ""), requesterPhone: String(user.get("phone") ?? ""),
++        category: input.category, subject: input.subject, message: input.message,
++        status: "new", targetDeskCodes, responses: [], createdAt: now, updatedAt: now, outboxId: reqRef.id,
++      };
++      tx.set(quotaRef, { count: used + 1, day: nairobiDayKey(now), updatedAt: now }, { merge: true });
++      tx.create(docRef, doc);
++      return targetDeskCodes;
++    });
++    await writeAudit({ action: "pms.desk_request.created", entityKey: `pms:${landlordCode}`, meta: { id, targetDeskCodes: targets, category: input.category, by: "landlord", uid } });
++    return { id, targetDeskCodes: targets };
++  } catch (err) { throw toHttpsError(err, "Could not send your request. Please try again"); }
++});
++
++/** This landlord's requests, newest first, with the status and replies desk writes back. */
++export const listDeskRequests = onCall(callableOpts, async (request: CallableRequest<unknown>) => {
++  try {
++    const uid = request.auth?.uid;
++    if (!uid) throw new HttpsError("unauthenticated", "Sign in to see your requests");
++    const landlordCode = await assignLandlordCode(uid);
++    const snap = await fs().collection(DESK.requests).where("entityCode", "==", landlordCode).orderBy("createdAt", "desc").limit(LIST_LIMIT).get();
++    const requests: DeskRequestView[] = snap.docs
++      .map((d) => d.data() as DeskRequestDoc)
++      .filter((r) => r.source === "pms")
++      .map((r) => ({
++        id: r.id, entityCode: r.entityCode, entityName: r.entityName, requesterName: r.requesterName, requesterPhone: r.requesterPhone,
++        category: r.category, subject: r.subject, message: r.message, status: r.status, targetDeskCodes: r.targetDeskCodes ?? [],
++        responses: Array.isArray(r.responses) ? r.responses : [], createdAt: r.createdAt, updatedAt: r.updatedAt,
++      }));
++    return { requests, landlordCode, dailyLimit: DESK_REQUESTS_PER_DAY };
++  } catch (err) { throw toHttpsError(err, "Could not load your requests. Please try again"); }
++});
+diff --git a/whatsapp/src/desk/schedule.spec.ts b/whatsapp/src/desk/schedule.spec.ts
+new file mode 100644
+index 0000000..b5ffefe
+--- /dev/null
++++ b/whatsapp/src/desk/schedule.spec.ts
+@@ -0,0 +1,37 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { nextRunAt, parseOnce, validateSchedule } from "./schedule";
++
++const EAT = (y: number, mo: number, d: number, h = 0, mi = 0) => Date.UTC(y, mo - 1, d, h - 3, mi);
++const NOW = EAT(2026, 10, 11, 12, 0);
++
++test("once: no zone means Nairobi time; past or far-future refused", () => {
++  assert.equal(parseOnce("2026-11-05T09:00"), EAT(2026, 11, 5, 9, 0));
++  assert.equal(parseOnce("2026-11-05T09:00:00Z"), Date.UTC(2026, 10, 5, 9, 0));
++  assert.deepEqual(validateSchedule({ kind: "once", at: "2026-11-05T09:00" }, NOW), { kind: "once", at: "2026-11-05T09:00" });
++  assert.throws(() => validateSchedule({ kind: "once", at: "2026-10-11T12:00" }, NOW));
++  assert.throws(() => validateSchedule({ kind: "once", at: "2028-01-01T09:00" }, NOW));
++  assert.throws(() => validateSchedule({ kind: "once", at: "tomorrow" }, NOW));
++});
++test("daily: today if still ahead, otherwise tomorrow", () => {
++  assert.equal(nextRunAt({ kind: "daily", at: "18:00" }, NOW), EAT(2026, 10, 11, 18, 0));
++  assert.equal(nextRunAt({ kind: "daily", at: "08:00" }, NOW), EAT(2026, 10, 12, 8, 0));
++});
++test("weekly: next matching weekday (2026-10-11 is a Sunday)", () => {
++  assert.equal(nextRunAt({ kind: "weekly", at: "09:00", days: [1, 4] }, NOW), EAT(2026, 10, 12, 9, 0));
++  assert.equal(nextRunAt({ kind: "weekly", at: "09:00", days: [0] }, NOW), EAT(2026, 10, 18, 9, 0));
++});
++test("monthly: a day beyond the month's length runs on the last day", () => {
++  assert.equal(nextRunAt({ kind: "monthly", at: "09:00", days: [31] }, EAT(2026, 11, 5, 0, 0)), EAT(2026, 11, 30, 9, 0));
++  assert.equal(nextRunAt({ kind: "monthly", at: "09:00", days: [5] }, NOW), EAT(2026, 11, 5, 9, 0));
++});
++test("a one-off that has passed has no next run", () => {
++  assert.equal(nextRunAt({ kind: "once", at: "2026-10-01T09:00" }, NOW), null);
++});
++test("recurring schedules need valid days and a time", () => {
++  assert.throws(() => validateSchedule({ kind: "weekly", at: "09:00" }, NOW));
++  assert.throws(() => validateSchedule({ kind: "weekly", at: "09:00", days: [7] }, NOW));
++  assert.throws(() => validateSchedule({ kind: "monthly", at: "09:00", days: [0] }, NOW));
++  assert.throws(() => validateSchedule({ kind: "daily", at: "9am" }, NOW));
++  assert.deepEqual(validateSchedule({ kind: "weekly", at: "09:00", days: [3, 1, 3] }, NOW), { kind: "weekly", at: "09:00", days: [1, 3] });
++});
+diff --git a/whatsapp/src/desk/schedule.ts b/whatsapp/src/desk/schedule.ts
+new file mode 100644
+index 0000000..92165c9
+--- /dev/null
++++ b/whatsapp/src/desk/schedule.ts
+@@ -0,0 +1,74 @@
++/** SMS schedule maths. Pure. All wall-clock times are Africa/Nairobi (fixed UTC+3). */
++import { EAT_OFFSET_MS } from "./constants";
++import { DeskError } from "./errors";
++
++export type ScheduleKind = "once" | "daily" | "weekly" | "monthly";
++export interface ScheduleSpec { kind: ScheduleKind; at: string; days?: number[] }
++
++const DAY_MS = 86_400_000;
++const HM_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
++const KINDS: ScheduleKind[] = ["once", "daily", "weekly", "monthly"];
++
++/** `at` for "once" is a date-time (no zone = Nairobi time); for the recurring kinds it is "HH:mm" (a full date-time's time of day is also accepted). */
++export function parseOnce(at: string): number | null {
++  const s = String(at).trim();
++  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/.test(s)) return null;
++  const hasZone = /(Z|[+-]\d{2}:\d{2})$/.test(s);
++  const ms = Date.parse(hasZone ? s : `${s}Z`);
++  if (!Number.isFinite(ms)) return null;
++  return hasZone ? ms : ms - EAT_OFFSET_MS;
++}
++function timeOfDay(at: string): { h: number; m: number } | null {
++  const hm = HM_RE.exec(String(at).trim());
++  if (hm) return { h: Number(hm[1]), m: Number(hm[2]) };
++  const once = parseOnce(at);
++  if (once === null) return null;
++  const d = new Date(once + EAT_OFFSET_MS);
++  return { h: d.getUTCHours(), m: d.getUTCMinutes() };
++}
++
++export function validateSchedule(spec: unknown, nowMs: number): ScheduleSpec {
++  const s = spec as Partial<ScheduleSpec> | null;
++  if (!s || typeof s !== "object" || !KINDS.includes(s.kind as ScheduleKind)) throw new DeskError("invalid_argument", "Schedule kind must be once, daily, weekly or monthly");
++  const kind = s.kind as ScheduleKind;
++  const at = String(s.at ?? "").trim();
++  if (kind === "once") {
++    const t = parseOnce(at);
++    if (t === null) throw new DeskError("invalid_argument", "Choose a date and time like 2026-11-05T09:00");
++    if (t < nowMs + 60_000) throw new DeskError("invalid_argument", "The send time must be in the future");
++    if (t > nowMs + 366 * DAY_MS) throw new DeskError("invalid_argument", "The send time must be within one year");
++    return { kind, at };
++  }
++  if (!timeOfDay(at)) throw new DeskError("invalid_argument", "Choose a time of day like 09:00");
++  if (kind === "daily") return { kind, at };
++  const days = Array.isArray(s.days) ? Array.from(new Set(s.days.map(Number))).sort((a, b) => a - b) : [];
++  if (days.length === 0) throw new DeskError("invalid_argument", kind === "weekly" ? "Choose at least one weekday (0 = Sunday … 6 = Saturday)" : "Choose at least one day of the month (1-31)");
++  const [lo, hi] = kind === "weekly" ? [0, 6] : [1, 31];
++  if (days.some((d) => !Number.isInteger(d) || d < lo || d > hi)) throw new DeskError("invalid_argument", kind === "weekly" ? "Weekdays must be 0 (Sunday) to 6 (Saturday)" : "Days of the month must be 1 to 31");
++  return { kind, at, days };
++}
++
++const daysInMonth = (y: number, m0: number): number => new Date(Date.UTC(y, m0 + 1, 0)).getUTCDate();
++
++/** The first run strictly after `afterMs`, or null when a one-off has passed. A monthly day beyond the month's length runs on its last day. */
++export function nextRunAt(spec: ScheduleSpec, afterMs: number): number | null {
++  if (spec.kind === "once") {
++    const t = parseOnce(spec.at);
++    return t !== null && t > afterMs ? t : null;
++  }
++  const tod = timeOfDay(spec.at);
++  if (!tod) return null;
++  const startDay = Math.floor((afterMs + EAT_OFFSET_MS) / DAY_MS);
++  for (let off = 0; off <= 400; off++) {
++    const dayStart = (startDay + off) * DAY_MS; // local midnight expressed as a UTC-shifted instant
++    const d = new Date(dayStart);
++    const matches =
++      spec.kind === "daily" ||
++      (spec.kind === "weekly" && (spec.days ?? []).includes(d.getUTCDay())) ||
++      (spec.kind === "monthly" && (spec.days ?? []).some((x) => Math.min(x, daysInMonth(d.getUTCFullYear(), d.getUTCMonth())) === d.getUTCDate()));
++    if (!matches) continue;
++    const candidate = dayStart + (tod.h * 60 + tod.m) * 60_000 - EAT_OFFSET_MS;
++    if (candidate > afterMs) return candidate;
++  }
++  return null;
++}
+diff --git a/whatsapp/src/desk/scheduleRunner.ts b/whatsapp/src/desk/scheduleRunner.ts
+new file mode 100644
+index 0000000..0d58abb
+--- /dev/null
++++ b/whatsapp/src/desk/scheduleRunner.ts
+@@ -0,0 +1,45 @@
++import { Timestamp, type Firestore } from "firebase-admin/firestore";
++import { runScheduledSend, type DelegateDeps, type ScheduleDoc } from "./delegate";
++import { landlordFromSnap } from "./delegateStore";
++import { nextRunAt } from "./schedule";
++
++/** A run more than this late (outage) is skipped rather than sent at an unexpected time. */
++export const MISSED_AFTER_MS = 6 * 60 * 60 * 1000;
++
++/**
++ * Executes due desk-created SMS schedules. A schedule is CLAIMED first (next run computed and saved in a transaction), then
++ * sent, so a crash can only skip a run, never send it twice. Each send uses the landlord's own SMS tokens, like any PMS SMS.
++ */
++export async function runDueSchedules(store: Firestore, deps: DelegateDeps, now = Date.now()): Promise<{ ran: number; failed: number; skipped: number }> {
++  const due = await store.collectionGroup("deskSmsSchedules").where("active", "==", true).where("nextRunAt", "<=", now).limit(200).get();
++  let ran = 0, failed = 0, skipped = 0;
++  for (const snap of due.docs) {
++    const userRef = snap.ref.parent.parent;
++    if (!userRef) continue;
++    const claimed = await store.runTransaction(async (tx) => {
++      const fresh = await tx.get(snap.ref);
++      const s = fresh.data() as ScheduleDoc | undefined;
++      if (!s || !s.active || s.nextRunAt === null || s.nextRunAt > now) return null;
++      const next = nextRunAt(s.schedule, now);
++      tx.update(snap.ref, { nextRunAt: next, active: next !== null, lastRunAt: now, runs: (s.runs ?? 0) + 1 });
++      return s;
++    });
++    if (!claimed) continue;
++    if (now - (claimed.nextRunAt ?? now) > MISSED_AFTER_MS) {
++      skipped += 1;
++      await snap.ref.update({ lastError: "Skipped: the run was missed by more than 6 hours", lastErrorAt: Timestamp.now() });
++      continue;
++    }
++    try {
++      const landlord = landlordFromSnap(await userRef.get());
++      if (!landlord) throw new Error("Landlord account not found");
++      const out = await runScheduledSend(deps, landlord, claimed);
++      ran += 1;
++      await snap.ref.update({ lastResult: { queued: out.queued, creditsUsed: out.creditsUsed, at: now }, lastError: null });
++    } catch (e) {
++      failed += 1;
++      await snap.ref.update({ lastError: (e as Error).message, lastErrorAt: Timestamp.now() });
++    }
++  }
++  return { ran, failed, skipped };
++}
+diff --git a/whatsapp/src/desk/shares.spec.ts b/whatsapp/src/desk/shares.spec.ts
+new file mode 100644
+index 0000000..cda50a0
+--- /dev/null
++++ b/whatsapp/src/desk/shares.spec.ts
+@@ -0,0 +1,41 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { createHash } from "node:crypto";
++import { DEFAULT_SHARE_CONFIG, floorPct2, mergeShareConfig, sharePlan } from "./shares";
++import { splitKey, validateSplit } from "./splitKey";
++
++// Vectors copied from the desk kernel (functions-desk/src/money.test.ts).
++test("kernel vector: subscription / report shares by rank", () => {
++  assert.equal(sharePlan("senior", "subscription", DEFAULT_SHARE_CONFIG).agentSharePct, 30);
++  assert.equal(sharePlan("clerk", "report", DEFAULT_SHARE_CONFIG).agentSharePct, 25);
++  assert.deepEqual(sharePlan("clerk", "subscription", DEFAULT_SHARE_CONFIG), { agentSharePct: 25, rule: "subscription" });
++  assert.equal(sharePlan("lead", "subscription", DEFAULT_SHARE_CONFIG).agentSharePct, 30);
++});
++test("kernel vector: KES 999 subscription, fee 14.99, senior 30% nets the agent KES 295.20", () => {
++  const gross = 99900, fee = 1499, pct = sharePlan("senior", "subscription", DEFAULT_SHARE_CONFIG).agentSharePct;
++  const net = gross - fee;
++  assert.equal(net, 98401);
++  assert.equal(Math.floor((net * Math.round(pct * 100)) / 10000), 29520);
++});
++test("floorPct2 never rounds up and survives float artefacts", () => {
++  assert.equal(floorPct2(71.03), 71.03);
++  assert.equal(floorPct2(97.5), 97.5);
++  assert.equal(floorPct2(30.019), 30.01);
++});
++test("rates from desk_config/global merge over the defaults", () => {
++  const cfg = mergeShareConfig({ subShareByRank: { clerk: 20 } } as never);
++  assert.equal(sharePlan("clerk", "subscription", cfg).agentSharePct, 20);
++  assert.equal(sharePlan("senior", "subscription", cfg).agentSharePct, 30);
++});
++test("splitKey is order independent and equals sha256 of the canonical string", () => {
++  const a = splitKey([{ subaccount: "ACCT_b", sharePct: 30 }, { subaccount: "ACCT_a", sharePct: 25 }]);
++  const b = splitKey([{ subaccount: "ACCT_a", sharePct: 25 }, { subaccount: "ACCT_b", sharePct: 30 }]);
++  assert.equal(a, b);
++  assert.equal(splitKey([{ subaccount: "ACCT_x", sharePct: 30 }]), createHash("sha256").update("ACCT_x:3000").digest("hex").slice(0, 32));
++});
++test("validateSplit refuses bad subaccounts and shares that leave nothing for the platform", () => {
++  assert.throws(() => validateSplit([{ subaccount: "x", sharePct: 30 }]));
++  assert.throws(() => validateSplit([{ subaccount: "ACCT_x", sharePct: 100 }]));
++  assert.throws(() => validateSplit([{ subaccount: "ACCT_x", sharePct: 0 }]));
++  assert.doesNotThrow(() => validateSplit([{ subaccount: "ACCT_x", sharePct: 30 }]));
++});
+diff --git a/whatsapp/src/desk/shares.ts b/whatsapp/src/desk/shares.ts
+new file mode 100644
+index 0000000..a463b72
+--- /dev/null
++++ b/whatsapp/src/desk/shares.ts
+@@ -0,0 +1,30 @@
++/**
++ * Pure port of the desk kernel's share maths (functions-desk/src/money.ts + config.ts). Pinned to the kernel's test vectors
++ * in shares.test.ts. Rates come from `desk_config/global` (merged over these defaults, exactly like the kernel).
++ */
++export type Rank = "clerk" | "senior" | "lead";
++export interface ShareConfig { subShareByRank: Record<Rank, number>; reportShareByRank: Record<Rank, number> }
++export interface SplitPlan { agentSharePct: number; rule: "subscription" | "report" }
++
++export const DEFAULT_SHARE_CONFIG: ShareConfig = {
++  subShareByRank: { clerk: 25, senior: 30, lead: 30 },
++  reportShareByRank: { clerk: 25, senior: 30, lead: 30 },
++};
++
++/** 97.5 -> 9750 basis points. Shares are kept to 0.01%. */
++export const toBps = (pct: number): number => Math.round(pct * 100);
++/** Never overpay an agent: round DOWN to 0.01%. The epsilon guards binary-float artefacts (71.03 * 100). */
++export const floorPct2 = (pct: number): number => Math.floor(pct * 100 + 1e-9) / 100;
++
++export function mergeShareConfig(stored: Partial<ShareConfig> | undefined): ShareConfig {
++  const s = stored ?? {};
++  return {
++    subShareByRank: { ...DEFAULT_SHARE_CONFIG.subShareByRank, ...s.subShareByRank },
++    reportShareByRank: { ...DEFAULT_SHARE_CONFIG.reportShareByRank, ...s.reportShareByRank },
++  };
++}
++
++export function sharePlan(rank: Rank, kind: "subscription" | "report", cfg: ShareConfig): SplitPlan {
++  const pct = (kind === "subscription" ? cfg.subShareByRank : cfg.reportShareByRank)[rank];
++  return { agentSharePct: floorPct2(pct), rule: kind };
++}
+diff --git a/whatsapp/src/desk/splitCodes.ts b/whatsapp/src/desk/splitCodes.ts
+new file mode 100644
+index 0000000..3d5cdb3
+--- /dev/null
++++ b/whatsapp/src/desk/splitCodes.ts
+@@ -0,0 +1,40 @@
++import axios from "axios";
++import type { Firestore } from "firebase-admin/firestore";
++import { DESK } from "./constants";
++import { DeskError } from "./errors";
++import { splitKey, validateSplit, type SplitSub } from "./splitKey";
++
++/**
++ * Get or create a Paystack percentage split ("all-proportional": the real fee is shared in proportion, the main account takes
++ * the remainder). Identical request body to the kernel's getOrCreateSplitCode and the same cache collection.
++ */
++export async function getOrCreateDeskSplitCode(store: Firestore, secretKey: string, subs: readonly SplitSub[], label: string): Promise<string> {
++  validateSplit(subs);
++  const key = splitKey(subs);
++  const ref = store.collection(DESK.splitCodes).doc(key);
++  const cached = await ref.get();
++  if (cached.exists) return String(cached.get("splitCode"));
++  let splitCode: string;
++  try {
++    const res = await axios.post("https://api.paystack.co/split", {
++      name: `Desk ${label} ${key.slice(0, 8)}`.slice(0, 100),
++      type: "percentage",
++      currency: "KES",
++      subaccounts: subs.map((s) => ({ subaccount: s.subaccount, share: s.sharePct })),
++      bearer_type: "all-proportional",
++    }, { timeout: 15_000, headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json" } });
++    if (!res.data?.status || !res.data?.data?.split_code) throw new DeskError("internal", res.data?.message ?? "Could not create split");
++    splitCode = String(res.data.data.split_code);
++  } catch (err) {
++    if (err instanceof DeskError) throw err;
++    const msg = (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ?? (err as Error)?.message ?? "Paystack error";
++    throw new DeskError("internal", msg);
++  }
++  try {
++    await ref.create({ splitCode, subs: subs.map((s) => ({ ...s })), label, createdAt: Date.now() });
++    return splitCode;
++  } catch (err) {
++    if ((err as { code?: number }).code === 6) return String((await ref.get()).get("splitCode")); // a concurrent request cached first
++    throw err;
++  }
++}
+diff --git a/whatsapp/src/desk/splitKey.ts b/whatsapp/src/desk/splitKey.ts
+new file mode 100644
+index 0000000..86b2b5c
+--- /dev/null
++++ b/whatsapp/src/desk/splitKey.ts
+@@ -0,0 +1,22 @@
++import { createHash } from "node:crypto";
++import { DeskError } from "./errors";
++import { toBps } from "./shares";
++
++export interface SplitSub { subaccount: string; sharePct: number }
++
++/** Same key the desk kernel uses, so PMS, PAY and desk all share one `desk_split_codes` cache entry per split. */
++export function splitKey(subs: readonly SplitSub[]): string {
++  const canon = [...subs].map((s) => `${s.subaccount}:${toBps(s.sharePct)}`).sort().join("|");
++  return createHash("sha256").update(canon).digest("hex").slice(0, 32);
++}
++
++export function validateSplit(subs: readonly SplitSub[]): void {
++  if (subs.length === 0) throw new DeskError("invalid_argument", "Split needs at least one subaccount");
++  let total = 0;
++  for (const s of subs) {
++    if (!s.subaccount.startsWith("ACCT_")) throw new DeskError("invalid_argument", "Invalid Paystack subaccount code");
++    if (!(s.sharePct > 0 && s.sharePct < 100)) throw new DeskError("invalid_argument", "Split share must be between 0 and 100");
++    total += toBps(s.sharePct);
++  }
++  if (total >= 10000) throw new DeskError("invalid_argument", "Split shares leave nothing for the platform");
++}
+diff --git a/whatsapp/src/desk/supportAgents.ts b/whatsapp/src/desk/supportAgents.ts
+new file mode 100644
+index 0000000..637cd6e
+--- /dev/null
++++ b/whatsapp/src/desk/supportAgents.ts
+@@ -0,0 +1,94 @@
++import { CallableRequest, HttpsError, onCall } from "firebase-functions/v2/https";
++import { FieldPath, FieldValue } from "firebase-admin/firestore";
++import { isDeskCode, normaliseDeskCode } from "./codes";
++import { DESK, DESK_REGION, DESK_TOP_CODE, MAX_SUPPORT_AGENTS } from "./constants";
++import { fs, writeAudit } from "./db";
++import { DeskError } from "./errors";
++import { toHttpsError } from "./httpsErrors";
++import { assignLandlordCode } from "./landlordCode";
++
++export interface SupportAgentView { agentCode: string; name: string; addedAt: number; locked?: boolean }
++export interface ListSupportAgentsResult { agents: SupportAgentView[]; landlordCode: string; maxAgents: number }
++interface StoredAgent { name?: string; agentId?: string; addedAt?: number }
++
++const TOP_VIEW: SupportAgentView = { agentCode: DESK_TOP_CODE, name: "Samuhia Top Desk", addedAt: 0, locked: true };
++const callableOpts = { region: DESK_REGION, cors: true, memory: "256MiB" as const, timeoutSeconds: 30 };
++
++function requireUid(request: CallableRequest<unknown>): string {
++  const uid = request.auth?.uid;
++  if (!uid) throw new HttpsError("unauthenticated", "Sign in to manage your support agents");
++  return uid;
++}
++
++/** Stored agents ordered by when they were added (the first one is the default desk for requests). */
++export function orderedAgents(map: Record<string, StoredAgent> | undefined): SupportAgentView[] {
++  return Object.entries(map ?? {})
++    .filter(([code]) => isDeskCode(code) && code !== DESK_TOP_CODE)
++    .map(([code, v]) => ({ agentCode: code, name: String(v?.name ?? code), addedAt: Number(v?.addedAt ?? 0) }))
++    .sort((a, b) => a.addedAt - b.addedAt || a.agentCode.localeCompare(b.agentCode));
++}
++
++/** Only a certified, ACTIVE desk can be connected: the code must belong to a real desk_agents record. */
++async function findActiveDesk(code: string): Promise<{ agentId: string; name: string }> {
++  const snap = await fs().collection(DESK.agents).where("agentCode", "==", code).limit(1).get();
++  if (snap.empty) throw new DeskError("not_found", "No desk with that code exists. Check the code with your desk agent");
++  const d = snap.docs[0];
++  if (d.get("status") !== "active") throw new DeskError("failed_precondition", "That desk is not active, so it cannot be added");
++  return { agentId: d.id, name: String(d.get("name") ?? code) };
++}
++
++export const addSupportAgent = onCall(callableOpts, async (request: CallableRequest<{ agentCode?: string }>) => {
++  try {
++    const uid = requireUid(request);
++    const code = normaliseDeskCode(request.data?.agentCode);
++    if (!isDeskCode(code)) throw new DeskError("invalid_argument", "Enter a desk code like COG-0001");
++    if (code === DESK_TOP_CODE) throw new DeskError("invalid_argument", "COG-0000 is always connected and cannot be added");
++    const desk = await findActiveDesk(code);
++    const landlordCode = await assignLandlordCode(uid);
++    const store = fs();
++    const userRef = store.collection("users").doc(uid);
++    const added = await store.runTransaction(async (tx) => {
++      const snap = await tx.get(userRef);
++      if (!snap.exists) throw new DeskError("not_found", "Account not found");
++      const current = (snap.get("supportAgents") ?? {}) as Record<string, StoredAgent>;
++      if (current[code]) return false;
++      if (orderedAgents(current).length >= MAX_SUPPORT_AGENTS) {
++        throw new DeskError("failed_precondition", `You can connect up to ${MAX_SUPPORT_AGENTS} support agents. Remove one first`);
++      }
++      tx.update(userRef, new FieldPath("supportAgents", code), { name: desk.name, agentId: desk.agentId, addedAt: Date.now() });
++      return true;
++    });
++    if (added) await writeAudit({ action: "pms.support_agent.added", agentId: desk.agentId, entityKey: `pms:${landlordCode}`, meta: { agentCode: code, by: "landlord", uid } });
++    return { ok: true };
++  } catch (err) { throw toHttpsError(err, "Could not add the support agent. Please try again"); }
++});
++
++export const removeSupportAgent = onCall(callableOpts, async (request: CallableRequest<{ agentCode?: string }>) => {
++  try {
++    const uid = requireUid(request);
++    const code = normaliseDeskCode(request.data?.agentCode);
++    if (code === DESK_TOP_CODE) throw new DeskError("invalid_argument", "COG-0000 is always connected and cannot be removed");
++    if (!isDeskCode(code)) throw new DeskError("invalid_argument", "Enter a desk code like COG-0001");
++    const store = fs();
++    const userRef = store.collection("users").doc(uid);
++    const removed = await store.runTransaction(async (tx) => {
++      const snap = await tx.get(userRef);
++      if (!snap.exists) throw new DeskError("not_found", "Account not found");
++      const current = (snap.get("supportAgents") ?? {}) as Record<string, StoredAgent>;
++      if (!current[code]) return null;
++      tx.update(userRef, new FieldPath("supportAgents", code), FieldValue.delete());
++      return { agentId: current[code].agentId, landlordCode: String(snap.get("landlordCode") ?? "") };
++    });
++    if (removed) await writeAudit({ action: "pms.support_agent.removed", agentId: removed.agentId, entityKey: removed.landlordCode ? `pms:${removed.landlordCode}` : undefined, meta: { agentCode: code, by: "landlord", uid } });
++    return { ok: true };
++  } catch (err) { throw toHttpsError(err, "Could not remove the support agent. Please try again"); }
++});
++
++export const listSupportAgents = onCall(callableOpts, async (request: CallableRequest<unknown>): Promise<ListSupportAgentsResult> => {
++  try {
++    const uid = requireUid(request);
++    const landlordCode = await assignLandlordCode(uid);
++    const snap = await fs().collection("users").doc(uid).get();
++    return { agents: [TOP_VIEW, ...orderedAgents(snap.get("supportAgents"))], landlordCode, maxAgents: MAX_SUPPORT_AGENTS };
++  } catch (err) { throw toHttpsError(err, "Could not load your support agents. Please try again"); }
++});
+diff --git a/whatsapp/src/desk/tenantRules.spec.ts b/whatsapp/src/desk/tenantRules.spec.ts
+new file mode 100644
+index 0000000..b73e2bc
+--- /dev/null
++++ b/whatsapp/src/desk/tenantRules.spec.ts
+@@ -0,0 +1,69 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { normaliseDate, validateTenantRows, type TenantContext } from "./tenantRules";
++
++const ctx = (over: Partial<TenantContext> = {}): TenantContext => ({
++  tier: "business", properties: [{ id: "1", name: "Sunrise Apartments", isRestricted: false }], existingTenants: [], ...over,
++});
++const row = (o: Record<string, string | number | null> = {}) => ({
++  name: "Jane Wanjiru", id: "12345678", phone: "0712345678", unitNumber: "A1", rentAmount: 12000, ...o,
++});
++
++test("a complete row is valid; a single property needs no property column", () => {
++  const r = validateTenantRows([row()], ctx());
++  assert.equal(r.errors.length, 0);
++  assert.equal(r.valid[0].tenant.propertyId, "1");
++  assert.equal(r.valid[0].tenant.standingFees, 0);
++});
++test("spreadsheet header aliases are understood", () => {
++  const r = validateTenantRows([{ "Tenant Name": "Peter Otieno", "ID Number": "23456789", Mobile: "0722000111", "House No": "B2", "Monthly Rent": "9500", Property: "sunrise apartments" }], ctx());
++  assert.equal(r.errors.length, 0);
++  assert.equal(r.valid[0].tenant.unitNumber, "B2");
++});
++test("PMS required-field and format rules", () => {
++  const r = validateTenantRows([
++    row({ name: "Jo" }), row({ id: "123" }), row({ id: "12a45678" }), row({ phone: "123" }), row({ phone: "07123x5678" }),
++    row({ unitNumber: "" }), row({ rentAmount: 0 }), row({ email: "nope" }), row({ leaseStart: "2026-05-01", leaseEnd: "2026-04-01" }),
++  ], ctx());
++  assert.equal(r.valid.length, 0);
++  const fields = r.errors.map((e) => `${e.row}:${e.field}`);
++  assert.deepEqual(fields, ["1:name", "2:id", "3:id", "4:phone", "5:phone", "6:unitNumber", "7:rentAmount", "8:email", "9:leaseEnd"]);
++});
++test("duplicate tenant id: against existing tenants and inside the batch", () => {
++  const r = validateTenantRows([row(), row(), row({ id: "99999999" })], ctx({ existingTenants: [{ id: "99999999", propertyId: "1", isRestricted: false }] }));
++  assert.deepEqual(r.errors.map((e) => `${e.row}:${e.reason}`), ["2:A tenant with this ID already exists", "3:A tenant with this ID already exists"]);
++  assert.equal(r.valid.length, 1);
++});
++test("restricted or unknown property is refused", () => {
++  const c = ctx({ properties: [{ id: "1", name: "A", isRestricted: true }, { id: "2", name: "B", isRestricted: false }] });
++  const r = validateTenantRows([row({ property: "A" }), row({ id: "22222222", property: "Nowhere" }), row({ id: "33333333" })], c);
++  assert.equal(r.errors.length, 3);
++  assert.match(r.errors[0].reason, /restricted/);
++  assert.match(r.errors[1].reason, /not found/);
++  assert.match(r.errors[2].reason, /Property is required/);
++});
++test("plan limit: tenants per property counts only non-restricted tenants (free = 5)", () => {
++  const existing = [1, 2, 3, 4].map((n) => ({ id: `1000000${n}`, propertyId: "1", isRestricted: false }));
++  existing.push({ id: "10000009", propertyId: "1", isRestricted: true });
++  const r = validateTenantRows([row({ id: "20000001" }), row({ id: "20000002" })], ctx({ tier: "free", existingTenants: existing }));
++  assert.equal(r.valid.length, 1);
++  assert.equal(r.errors[0].reason, "Free tier allows maximum 5 tenants per property. Upgrade your plan to add more.");
++});
++test("plan limit: total tenants (pro 300 across properties) and enterprise unlimited", () => {
++  const props = Array.from({ length: 16 }, (_, i) => ({ id: String(i + 1), name: `P${i + 1}`, isRestricted: false }));
++  const existing = Array.from({ length: 300 }, (_, i) => ({ id: String(30000000 + i), propertyId: String(Math.floor(i / 19) + 1), isRestricted: false }));
++  const full = validateTenantRows([row({ id: "40000001", property: "P16" })], { tier: "pro", properties: props, existingTenants: existing });
++  assert.match(full.errors[0].reason, /maximum 300 tenants in total/);
++  const ent = validateTenantRows([row({ id: "40000001", property: "P16" })], { tier: "enterprise", properties: props, existingTenants: existing });
++  assert.equal(ent.errors.length, 0);
++});
++test("an unknown tier is treated as free, like USER_LIMITS[tier] || USER_LIMITS.free", () => {
++  const existing = [1, 2, 3, 4, 5].map((n) => ({ id: `1000000${n}`, propertyId: "1", isRestricted: false }));
++  assert.equal(validateTenantRows([row({ id: "20000001" })], ctx({ tier: "weird", existingTenants: existing })).errors.length, 1);
++});
++test("dates: ISO and Excel serials, impossible dates refused", () => {
++  assert.equal(normaliseDate("2026-02-28"), "2026-02-28");
++  assert.equal(normaliseDate(46000), "2025-12-09");
++  assert.equal(normaliseDate("2026-02-30"), null);
++  assert.equal(normaliseDate("31/01/2026"), null);
++});
+diff --git a/whatsapp/src/desk/tenantRules.ts b/whatsapp/src/desk/tenantRules.ts
+new file mode 100644
+index 0000000..ae6ecc2
+--- /dev/null
++++ b/whatsapp/src/desk/tenantRules.ts
+@@ -0,0 +1,168 @@
++/**
++ * Tenant validation that mirrors PMS's own rules (src/pages/tenants/AddTenant.tsx validateForm, Database.canCreateTenant and
++ * checkUserLimits). Pure: the caller supplies the landlord's properties and existing tenants.
++ */
++import { PMS_USER_LIMITS, type PmsTier } from "./constants";
++
++export interface ImportRow { [column: string]: string | number | null }
++export interface ImportError { row: number; field: string; reason: string; suggestion?: string }
++export interface PropertyRec { id: string; name: string; isRestricted: boolean }
++export interface ExistingTenant { id: string; propertyId: string; isRestricted: boolean }
++export interface TenantContext { tier: string; properties: PropertyRec[]; existingTenants: ExistingTenant[] }
++export interface NewTenant {
++  id: number; propertyId: string; propertyName: string; name: string; phone: string; email: string; unitNumber: string;
++  rentAmount: number; standingFees: number; depositAmount: number; leaseStart: string | null; leaseEnd: string | null;
++}
++export interface RowResult { valid: { index: number; tenant: NewTenant }[]; errors: ImportError[] }
++
++const ALIASES: Record<string, string> = {
++  id: "id", idnumber: "id", nationalid: "id", tenantid: "id", idno: "id",
++  name: "name", tenantname: "name", fullname: "name",
++  phone: "phone", phonenumber: "phone", mobile: "phone", tel: "phone",
++  email: "email", emailaddress: "email",
++  unit: "unitNumber", unitnumber: "unitNumber", unitno: "unitNumber", house: "unitNumber", houseno: "unitNumber", housenumber: "unitNumber",
++  rent: "rentAmount", rentamount: "rentAmount", monthlyrent: "rentAmount",
++  standingfees: "standingFees", standingfee: "standingFees",
++  deposit: "depositAmount", depositamount: "depositAmount",
++  leasestart: "leaseStart", leaseend: "leaseEnd",
++  property: "property", propertyname: "property", propertyid: "property",
++};
++const canonicalKey = (k: string): string | undefined => ALIASES[k.toLowerCase().replace(/[^a-z]/g, "")];
++
++/** Map a spreadsheet/manual row's column names onto canonical field names (unknown columns are ignored). */
++export function canonicalRow(row: ImportRow): Record<string, string | number | null> {
++  const out: Record<string, string | number | null> = {};
++  for (const [k, v] of Object.entries(row ?? {})) {
++    const c = canonicalKey(k);
++    if (c && (out[c] === undefined || out[c] === null || out[c] === "")) out[c] = v;
++  }
++  return out;
++}
++
++const str = (v: unknown): string => (v === null || v === undefined ? "" : String(v).trim());
++const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
++const PHONE_RE = /^[+]?[\d\s\-()]{7,15}$/;
++const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
++
++/** `YYYY-MM-DD`, or an Excel date serial. Returns null when it is not a real date. */
++export function normaliseDate(v: unknown): string | null {
++  if (v === null || v === undefined || v === "") return null;
++  let ms: number;
++  if (typeof v === "number" || /^\d+(\.\d+)?$/.test(String(v).trim())) {
++    const serial = Number(v);
++    if (!Number.isFinite(serial) || serial < 20000 || serial > 80000) return null;
++    ms = Math.round((serial - 25569) * 86400 * 1000);
++  } else {
++    const s = String(v).trim();
++    if (!ISO_DATE_RE.test(s)) return null;
++    ms = Date.parse(`${s}T00:00:00Z`);
++    if (!Number.isFinite(ms) || new Date(ms).toISOString().slice(0, 10) !== s) return null;
++  }
++  return new Date(ms).toISOString().slice(0, 10);
++}
++
++const tierLabel = (t: string): string => t.charAt(0).toUpperCase() + t.slice(1);
++export const limitsFor = (tier: string) => PMS_USER_LIMITS[(tier in PMS_USER_LIMITS ? tier : "free") as PmsTier];
++
++export function validateTenantRows(rows: ImportRow[], ctx: TenantContext): RowResult {
++  const errors: ImportError[] = [];
++  const valid: RowResult["valid"] = [];
++  const tier = tier_(ctx.tier);
++  const limits = limitsFor(tier);
++  const byId = new Map(ctx.properties.map((p) => [p.id, p]));
++  const byName = new Map(ctx.properties.map((p) => [p.name.trim().toLowerCase(), p]));
++  const liveProps = new Set(ctx.properties.filter((p) => !p.isRestricted).map((p) => p.id));
++  const takenIds = new Set(ctx.existingTenants.map((t) => t.id));
++  const perProperty = new Map<string, number>();
++  let total = 0;
++  for (const t of ctx.existingTenants) {
++    if (t.isRestricted || !liveProps.has(t.propertyId)) continue; // PMS counts only non-restricted tenants in non-restricted properties
++    perProperty.set(t.propertyId, (perProperty.get(t.propertyId) ?? 0) + 1);
++    total += 1;
++  }
++  const batchIds = new Set<string>();
++
++  rows.forEach((raw, i) => {
++    const rowNo = i + 1;
++    const r = canonicalRow(raw);
++    const rowErrors: ImportError[] = [];
++    const bad = (field: string, reason: string, suggestion?: string) => rowErrors.push({ row: rowNo, field, reason, ...(suggestion ? { suggestion } : {}) });
++
++    const name = str(r.name);
++    if (!name) bad("name", "Tenant name is required");
++    else if (name.length < 3) bad("name", "Name must be at least 3 characters");
++
++    const idStr = str(r.id);
++    if (!idStr) bad("id", "Tenant id is required");
++    else if (idStr.length < 7 || idStr.length > 10) bad("id", "Tenant id must be between 7 and 10 characters");
++    else if (!/^\d+$/.test(idStr)) bad("id", "Tenant id must contain digits only", "Remove spaces and letters from the ID number");
++    else if (takenIds.has(String(Number(idStr))) || batchIds.has(String(Number(idStr)))) bad("id", "A tenant with this ID already exists");
++
++    const phone = str(r.phone);
++    if (!phone) bad("phone", "Phone number is required");
++    else if (phone.length < 10 || phone.length > 12) bad("phone", "Phone number must be between 10 and 12 characters", "Use the format 0712345678 or 254712345678");
++    else if (Number.isNaN(parseFloat(phone)) || !PHONE_RE.test(phone)) bad("phone", "Please enter a valid phone number");
++
++    const unitNumber = str(r.unitNumber);
++    if (!unitNumber) bad("unitNumber", "Unit number is required");
++
++    const rentRaw = str(r.rentAmount);
++    const rent = Number(rentRaw);
++    if (!rentRaw) bad("rentAmount", "Rent amount is required");
++    else if (!Number.isFinite(rent) || rent <= 0) bad("rentAmount", "Please enter a valid rent amount");
++
++    const email = str(r.email);
++    if (email && !EMAIL_RE.test(email)) bad("email", "Please enter a valid email address");
++
++    const optNumber = (field: "standingFees" | "depositAmount"): number => {
++      const s = str(r[field]);
++      if (!s) return 0;
++      const n = Number(s);
++      if (!Number.isFinite(n) || n < 0) { bad(field, "Please enter a valid amount (0 or more)"); return 0; }
++      return n;
++    };
++    const standingFees = optNumber("standingFees");
++    const depositAmount = optNumber("depositAmount");
++
++    const leaseStart = normaliseDate(r.leaseStart);
++    const leaseEnd = normaliseDate(r.leaseEnd);
++    if (str(r.leaseStart) && !leaseStart) bad("leaseStart", "Lease start must be a date like 2026-01-31");
++    if (str(r.leaseEnd) && !leaseEnd) bad("leaseEnd", "Lease end must be a date like 2026-12-31");
++    if (leaseStart && leaseEnd && Date.parse(leaseStart) >= Date.parse(leaseEnd)) bad("leaseEnd", "End date must be after start date");
++
++    // Property: by id or by name; a landlord with a single property needs no column.
++    const propRaw = str(r.property);
++    let property: PropertyRec | undefined;
++    if (propRaw) property = byId.get(propRaw) ?? byName.get(propRaw.toLowerCase());
++    else if (ctx.properties.length === 1) property = ctx.properties[0];
++    if (!property) bad("property", propRaw ? `Property "${propRaw}" was not found` : "Property is required", "Use the exact property name from Plot Yangu");
++    else if (property.isRestricted) bad("property", "This property is restricted due to plan limitations. Upgrade to access.");
++
++    if (rowErrors.length === 0 && property) {
++      const used = perProperty.get(property.id) ?? 0;
++      if (limits.tenantsPerProperty !== -1 && used >= limits.tenantsPerProperty) {
++        bad("property", `${tierLabel(tier)} tier allows maximum ${limits.tenantsPerProperty} tenants per property. Upgrade your plan to add more.`);
++      } else if (limits.totalTenants !== -1 && total >= limits.totalTenants) {
++        bad("property", `${tierLabel(tier)} tier allows maximum ${limits.totalTenants} tenants in total. Upgrade your plan to add more.`);
++      }
++    }
++
++    if (rowErrors.length > 0 || !property) { errors.push(...rowErrors); return; }
++    const id = Number(idStr);
++    batchIds.add(String(id));
++    perProperty.set(property.id, (perProperty.get(property.id) ?? 0) + 1);
++    total += 1;
++    valid.push({ index: i, tenant: { id, propertyId: property.id, propertyName: property.name, name, phone, email, unitNumber, rentAmount: rent, standingFees, depositAmount, leaseStart, leaseEnd } });
++  });
++  return { valid, errors };
++}
++
++const tier_ = (t: string): string => (t in PMS_USER_LIMITS ? t : "free");
++
++/** The canonical row form returned to desk as "valid" (commit_records re-validates it from scratch). */
++export function toImportRow(t: NewTenant): ImportRow {
++  return {
++    property: t.propertyName, propertyId: t.propertyId, id: String(t.id), name: t.name, phone: t.phone, email: t.email, unitNumber: t.unitNumber,
++    rentAmount: t.rentAmount, standingFees: t.standingFees, depositAmount: t.depositAmount, leaseStart: t.leaseStart, leaseEnd: t.leaseEnd,
++  };
++}
+diff --git a/whatsapp/src/index.ts b/whatsapp/src/index.ts
+index 3e842be..faa2649 100644
+--- a/whatsapp/src/index.ts
++++ b/whatsapp/src/index.ts
+@@ -8,6 +8,10 @@ import * as admin from 'firebase-admin';
+ import axios from 'axios';
+ import crypto from 'crypto';
+ import { defineSecret } from 'firebase-functions/params';
++import {
++  createDeskdelegate, createDeskScheduleRunner, resolveSubscriptionAttribution, firestoreAttributionDeps,
++  type DeskSmsWiring,
++} from './desk';
+ 
+ // Initialize Firebase Admin SDK
+ if (getApps().length === 0) {
+@@ -75,7 +79,7 @@ interface ProcessWebSubscriptionRequest {
+   billingCycle: 'monthly' | 'annual';
+   amount: number;
+   daysToAdd: number;
+-  cyber?: any;
++  // NOTE: no client-supplied agent. Commission attribution is resolved on the server (see ./desk/attribution.ts).
+ }
+ 
+ 
+@@ -1219,7 +1223,7 @@ async function getOrCreateSplitCode(
+       `${PAYSTACK_API_BASE}/split`,
+       splitPayload,
+       { headers: {
+-        'Authorization': `Bearer ${PAYSTACK_SECRET_KEY}`,
++        'Authorization': `Bearer ${PAYSTACK_SECRET_KEY.value()}`,
+         'Content-Type': 'application/json'
+       } }
+     );
+@@ -1247,6 +1251,24 @@ async function getOrCreateSplitCode(
+   }
+ }
+ 
++/**
++ * Legacy agent attribution, behaviour unchanged: 45% to the agent through splitCodes/{agentId}. Resolves to undefined (payment goes
++ * ahead without a split) when the agent is missing or has no payment account, or the split cannot be created.
++ */
++async function legacyAgentSplitCode(agentId: string): Promise<string | undefined> {
++  const agentDoc = await db.collection("agents").doc(agentId).get();
++  if (!agentDoc.exists) {
++    console.warn(`Agent ${agentId} not found - processing payment without split`);
++    return undefined;
++  }
++  const subaccountCode = agentDoc.data()?.paymentInfo?.accountId;
++  if (!subaccountCode) {
++    console.warn(`Agent ${agentId} has not set up payment account - processing payment without split`);
++    return undefined;
++  }
++  return getOrCreateSplitCode(subaccountCode, 55, agentId);
++}
++
+ export const processWebSubscription = onCall({
+   timeoutSeconds: 60,
+   memory: "512MiB",
+@@ -1256,7 +1278,7 @@ export const processWebSubscription = onCall({
+   secrets: [PAYSTACK_SECRET_KEY]
+ }, async (request: CallableRequest<ProcessWebSubscriptionRequest>) => {
+   try {
+-    const { userId, userName, email, phone, planId, planName, billingCycle, amount, daysToAdd, cyber } = request.data;
++    const { userId, userName, email, phone, planId, planName, billingCycle, amount, daysToAdd } = request.data;
+ 
+     if (!userId || !userName || !email || !phone || !planId || !planName || !amount) {
+       throw new HttpsError(
+@@ -1265,39 +1287,14 @@ export const processWebSubscription = onCall({
+       );
+     }
+ 
+-    let splitCode: string | undefined;
+-
+-    if (cyber) {
+-    try {
+-        console.log(`Attempting to process with agent ${cyber.uid}`);
+-        
+-        // Get agent's payment info (subaccount)
+-        const agentDoc = await db.collection("agents").doc(cyber.uid).get();
+-
+-        if (!agentDoc.exists) {
+-        console.warn(`Agent ${cyber.uid} not found - processing payment without split`);
+-        } else {
+-        const agentData = agentDoc.data();
+-        const paymentInfo = agentData?.paymentInfo;
+-
+-        if (!paymentInfo || !paymentInfo.accountId) {
+-            console.warn(`Agent ${cyber.uid} has not set up payment account - processing payment without split`);
+-        } else {
+-            const subaccountCode = paymentInfo.accountId;
+-            console.log(`Processing payment for user ${userId}, agent ${cyber.uid}, amount ${amount}`);
+-
+-            // Get or create split code
+-            splitCode = await getOrCreateSplitCode(subaccountCode, 55, cyber.uid);
+-            console.log(`Successfully created split code: ${splitCode}`);
+-        }
+-        }
+-    } catch (agentError: any) {
+-        console.error(`Error processing agent split for ${cyber.uid}:`, agentError);
+-        console.log(`Continuing payment without agent split`);
+-        // Don't throw - just continue without the split
+-        splitCode = undefined;
+-    }
+-    }
++    // Who earns commission on this subscription is decided HERE, from our own records, never from the request:
++    // (a) the desk that owns this landlord, (b) the legacy agent on the landlord (users/{uid}.cyberId, unchanged 45% split),
++    // (c) nobody. A desk lookup failure never blocks the subscription.
++    const attribution = await resolveSubscriptionAttribution(
++      firestoreAttributionDeps(db, PAYSTACK_SECRET_KEY.value(), (agentId) => legacyAgentSplitCode(agentId)),
++      String(userId),
++    );
++    const splitCode: string | undefined = attribution.kind === "none" ? undefined : attribution.splitCode;
+ 
+ console.log(`Processing web subscription for user ${userId}, plan ${planId}, amount ${amount}${splitCode ? ' with agent split' : ' without agent split'}`);
+ 
+@@ -1344,8 +1341,14 @@ console.log(`Processing web subscription for user ${userId}, plan ${planId}, amo
+     // Add split_code only if cyber agent is involved
+     if (splitCode) {
+       chargePayload.split_code = splitCode;
+-      chargePayload.metadata.agentId = cyber.uid;
+-        console.log(`Including split code in charge: ${splitCode}`);
++      if (attribution.kind === "legacy") {
++        chargePayload.metadata.agentId = attribution.agentId;
++      } else if (attribution.kind === "desk") {
++        chargePayload.metadata.deskAgentId = attribution.commission.agentId;
++        chargePayload.metadata.deskAgentCode = attribution.commission.agentCode;
++        chargePayload.metadata.deskSharePct = attribution.commission.sharePct;
++      }
++      console.log(`Including split code in charge: ${splitCode}`);
+     }
+ 
+     console.log('Paystack charge request:', JSON.stringify(chargePayload, null, 2));
+@@ -1405,7 +1408,10 @@ console.log(`Processing web subscription for user ${userId}, plan ${planId}, amo
+ 
+     await db.collection("subscriptions").doc(transactionData.reference).set({
+         ...subscriptionRecord,
+-        agentId: cyber?.uid || null, // Add agentId property
++        // Legacy agent keeps the old field; a desk-owned landlord records the desk commission instead (agentId stays null so
++        // the legacy agent flow never treats a desk subscription as its own).
++        agentId: attribution.kind === "legacy" ? attribution.agentId : null,
++        ...(attribution.kind === "desk" ? { deskCommission: attribution.commission } : {}),
+     });
+ 
+     //await db.collection("subscriptions").doc(transactionData.reference).set(subscriptionRecord);
+@@ -2943,4 +2949,20 @@ export const healthCheck = onRequest({
+             region: 'africa-south1'
+         });
+     }
+-});
+\ No newline at end of file
++});
++
++// ============================================================
++// SAMUHIA DESK — Plot Yangu integration (see ./desk). Callables, the landlord-code trigger and the
++// reporting of desk requests are exported from ./desk/index; the two functions below need PMS's own SMS
++// machinery, so they are created here with it.
++// ============================================================
++const deskSmsWiring: DeskSmsWiring = {
++  normalizePhone: normalizeSmsPhone,
++  validateBody: validateStrictSmsBody,
++  tokensFor: tokensForMessage,
++  send: (mobile, message) => sendHostPinnacleSms({ mobile, message }),
++  secrets: [HP_SMS_USERID, HP_SMS_PASSWORD, HP_SMS_APIKEY, HP_SMS_SENDERID],
++};
++export const deskdelegate = createDeskdelegate(deskSmsWiring);
++export const runDeskSmsSchedules = createDeskScheduleRunner(deskSmsWiring);
++export { pmsAssignLandlordCode, addSupportAgent, removeSupportAgent, listSupportAgents, createDeskRequest, listDeskRequests } from './desk';
