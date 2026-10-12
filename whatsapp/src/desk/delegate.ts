@@ -7,11 +7,12 @@ import { createHash } from "node:crypto";
 import { DESK_CODE_RE, DESK_TOP_CODE, LANDLORD_CODE_RE } from "./constants";
 import { isAudience, selectRecipients, AUDIENCES, type Audience, type InvoiceRec, type Recipient, type TenantRec } from "./audiences";
 import { toCsv } from "./csv";
+import { listTenantsPage } from "./tenantList";
 import { DeskError } from "./errors";
 import { nextRunAt, validateSchedule, type ScheduleSpec } from "./schedule";
 import { toImportRow, validateTenantRows, type ExistingTenant, type ImportError, type ImportRow, type NewTenant, type PropertyRec } from "./tenantRules";
 
-export const DELEGATE_ACTIONS = ["entity_info", "validate_records", "commit_records", "schedule_sms", "send_sms_now", "run_report", "export_data"] as const;
+export const DELEGATE_ACTIONS = ["entity_info", "validate_records", "commit_records", "schedule_sms", "send_sms_now", "run_report", "export_data", "list_tenants"] as const;
 export type DelegateAction = typeof DELEGATE_ACTIONS[number];
 export type DelegateResponse<T> = { ok: true; result: T } | { ok: false; error: { code: string; message: string } };
 
@@ -232,6 +233,14 @@ async function run(deps: DelegateDeps, l: Landlord, req: Parsed): Promise<unknow
       const file = await store.putExport(l.uid, `${l.code}-tenants-${req.requestId}.csv`, csv, EXPORT_TTL_MS);
       await audit("export_data", { kind, rows: live.length });
       return file;
+    }
+
+    case "list_tenants": {
+      const [props, tenants, invoices] = await Promise.all([store.listProperties(l.uid), store.listTenants(l.uid), store.listInvoices(l.uid)]);
+      const restricted = new Set(props.filter((x) => x.isRestricted).map((x) => x.id));
+      const page = listTenantsPage(req.payload, tenants, invoices, restricted, (raw) => deps.sms.normalizePhone(raw));
+      await audit("list_tenants", { returned: page.tenants.length, searched: typeof req.payload.query === "string" && req.payload.query.trim() !== "", paged: Boolean(req.payload.cursor) });
+      return page;
     }
 
     case "run_report":

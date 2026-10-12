@@ -179,3 +179,31 @@ test("export_data builds a CSV of the landlord's tenants and neutralises formula
 test("fingerprints ignore key order", () => {
   assert.equal(fingerprintOf("a", "PYL-0001", "COG-0001", { x: 1, y: [1, 2] }), fingerprintOf("a", "PYL-0001", "COG-0001", { y: [1, 2], x: 1 }));
 });
+
+test("list_tenants: masked phones, arrears in minor units, search and paging; unauthorised desk refused", async () => {
+  const w = world();
+  const all = await call(w, { action: "list_tenants", payload: { limit: 1 } });
+  assert.ok(all.ok);
+  const p1 = all.ok ? (all.result as { tenants: { tenantId: string; name: string; phoneMasked: string; rentDueMinor?: number }[]; nextCursor?: string }) : null;
+  assert.equal(p1?.tenants.length, 1);
+  assert.equal(p1?.tenants[0].name, "Ann Wangui");
+  assert.equal(p1?.tenants[0].rentDueMinor, undefined);
+  assert.ok(p1?.nextCursor);
+  assert.ok(!JSON.stringify(p1).includes("0711000001") && !JSON.stringify(p1).includes("254711000001"), "raw phone must never leave PMS");
+  const p2 = await call(w, { action: "list_tenants", payload: { limit: 1, cursor: p1?.nextCursor } });
+  const r2 = p2.ok ? (p2.result as { tenants: { tenantId: string; rentDueMinor?: number }[]; nextCursor?: string }) : null;
+  assert.equal(r2?.tenants[0].tenantId, "22222222");
+  assert.equal(r2?.tenants[0].rentDueMinor, 80000); // KES 800 owed
+  assert.equal(r2?.nextCursor, undefined);
+  const q = await call(w, { action: "list_tenants", payload: { query: "a2" } });
+  assert.ok(q.ok && (q.result as { tenants: unknown[] }).tenants.length === 1);
+  const denied = await call(w, { action: "list_tenants", agentCode: "COG-0002" });
+  assert.ok(!denied.ok && denied.error.code === "permission_denied");
+});
+test("list_tenants hides restricted and deactivated tenants", async () => {
+  const w = world();
+  w.tenants[0].isActive = false;
+  const r = await call(w, { action: "list_tenants", payload: {} });
+  assert.ok(r.ok);
+  assert.deepEqual((r.ok ? (r.result as { tenants: { tenantId: string }[] }).tenants : []).map((t) => t.tenantId), ["22222222"]);
+});
