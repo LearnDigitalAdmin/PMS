@@ -1,7 +1,7 @@
 // App.tsx - Updated with Enhanced User State Management, Sync Integration, and Exit Confirmation
 import React, { useState, useEffect, Suspense, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, NavLink } from 'react-router-dom';
-import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, DollarSign, MessageSquare, Settings as SettingsIcon } from 'lucide-react';
+import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, DollarSign, MessageSquare, Settings as SettingsIcon, LifeBuoy } from 'lucide-react';
 import { database } from './services/database/Database';
 import { firebaseSyncService } from './services/database/FirebaseSync';
 import Dashboard from './pages/Dashboard';
@@ -212,6 +212,8 @@ const NAV_ITEMS = [
   { path: '/profile', icon: UserIcon, label: 'Profile', color: 'green', restricted: false },
   { path: '/payments', icon: DollarSign, label: 'Payments', color: 'black', restricted: false },
   { path: '/settings', icon: SettingsIcon, label: 'Settings', color: 'indigo', restricted: false },
+  // Samuhia Desk requests. Sidebar/rail only: the phone bottom bar is already full (Settings also links here).
+  { path: '/desk-requests', icon: LifeBuoy, label: 'Support desk', color: 'green', restricted: false, sidebarOnly: true },
 ];
 
 // Active-state colours for the sidebar (mirrors the per-item hues the bottom bar already uses)
@@ -307,7 +309,7 @@ const SidebarNavigation = () => {
 const BottomNavigation = () => {
   const { user } = useAuth();
   
-  const navItems = NAV_ITEMS;
+  const navItems = NAV_ITEMS.filter((item) => !item.sidebarOnly);
 
   return (
     <nav className="app-chrome fixed bottom-0 left-0 right-0 bg-surface/90 backdrop-blur-lg border-t border-line/50 z-50 md:hidden">

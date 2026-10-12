@@ -1,0 +1,115 @@
+From 8fa03deee02256cd9d460b872d17ad7584922207 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 12 Oct 2026 10:31:47 +0000
+Subject: [PATCH] fix(desk): add missing desk indexes (shared desk project) and
+ a Support desk nav entry - firestore.indexes.json is the one deployed for the
+ shared project: add desk_audit, desk_ledger(agentId,status|kind),
+ desk_sessions(agentId,status) - Sidebar/rail entry to /desk-requests
+ (previously only reachable from a card in Settings)
+
+---
+ firestore.indexes.json | 56 ++++++++++++++++++++++++++++++++++++++++++
+ src/App.tsx            |  6 +++--
+ 2 files changed, 60 insertions(+), 2 deletions(-)
+
+diff --git a/firestore.indexes.json b/firestore.indexes.json
+index 83d3c72..fde6834 100644
+--- a/firestore.indexes.json
++++ b/firestore.indexes.json
+@@ -265,6 +265,62 @@
+           "order": "ASCENDING"
+         }
+       ]
++    },
++    {
++      "collectionGroup": "desk_audit",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "agentId",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "at",
++          "order": "DESCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "desk_ledger",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "agentId",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "status",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "desk_ledger",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "agentId",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "desk_sessions",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "agentId",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "status",
++          "order": "ASCENDING"
++        }
++      ]
+     }
+   ],
+   "fieldOverrides": []
+diff --git a/src/App.tsx b/src/App.tsx
+index 72e5689..9a7d997 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -1,7 +1,7 @@
+ // App.tsx - Updated with Enhanced User State Management, Sync Integration, and Exit Confirmation
+ import React, { useState, useEffect, Suspense, useCallback, useRef } from 'react';
+ import { BrowserRouter as Router, Routes, Route, Navigate, NavLink } from 'react-router-dom';
+-import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, DollarSign, MessageSquare, Settings as SettingsIcon } from 'lucide-react';
++import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, DollarSign, MessageSquare, Settings as SettingsIcon, LifeBuoy } from 'lucide-react';
+ import { database } from './services/database/Database';
+ import { firebaseSyncService } from './services/database/FirebaseSync';
+ import Dashboard from './pages/Dashboard';
+@@ -212,6 +212,8 @@ const NAV_ITEMS = [
+   { path: '/profile', icon: UserIcon, label: 'Profile', color: 'green', restricted: false },
+   { path: '/payments', icon: DollarSign, label: 'Payments', color: 'black', restricted: false },
+   { path: '/settings', icon: SettingsIcon, label: 'Settings', color: 'indigo', restricted: false },
++  // Samuhia Desk requests. Sidebar/rail only: the phone bottom bar is already full (Settings also links here).
++  { path: '/desk-requests', icon: LifeBuoy, label: 'Support desk', color: 'green', restricted: false, sidebarOnly: true },
+ ];
+ 
+ // Active-state colours for the sidebar (mirrors the per-item hues the bottom bar already uses)
+@@ -307,7 +309,7 @@ const SidebarNavigation = () => {
+ const BottomNavigation = () => {
+   const { user } = useAuth();
+   
+-  const navItems = NAV_ITEMS;
++  const navItems = NAV_ITEMS.filter((item) => !item.sidebarOnly);
+ 
+   return (
+     <nav className="app-chrome fixed bottom-0 left-0 right-0 bg-surface/90 backdrop-blur-lg border-t border-line/50 z-50 md:hidden">
+-- 
+2.43.0
+
