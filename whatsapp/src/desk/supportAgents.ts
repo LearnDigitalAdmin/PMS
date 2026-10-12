@@ -12,7 +12,7 @@ export interface ListSupportAgentsResult { agents: SupportAgentView[]; landlordC
 interface StoredAgent { name?: string; agentId?: string; addedAt?: number }
 
 const TOP_VIEW: SupportAgentView = { agentCode: DESK_TOP_CODE, name: "Samuhia Top Desk", addedAt: 0, locked: true };
-const callableOpts = { region: DESK_REGION, cors: true, memory: "256MiB" as const, timeoutSeconds: 30 };
+const callableOpts = { region: DESK_REGION, cors: true, memory: "256MiB" as const, cpu: "gcf_gen1" as const, maxInstances: 2, timeoutSeconds: 30 };
 
 function requireUid(request: CallableRequest<unknown>): string {
   const uid = request.auth?.uid;

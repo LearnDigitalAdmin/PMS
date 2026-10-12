@@ -30,7 +30,7 @@ export async function assignLandlordCode(uid: string, store: Firestore = fs()): 
 
 /** Covers landlords created by PAY's createUserWithFirebaseAuth and by the app: both create `users/{uid}`. */
 export const pmsAssignLandlordCode = onDocumentCreated(
-  { document: "users/{uid}", region: DESK_REGION, retry: true, memory: "256MiB" },
+  { document: "users/{uid}", region: DESK_REGION, retry: true, memory: "256MiB", cpu: "gcf_gen1", maxInstances: 2 },
   async (event) => {
     const uid = event.params.uid;
     const code = await assignLandlordCode(uid);

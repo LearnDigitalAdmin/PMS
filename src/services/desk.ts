@@ -1,5 +1,8 @@
-import { httpsCallable } from 'firebase/functions';
-import { functions } from './database/FirebaseSync';
+import { httpsCallable, getFunctions } from 'firebase/functions';
+import { app } from './database/FirebaseSync';
+
+// Desk callables run in us-central1; other PMS functions stay on africa-south1.
+const functions = getFunctions(app, 'us-central1');
 
 export interface SupportAgent { agentCode: string; name: string; addedAt: number; locked?: boolean }
 export interface SupportAgentsState { agents: SupportAgent[]; landlordCode: string; maxAgents: number }

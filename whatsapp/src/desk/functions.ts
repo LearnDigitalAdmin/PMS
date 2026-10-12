@@ -18,7 +18,7 @@ const deps = (sms: SmsPort): DelegateDeps => ({ store: firestoreDelegateStore(fs
  */
 export function createDeskdelegate(w: DeskSmsWiring) {
   return onRequest(
-    { region: DESK_REGION, invoker: "private", cors: false, timeoutSeconds: 300, memory: "512MiB", maxInstances: 5, secrets: w.secrets },
+    { region: DESK_REGION, invoker: "private", cors: false, timeoutSeconds: 300, memory: "512MiB", cpu: "gcf_gen1", maxInstances: 2, secrets: w.secrets },
     async (req, res) => {
       if (req.method !== "POST") { res.status(405).json({ ok: false, error: { code: "invalid_argument", message: "Use POST" } }); return; }
       if (!req.body || typeof req.body !== "object") { res.status(400).json({ ok: false, error: { code: "invalid_argument", message: "Send a JSON body" } }); return; }

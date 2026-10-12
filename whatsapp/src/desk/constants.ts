@@ -1,6 +1,6 @@
 /** Samuhia Desk integration for Plot Yangu (PMS). Single place for every constant the desk modules share. */
 
-export const DESK_REGION = "africa-south1";
+export const DESK_REGION = "us-central1";
 
 /** The company's top desk: always authorised on every landlord, cannot be added or removed. */
 export const DESK_TOP_CODE = "COG-0000";

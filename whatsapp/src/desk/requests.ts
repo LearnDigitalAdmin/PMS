@@ -19,7 +19,7 @@ export interface DeskRequestDoc {
 export interface CreateDeskRequestIn { category?: string; subject?: string; message?: string; deskCode?: string; includeTopDesk?: boolean }
 export interface DeskRequestView extends Omit<DeskRequestDoc, "source" | "outboxId"> { }
 
-const callableOpts = { region: DESK_REGION, cors: true, memory: "256MiB" as const, timeoutSeconds: 30 };
+const callableOpts = { region: DESK_REGION, cors: true, memory: "256MiB" as const, cpu: "gcf_gen1" as const, maxInstances: 2, timeoutSeconds: 30 };
 const SUBJECT_MIN = 3, SUBJECT_MAX = 120, MESSAGE_MIN = 5, MESSAGE_MAX = 2000, LIST_LIMIT = 50;
 
 /** Pure validation of what the landlord typed. Throws a message the person can act on. */

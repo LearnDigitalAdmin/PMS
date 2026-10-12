@@ -91,7 +91,7 @@ class SafeBatchManager {
 }
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 const storage = getStorage(app);
 export const functions = getFunctions(app, "africa-south1");
