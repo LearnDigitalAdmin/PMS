@@ -36,7 +36,7 @@ export class ReportsPDFService {
 
   private defaultBranding = {
     companyName: 'PLOT YANGU',
-    contactInfo: 'SMB KENYA LTD | +254791286165',
+    contactInfo: 'PLOT YANGU | +254791286165',
     website: 'www.plotyangu.co.ke'
   };
 

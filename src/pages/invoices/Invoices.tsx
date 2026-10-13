@@ -1,3 +1,4 @@
+import PageHeader, { HeaderAction } from '../../components/ui/PageHeader';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Search, 
@@ -59,33 +60,33 @@ const Invoices: React.FC<InvoicesProps> = ({ user, userCompany }) => {
         address: userCompany.address || '',
         phone: userCompany.phone || '',
         email: userCompany.email || '',
-        website: 'www.cogvana.co.ke'
+        website: 'www.samuhia.co.ke'
       } : {
-        name: 'SMB KENYA LTD: PLOT YANGU',
+        name: 'PLOT YANGU',
         address: 'Naivasha, Nakuru, Kenya',
         phone: '+254 791 286 165',
-        email: 'info@cogvana.co.ke',
-        website: 'www.cogvana.co.ke'
+        email: 'info@samuhia.co.ke',
+        website: 'www.samuhia.co.ke'
       };
     }
     
     // Default company info for free tier users
     return {
-      name: 'SMB KENYA LTD: PLOT YANGU',
+      name: 'PLOT YANGU',
       address: 'Naivasha, Nakuru, Kenya',
       phone: '+254 791 286 165',
-      email: 'info@cogvana.co.ke',
-      website: 'www.cogvana.co.ke'
+      email: 'info@samuhia.co.ke',
+      website: 'www.samuhia.co.ke'
     };
   }, [user?.tier, userCompany]);
 
 
   // const [companyInfo] = useState({
-  //   name: 'SMB KENYA LTD: PLOT YANGU',
+  //   name: 'PLOT YANGU',
   //   address: 'Naivasha, Nakuru, Kenya',
   //   phone: '+254 791 286 165',
-  //   email: 'info@cogvana.co.ke',
-  //   website: 'www.cogvana.co.ke'
+  //   email: 'info@samuhia.co.ke',
+  //   website: 'www.samuhia.co.ke'
   // });
 
   useEffect(() => {
@@ -481,11 +482,15 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
 
   return (
     <div>
-      {/* Header */}
+      <PageHeader
+        title="Invoices"
+        subtitle="Billing and payments"
+        icon={FileText}
+        actions={<HeaderAction icon={Plus} label="New invoice" onClick={() => handleCreateInvoice()} variant="primary" showLabel />}
+      />
+
       <div className="ui-card mb-4 lg:mb-6">
         <div className="px-4 py-6 lg:px-6">
-          <h1 className="ui-page-title">Invoices</h1>
-
           <TrialStatsBanner userId={user?.id} compact className="mt-4" />
 
           {/* Summary Cards */}
@@ -818,15 +823,6 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
           </div>
         </div>
       )}
-
-      {/* FAB */}
-      <button
-        onClick={() => handleCreateInvoice()}
-        className="fixed bottom-6 right-6 bg-brand-600 text-white p-4 rounded-full shadow-lg hover:bg-brand-700 transition-colors z-40 md:mb-0! md:bottom-8 md:right-8"
-        style={{ marginBottom: '60px' }}
-      >
-        <Plus className="w-6 h-6" />
-      </button>
 
       {/* Add Invoice Modal */}
       {showAddInvoiceModal && (

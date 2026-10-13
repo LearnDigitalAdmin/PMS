@@ -6,7 +6,7 @@
     <!-- PWA Meta Tags -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="Plot Yangu is property management software for landlords and agents in Kenya. Track properties and tenants, generate invoices, collect M-Pesa payments, and notify tenants automatically — offline-first, with 3 months of Business tier free." />
-    <meta name="keywords" content="property management software Kenya, landlord app Kenya, rental property management, tenant management software, rent collection M-Pesa, invoice software for landlords, property agent software Kenya, Plot Yangu, Cogvana" />
+    <meta name="keywords" content="property management software Kenya, landlord app Kenya, rental property management, tenant management software, rent collection M-Pesa, invoice software for landlords, property agent software Kenya, Plot Yangu, Samuhia" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://plot.samuhia.co.ke/" />
     <link rel="alternate" hreflang="en-KE" href="https://plot.samuhia.co.ke/" />
@@ -19,8 +19,10 @@
     <meta name="apple-mobile-web-app-title" content="Plot Yangu" />
     
     <!-- Favicon -->
-    <link rel="icon" type="image/png" sizes="192x192" href="/icons/manifest-icon-192.maskable.png" />
-    <link rel="icon" type="image/png" sizes="512x512" href="/icons/manifest-icon-512.maskable.png" />
+    <link rel="icon" href="/plot.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512x512.png" />
     
     <!-- Apple Touch Icon -->
     <link rel="apple-touch-icon" href="/icons/apple-icon-180.png">
@@ -86,7 +88,7 @@
     <meta name="msapplication-TileColor" content="#2563eb" />
     <meta name="msapplication-TileImage" content="/icons/manifest-icon-512.maskable.png" />
     
-    <title>Plot Yangu — Property Management Software for Landlords in Kenya | Cogvana</title>
+    <title>Plot Yangu — Property Management Software for Landlords in Kenya | Samuhia</title>
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
@@ -94,7 +96,7 @@
     <meta property="og:title" content="Plot Yangu — Property Management Software for Landlords in Kenya" />
     <meta property="og:description" content="Track properties and tenants, generate invoices, collect M-Pesa payments, and notify tenants automatically — offline-first, with 3 months of Business tier free." />
     <meta property="og:url" content="https://plot.samuhia.co.ke/" />
-    <meta property="og:image" content="https://plot.samuhia.co.ke/social/og-image.jpg" />
+    <meta property="og:image" content="https://plot.samuhia.co.ke/social/og-image.jpg?v=2" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="Plot Yangu — property management software for landlords in Kenya" />
@@ -104,19 +106,11 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Plot Yangu — Property Management Software for Landlords in Kenya" />
     <meta name="twitter:description" content="Track properties and tenants, generate invoices, collect M-Pesa payments, and notify tenants automatically — offline-first, with 3 months of Business tier free." />
-    <meta name="twitter:image" content="https://plot.samuhia.co.ke/social/og-image.jpg" />
+    <meta name="twitter:image" content="https://plot.samuhia.co.ke/social/og-image.jpg?v=2" />
     <meta name="twitter:image:alt" content="Plot Yangu — property management software for landlords in Kenya" />
 
     <!-- Structured data (JSON-LD) -->
     <!--
-      Encodes the Cogvana Technologies / SMB Kenya Ltd relationship per the
-      "Powered by: SMB KENYA LTD and Cogvana Technologies" footer line in
-      SignUpScreen.tsx / SignInScreen.tsx: Cogvana Technologies as the
-      publicly-known operating name (schema.org `name`), SMB Kenya Ltd as
-      the registered legal entity (`legalName`). This is a best-effort
-      encoding of a single footer line, not independently verified against
-      a certificate of incorporation — see README for the caveat.
-
       The FAQPage entity below must be kept in sync by hand with
       src/components/marketing/marketingContent.ts (FAQS) — see the note at
       the top of that file for why this can't be generated automatically.
@@ -128,25 +122,23 @@
         {
           "@type": "Organization",
           "@id": "https://plot.samuhia.co.ke/#organization",
-          "name": "Cogvana Technologies",
-          "legalName": "SMB Kenya Ltd",
-          "alternateName": ["Cogvana", "Cogvana Corporation"],
-          "url": "https://cogvana.co.ke/",
-          "logo": "https://plot.samuhia.co.ke/icons/manifest-icon-512.maskable.png",
+          "name": "Samuhia",
+          "url": "https://samuhia.co.ke/",
+          "logo": "https://plot.samuhia.co.ke/icons/icon-512x512.png",
           "sameAs": [
-            "https://cogvana.co.ke/",
+            "https://samuhia.co.ke/",
             "https://plot.samuhia.co.ke/"
           ],
           "contactPoint": [
             {
               "@type": "ContactPoint",
-              "email": "info@cogvana.co.ke",
+              "email": "info@samuhia.co.ke",
               "contactType": "customer service",
               "areaServed": "KE"
             },
             {
               "@type": "ContactPoint",
-              "email": "sales@cogvana.co.ke",
+              "email": "sales@samuhia.co.ke",
               "contactType": "sales",
               "areaServed": "KE"
             }
@@ -171,7 +163,7 @@
           "description": "Property management software for landlords and property agents in Kenya. Tracks properties, tenants, invoices, and M-Pesa payments, works offline-first, and syncs across devices in the cloud.",
           "publisher": { "@id": "https://plot.samuhia.co.ke/#organization" },
           "creator": { "@id": "https://plot.samuhia.co.ke/#organization" },
-          "image": "https://plot.samuhia.co.ke/social/og-image.jpg",
+          "image": "https://plot.samuhia.co.ke/social/og-image.jpg?v=2",
           "screenshot": [
             "https://plot.samuhia.co.ke/screenshots/dashboard.png",
             "https://plot.samuhia.co.ke/screenshots/mobile-dashboard.png"
@@ -212,7 +204,7 @@
               "name": "Who's behind Plot Yangu?",
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": "Plot Yangu is built and operated by Cogvana Technologies (operated by SMB Kenya Ltd). Cogvana also builds other Kenyan software products, including the school-management app MyRegister. Note: \"Cogvana\" is also the name of a separate education app that Cogvana Technologies publishes — that app is a different product from Plot Yangu."
+                "text": "Plot Yangu is built and operated by Samuhia, which also builds other Kenyan software products, including the school-management app MyRegister."
               }
             },
             {

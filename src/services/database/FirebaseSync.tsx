@@ -1100,16 +1100,16 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
         address: company.address || '',
         phone: company.phone || '',
         email: company.email || '',
-        website: 'www.cogvana.co.ke'
+        website: 'www.samuhia.co.ke'
       };
     }
     
     return {
-      name: 'SMB KENYA LTD: PLOT YANGU',
+      name: 'PLOT YANGU',
       address: 'Naivasha, Nakuru, Kenya',
       phone: '+254 791 286 165',
-      email: 'info@cogvana.co.ke',
-      website: 'www.cogvana.co.ke'
+      email: 'info@samuhia.co.ke',
+      website: 'www.samuhia.co.ke'
     };
   }
 

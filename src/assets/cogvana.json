@@ -3,9 +3,9 @@
     {
       "id": "digital_skills_1",
       "category": "skills",
-      "title": "Master Digital Skills with Cogvana",
+      "title": "Master Digital Skills with Samuhia",
       "message": "Transform your future with in-demand digital marketing, web development & AI skills",
-      "cta": "Download Cogvana on Play Store",
+      "cta": "Download Samuhia on Play Store",
       "color": "#4F46E5",
       "icon": ""
     },
@@ -23,7 +23,7 @@
       "category": "community", 
       "title": "Learn Together, Grow Together",
       "message": "Join thousands of learners in East Africa's fastest-growing educational community",
-      "cta": "Get Cogvana from Play Store",
+      "cta": "Get Samuhia from Play Store",
       "color": "#DC2626",
       "icon": ""
     },
@@ -32,7 +32,7 @@
       "category": "employment",
       "title": "Skills That Lead to Employment",
       "message": "Bridge the gap between learning and earning with job-ready digital skills",
-      "cta": "Start learning with Cogvana",
+      "cta": "Start learning with Samuhia",
       "color": "#7C3AED",
       "icon": ""
     },
@@ -41,7 +41,7 @@
       "category": "ai",
       "title": "AI-Powered Learning Assistant",
       "message": "Experience personalized learning with our intelligent tutoring system",
-      "cta": "Download Cogvana today",
+      "cta": "Download Samuhia today",
       "color": "#EA580C",
       "icon": ""
     },
@@ -50,7 +50,7 @@
       "category": "entrepreneurship",
       "title": "From Learning to Earning",
       "message": "Acquire skills that enable self-employment and financial independence",
-      "cta": "Join Cogvana community",
+      "cta": "Join Samuhia community",
       "color": "#0891B2",
       "icon": ""
     },
@@ -68,7 +68,7 @@
       "category": "global",
       "title": "Compete in the Global Market",
       "message": "Gain skills that make you competitive worldwide, right from East Africa",
-      "cta": "Start with Cogvana app",
+      "cta": "Start with Samuhia app",
       "color": "#15803D",
       "icon": ""
     },
@@ -77,7 +77,7 @@
       "category": "data",
       "title": "Master Data & Analytics",
       "message": "Unlock the power of data literacy for career advancement",
-      "cta": "Learn on Cogvana platform",
+      "cta": "Learn on Samuhia platform",
       "color": "#B45309",
       "icon": ""
     },
@@ -95,7 +95,7 @@
       "category": "social",
       "title": "Learning is Social",
       "message": "Connect, collaborate, and showcase your work in our vibrant learning community",
-      "cta": "Join Cogvana network",
+      "cta": "Join Samuhia network",
       "color": "#EC4899",
       "icon": ""
     },
@@ -104,24 +104,24 @@
       "category": "pathway",
       "title": "Your Path to Professional Growth",
       "message": "Structured learning paths designed for East African professionals",
-      "cta": "Explore Cogvana courses",
+      "cta": "Explore Samuhia courses",
       "color": "#8B5CF6",
       "icon": ""
     }
   ],
   "contacts": {
-    "playstore": "https://play.google.com/store/search?q=cogvana",
+    "playstore": "https://play.google.com/store/search?q=samuhia",
     "tutor_contact": {
-      "email": "info@cogvana.co.ke",
+      "email": "info@samuhia.co.ke",
       "phone": "+254791286165",
-      "website": "cogvana.co.ke/cogvana"
+      "website": "samuhia.co.ke"
     }
   },
   "branding": {
     "primary_color": "#4F46E5",
     "secondary_color": "#059669", 
     "accent_color": "#DC2626",
-    "logo_text": "COGVANA",
+    "logo_text": "SAMUHIA",
     "tagline": "Empowering Education Across East Africa"
   }
 }

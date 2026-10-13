@@ -22,6 +22,7 @@ import {
   Activity,
   BarChart3,
   PieChart as PieChartIcon,
+  Home,
   DownloadCloud,
   UploadCloud
 } from 'lucide-react';
@@ -38,6 +39,7 @@ import {
   Bar,
   ComposedChart
 } from 'recharts';
+import PageHeader, { HeaderAction } from '../components/ui/PageHeader';
 import { firebaseSyncService } from '../services/database/FirebaseSync';
 import { database, type Property, type DashboardData, type MonthlyStats, type InvoiceWithDetails } from '../services/database/Database';
 import TrialStatsBanner from '../components/ui/TrialStatsBanner';
@@ -746,32 +748,17 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
     >
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="ui-page-title">
-            Dashboard
-          </h1>
-          <p className="ui-page-subtitle">
-            Welcome back! Here's your property overview.
-          </p>
-        </div>
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="p-3 ui-card ui-card-hover"
-          >
-            <RefreshCw className={`w-5 h-5 text-ink-muted  ${refreshing ? 'animate-spin' : ''}`} />
-          </button>
-          <button
-            onClick={handleExportReports}
-            className="p-3 bg-gradient-to-r from-brand-500 to-indigo-600 rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
-          >
-            <Download className="w-5 h-5 text-white" />
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        subtitle="Your property overview"
+        icon={Home}
+        actions={
+          <>
+            <HeaderAction icon={RefreshCw} label="Refresh" onClick={handleRefresh} disabled={refreshing} spin={refreshing} />
+            <HeaderAction icon={Download} label="Export reports" onClick={handleExportReports} variant="primary" showLabel />
+          </>
+        }
+      />
 
       <TrialStatsBanner userId={userData?.id} />
 
@@ -969,41 +956,31 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
         </div>
       </div>
 
-      {/* Recent Activity + Quick Actions */}
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-      <div className="xl:col-span-2">
+      {/* Recent Activity */}
       <RecentActivity recentInvoices={recentInvoices} loading={loading} />
-      </div>
 
-      {/* Quick Actions */}
-      {/* {userData.storage && ( */}
-        <div className="ui-card p-6">
-        <h3 className="text-xl font-bold text-ink mb-4 flex items-center">
-          <div className="p-2 rounded-xl bg-gradient-to-r from-brand-500 to-indigo-600 mr-3">
-            <Activity className="w-5 h-5 text-white" />
-          </div>
-          Quick Actions
-        </h3>
-        <div className="grid grid-cols-2 gap-4">
-          {/* <button className="p-4 text-center bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
-            <FileText className="w-6 h-6 mx-auto mb-2" />
-            <span className="text-sm font-medium">Create Invoice on tab 3</span>
-          </button>
-          <button className="p-4 text-center bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
-            <Users className="w-6 h-6 mx-auto mb-2" />
-            <span className="text-sm font-medium">Add Property tab 2</span>
-          </button> */}
-          <button onClick={handleDownload} className="p-4 text-center bg-gradient-to-r from-brand-500 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
-            <DownloadCloud className="w-6 h-6 mx-auto mb-2" />
-            <span className="text-sm font-medium"> DOWNLOAD DATA</span>
-          </button>
-          <button onClick={handleSave} className="p-4 text-center bg-gradient-to-r from-red-500 to-rose-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
-            <UploadCloud className="w-6 h-6 mx-auto mb-2" />
-            <span className="text-sm font-medium">SAVE DATA</span>
-          </button>
-        </div>
-      </div>
-      {/* )}; */}
+      {/* Floating data actions: always visible, clear of the bottom nav on phones */}
+      <div className="fixed right-4 z-40 flex flex-col gap-3 bottom-[calc(4.25rem+env(safe-area-inset-bottom,0px)+0.75rem)] md:bottom-6 md:right-6">
+        <button
+          type="button"
+          onClick={handleDownload}
+          disabled={loading}
+          aria-label="Download data"
+          title="Download data"
+          className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-brand-500 to-indigo-600 text-white shadow-xl transition active:scale-95 disabled:opacity-60"
+        >
+          <DownloadCloud className="h-6 w-6" />
+        </button>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={loading}
+          aria-label="Upload (save) data"
+          title="Upload (save) data"
+          className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-xl transition active:scale-95 disabled:opacity-60"
+        >
+          <UploadCloud className="h-6 w-6" />
+        </button>
       </div>
     </div>
   );

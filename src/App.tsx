@@ -209,8 +209,8 @@ const NAV_ITEMS = [
   { path: '/', icon: Home, label: 'Dashboard', color: 'blue', restricted: false },
   { path: '/properties', icon: Building, label: 'Properties', color: 'indigo', restricted: false },
   { path: '/invoices', icon: FileText, label: 'Invoices', color: 'purple', restricted: false },
-  { path: '/profile', icon: UserIcon, label: 'Profile', color: 'green', restricted: false },
   { path: '/payments', icon: DollarSign, label: 'Payments', color: 'black', restricted: false },
+  { path: '/profile', icon: UserIcon, label: 'Profile', color: 'green', restricted: false },
   { path: '/settings', icon: SettingsIcon, label: 'Settings', color: 'indigo', restricted: false },
   // Samuhia Desk requests. Sidebar/rail only: the phone bottom bar is already full (Settings also links here).
   { path: '/desk-requests', icon: LifeBuoy, label: 'Support desk', color: 'green', restricted: false, sidebarOnly: true },
@@ -308,73 +308,66 @@ const SidebarNavigation = () => {
 // Enhanced Navigation with Tier Restrictions (phones: bottom bar)
 const BottomNavigation = () => {
   const { user } = useAuth();
-  
+
   const navItems = NAV_ITEMS.filter((item) => !item.sidebarOnly);
+  const activeColorClasses: { [key: string]: string } = {
+    blue: 'text-blue-600 dark:text-blue-400',
+    indigo: 'text-indigo-600 dark:text-indigo-400',
+    purple: 'text-purple-600 dark:text-purple-400',
+    green: 'text-green-600 dark:text-green-400',
+    black: 'text-ink'
+  };
 
   return (
-    <nav className="app-chrome fixed bottom-0 left-0 right-0 bg-surface/90 backdrop-blur-lg border-t border-line/50 z-50 md:hidden">
-      <div className="safe-area-inset-bottom">
-        <div className="flex justify-around items-center py-2">
-          {navItems.map(({ path, icon: Icon, label, color, restricted }) => {
-            const activeColorClasses: { [key: string]: string } = {
-              blue: 'text-blue-600 dark:text-blue-400',
-              indigo: 'text-indigo-600 dark:text-indigo-400',
-              purple: 'text-purple-600 dark:text-purple-400',
-              green: 'text-green-600 dark:text-green-400',
-              black: 'text-ink'
-            };
-            const inactiveColorClasses = 'text-ink-faint';
+    <nav
+      aria-label="Primary"
+      className="app-chrome fixed inset-x-0 bottom-0 z-50 border-t border-line bg-surface/95 backdrop-blur-xl md:hidden"
+    >
+      {/* Equal-width columns: 6 items fit any phone width; labels truncate instead of overflowing */}
+      <div
+        className="mx-auto grid max-w-xl pb-[env(safe-area-inset-bottom,0px)]"
+        style={{ gridTemplateColumns: `repeat(${navItems.length}, minmax(0, 1fr))` }}
+      >
+        {navItems.map(({ path, icon: Icon, label, color, restricted }) => {
+          const canAccess = !restricted || (user && (
+            user.tier === 'business' ||
+            user.tier === 'solo' ||
+            user.tier === 'pro' ||
+            user.tier === 'enterprise' ||
+            user.type === 'paid'
+          ));
 
-            // Check if user can access this feature
-            const canAccess = !restricted || (user && (
-              user.tier === 'business' || 
-              user.tier === 'solo' ||
-              user.tier === 'pro' || 
-              user.tier === 'enterprise' || 
-              user.type === 'paid'
-            ));
-
-            return (
-              <NavLink
-                key={path}
-                to={path}
-                end={path === '/'}
-                className={({ isActive }) => {
-                  const baseClasses = `flex flex-col items-center space-y-1 px-3 py-2 rounded-xl transition-all duration-200 min-w-[44px] min-h-[44px]`;
-                  const stateClasses = isActive ? 'bg-surface-sunken' : 'hover:bg-surface-muted';
-                  const accessClasses = !canAccess ? 'opacity-50 cursor-not-allowed' : '';
-                  return `${baseClasses} ${stateClasses} ${accessClasses}`;
-                }}
-                onClick={(e) => {
-                  if (!canAccess) {
-                    e.preventDefault();
-                    // Could show upgrade modal here
-                  }
-                }}
-              >
-                {({ isActive }) => (
+          return (
+            <NavLink
+              key={path}
+              to={path}
+              end={path === '/'}
+              className={() => `relative flex h-[4.25rem] min-w-0 flex-col items-center justify-center gap-1 px-0.5 transition-colors active:bg-surface-sunken ${!canAccess ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={(e) => {
+                if (!canAccess) {
+                  e.preventDefault();
+                  // Could show upgrade modal here
+                }
+              }}
+            >
+              {({ isActive }) => {
+                const tone = isActive && canAccess ? activeColorClasses[color] : 'text-ink-faint';
+                return (
                   <>
-                    <Icon 
-                      className={`w-6 h-6 transition-all duration-200 ${
-                        isActive ? 'scale-110' : ''
-                      } ${isActive && canAccess ? activeColorClasses[color] : inactiveColorClasses}`} 
-                    />
-                    <span 
-                      className={`text-xs font-medium transition-all duration-200 ${
-                        isActive && canAccess ? activeColorClasses[color] : inactiveColorClasses
-                      }`}
-                    >
+                    {isActive && canAccess && <span className={`absolute top-0 h-0.5 w-8 rounded-b-full bg-current ${tone}`} />}
+                    <Icon className={`h-[22px] w-[22px] shrink-0 transition-transform duration-200 ${isActive ? 'scale-110' : ''} ${tone}`} />
+                    <span className={`w-full truncate text-center text-[10px] font-medium leading-none min-[380px]:text-[11px] ${tone}`}>
                       {label}
                     </span>
                     {restricted && !canAccess && (
-                      <Crown className="w-2 h-2 text-yellow-500 absolute -top-1 -right-1" />
+                      <Crown className="absolute right-2 top-2 h-2.5 w-2.5 text-yellow-500" />
                     )}
                   </>
-                )}
-              </NavLink>
-            );
-          })}
-        </div>
+                );
+              }}
+            </NavLink>
+          );
+        })}
       </div>
     </nav>
   );

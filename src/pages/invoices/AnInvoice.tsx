@@ -45,11 +45,11 @@ const AnInvoice: React.FC<AnInvoiceProps> = ({ invoiceId, onBack, isModal = fals
 
   // Company info for PDF generation
   const [companyInfo] = useState({
-    name: 'SMB KENYA LTD',
+    name: 'PLOT YANGU',
     address: 'Naivasha, Nakuru, Kenya',
     phone: '+254 791 286 165',
-    email: 'info@cogvana.co.ke',
-    website: 'www.cogvana.co.ke'
+    email: 'info@samuhia.co.ke',
+    website: 'www.samuhia.co.ke'
   });
 
   useEffect(() => {

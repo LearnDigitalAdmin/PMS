@@ -1360,11 +1360,11 @@ const PricingModal: React.FC<PricingModalProps> = ({
                         <span>WhatsApp: +254791286165</span>
                       </button>
                       <button
-                        onClick={() => window.open('mailto:info@cogvana.co.ke', '_blank')}
+                        onClick={() => window.open('mailto:info@samuhia.co.ke', '_blank')}
                         className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center space-x-2 transition-all hover:shadow-lg"
                       >
                         <Mail className="w-4 h-4" />
-                        <span>info@cogvana.co.ke</span>
+                        <span>info@samuhia.co.ke</span>
                       </button>
                     </div>
                   </div>

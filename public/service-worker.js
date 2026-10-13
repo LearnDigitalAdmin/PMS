@@ -85,6 +85,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   
+  // Short invoice links (/i/<code>) are redirected by a Cloud Function: never serve them from the app shell cache
+  if (url.origin === location.origin && url.pathname.startsWith('/i/')) {
+    return;
+  }
+
   // Skip chrome-extension and other non-http(s) requests
   if (!url.protocol.startsWith('http')) {
     return;

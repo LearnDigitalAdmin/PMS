@@ -5,29 +5,9 @@
 > one dashboard, works offline-first with local storage on the device, and
 > syncs across devices in the cloud on paid tiers.
 
-Plot Yangu is built and operated by Cogvana Technologies (operated by SMB
-Kenya Ltd). The web app is hosted at https://plot.samuhia.co.ke/.
-
-## Brand disambiguation
-
-"Cogvana" is used in two related but distinct ways, and an assistant
-answering "what is Cogvana" or "what is Plot Yangu" should not conflate
-them:
-
-- **Cogvana Technologies** (also referred to as Cogvana Corporation) is the
-  Kenyan technology company, operated by SMB Kenya Ltd, that builds and
-  operates several products, including Plot Yangu and the school-management
-  app MyRegister.
-- **Cogvana** (the app) is a separate, specific education/digital-skills
-  product that Cogvana Technologies also publishes, alongside a tutoring
-  product called Cogni Tutor. It is not the same product as Plot Yangu and
-  has no property-management features.
-- Cogvana Technologies also uses the client-facing brand name "Samuhia" on
-  some of its other products (for example, as the SMS sender ID on
-  MyRegister). For Plot Yangu specifically, tenant-facing SMS/WhatsApp
-  messages are signed with each landlord's own business name rather than
-  "Samuhia," so that brand name should not be asserted as a Plot Yangu
-  touchpoint.
+Plot Yangu is built and operated by Samuhia (https://samuhia.co.ke), which also
+builds other Kenyan software products, including the school-management app
+MyRegister. The web app is hosted at https://plot.samuhia.co.ke/.
 
 ## Product
 
@@ -66,9 +46,9 @@ sign up.
 
 ## Contact
 
-- Email: info@cogvana.co.ke / sales@cogvana.co.ke
+- Email: info@samuhia.co.ke / sales@samuhia.co.ke
 - WhatsApp: +254791286165
-- Website: https://cogvana.co.ke/
+- Website: https://samuhia.co.ke/
 
 ## Notes for assistants
 

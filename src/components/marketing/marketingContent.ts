@@ -12,11 +12,11 @@
 // answers here, update the matching JSON-LD in index.html too.
 
 export const CONTACT = {
-  email: 'info@cogvana.co.ke',
-  salesEmail: 'sales@cogvana.co.ke',
+  email: 'info@samuhia.co.ke',
+  salesEmail: 'sales@samuhia.co.ke',
   whatsapp: '+254791286165',
   whatsappHref: 'https://wa.me/254791286165',
-  website: 'https://cogvana.co.ke/',
+  website: 'https://samuhia.co.ke/',
   appUrl: 'https://plot.samuhia.co.ke/',
 };
 
@@ -190,7 +190,7 @@ export const FAQS: FaqItem[] = [
   },
   {
     question: 'Who\u2019s behind Plot Yangu?',
-    answer: 'Plot Yangu is built and operated by Cogvana Technologies (operated by SMB Kenya Ltd). Cogvana also builds other Kenyan software products, including the school-management app MyRegister. Note: "Cogvana" is also the name of a separate education app that Cogvana Technologies publishes \u2014 that app is a different product from Plot Yangu.',
+    answer: 'Plot Yangu is built and operated by Samuhia, which also builds other Kenyan software products, including the school-management app MyRegister.',
   },
   {
     question: 'Does Plot Yangu work offline?',

@@ -51,7 +51,7 @@ export interface CogvanaMessage {
   icon: string;
 }
 
-// New function to get random Cogvana message for sharing
+// New function to get random Samuhia message for sharing
 function getRandomCogvanaMessage(preferredCategory?: string): CogvanaMessage {
   const messages = cogvanaMessages.messages;
   
@@ -65,7 +65,7 @@ function getRandomCogvanaMessage(preferredCategory?: string): CogvanaMessage {
   return messages[Math.floor(Math.random() * messages.length)];
 }
 
-// Enhanced WhatsApp sharing with Cogvana footer
+// Enhanced WhatsApp sharing with Samuhia footer
 export async function shareViaWhatsApp(
   invoice: InvoiceWithDetails,
   property: Property,
@@ -75,7 +75,7 @@ export async function shareViaWhatsApp(
   user: any
 ): Promise<void> {
   try {
-    // Generate PDF with Cogvana integration
+    // Generate PDF with Samuhia integration
     const pdfBytes = await generateInvoicePDF(invoice, property, companyInfo, options, user);
     const filename = generatePDFFilename(invoice);
     const fileUri = await downloadPDF(pdfBytes, filename, user);
@@ -83,7 +83,7 @@ export async function shareViaWhatsApp(
     const normalizedPhone = normalizeKenyanPhoneNumber(invoice.tenantPhone || '');
     const balanceDue = invoice.totalAmount - invoice.amountPaid;
     
-    // Get Cogvana message for footer
+    // Get Samuhia message for footer
     const cogvanaMsg = getRandomCogvanaMessage();
     
     const message = ` *RENT INVOICE - ${invoice.billingMonth.toUpperCase()}*
@@ -106,11 +106,11 @@ _${cogvanaMsg.message}_
 
  ${cogvanaMsg.cta}
 ${cogvanaMsg.category === 'tutors' || cogvanaMsg.category === 'creators' 
-  ? ' sales@cogvana.co.ke' 
+  ? ' sales@samuhia.co.ke' 
   : ' Available on Play Store'}
 ━━━━━━━━━━━━━━━━━━━━━
 
-_Powered by Cogvana Education Platform_`;
+_Powered by Samuhia_`;
 
     // Rest of the existing WhatsApp sharing logic...
     const deviceInfo = await Device.getInfo();
@@ -143,7 +143,7 @@ _Powered by Cogvana Education Platform_`;
   }
 }
 
-// Enhanced email sharing with Cogvana integration
+// Enhanced email sharing with Samuhia integration
 export async function shareViaEmail(
   invoice: InvoiceWithDetails,
   property: Property,
@@ -153,7 +153,7 @@ export async function shareViaEmail(
   user: any
 ): Promise<void> {
   try {
-    // Generate PDF with Cogvana integration
+    // Generate PDF with Samuhia integration
     const pdfBytes = await generateInvoicePDF(invoice, property, companyInfo, options, user);
     const filename = generatePDFFilename(invoice);
     const fileUri = await downloadPDF(pdfBytes, filename, user);
@@ -199,7 +199,7 @@ export async function shareViaEmail(
   }
 }
 
-// Enhanced email body generator with Cogvana integration
+// Enhanced email body generator with Samuhia integration
 function generateEnhancedEmailBody(invoice: InvoiceWithDetails, property: Property): string {
   const dueDate = invoice.dueDate ? formatDate(new Date(invoice.dueDate)) : 'N/A';
   const balanceDue = invoice.totalAmount - invoice.amountPaid;
@@ -236,14 +236,14 @@ ${cogvanaMsg.icon} ${cogvanaMsg.title}
 ${cogvanaMsg.message}
 
 ${cogvanaMsg.cta} - ${cogvanaMsg.category === 'tutors' || cogvanaMsg.category === 'creators' 
-  ? 'Contact: sales@cogvana.co.ke | cogvana.co.ke/cogni' 
-  : 'Download on Play Store | cogvana.co.ke'}
+  ? 'Contact: sales@samuhia.co.ke | samuhia.co.ke' 
+  : 'Download on Play Store | samuhia.co.ke'}
 
 Empowering Education Across East Africa
 ═══════════════════════════════════════════════`;
 }
 
-// Enhanced payment reminder with Cogvana integration
+// Enhanced payment reminder with Samuhia integration
 // export async function sharePaymentReminder(
 //   invoice: InvoiceWithDetails,
 //   property: Property,
@@ -253,7 +253,7 @@ Empowering Education Across East Africa
 //   user: any
 // ): Promise<void> {
 //   try {
-//     // Generate PDF with Cogvana integration
+//     // Generate PDF with Samuhia integration
 //     const pdfBytes = await generateInvoicePDF(invoice, property, payments, companyInfo);
 //     const filename = generatePDFFilename(invoice);
 //     const fileUri = await downloadPDF(pdfBytes, filename, user);
@@ -273,7 +273,7 @@ Empowering Education Across East Africa
 //   }
 // }
 
-// Enhanced payment reminder message with Cogvana integration
+// Enhanced payment reminder message with Samuhia integration
 // function generateEnhancedPaymentReminderMessage(
 //   invoice: InvoiceWithDetails,
 //   property: Property,
@@ -327,13 +327,13 @@ Empowering Education Across East Africa
 // ${cogvanaMsg.message}
 
 // 💡 ${cogvanaMsg.cta}
-// ${cogvanaMsg.category === 'tutors' ? 'Contact: sales@cogvana.co.ke' : 'Available on Play Store'}
+// ${cogvanaMsg.category === 'tutors' ? 'Contact: sales@samuhia.co.ke' : 'Available on Play Store'}
 // ━━━━━━━━━━━━━━━━━━━━━
 
-// Powered by Cogvana Education Platform`;
+// Powered by Samuhia`;
 // }
 
-// New function to share Cogvana promotional message independently
+// New function to share Samuhia promotional message independently
 export async function shareCogvanaMessage(
   preferredCategory?: string,
   options: ShareOptions = {}
@@ -348,25 +348,25 @@ ${cogvanaMsg.message}
  ${cogvanaMsg.cta}
 
 ${cogvanaMsg.category === 'tutors' || cogvanaMsg.category === 'creators' 
-  ? ` Contact us: sales@cogvana.co.ke
- Visit: cogvana.co.ke/cogni` 
+  ? ` Contact us: sales@samuhia.co.ke
+ Visit: samuhia.co.ke` 
   : ` Download: Play Store
- Visit: cogvana.co.ke`}
+ Visit: samuhia.co.ke`}
 
 #CogvanaEA #EducationEastAfrica #DigitalSkills #OnlineLearning`;
     
     await Share.share({
       title: options.subject || cogvanaMsg.title,
       text: message,
-      dialogTitle: options.dialogTitle || 'Share Cogvana'
+      dialogTitle: options.dialogTitle || 'Share Samuhia'
     });
   } catch (error) {
-    console.error('Cogvana message sharing failed:', error);
-    throw new Error('Failed to share Cogvana message. Please try again.');
+    console.error('Samuhia message sharing failed:', error);
+    throw new Error('Failed to share Samuhia message. Please try again.');
   }
 }
 
-// New utility function to get Cogvana contact info
+// New utility function to get Samuhia contact info
 export function getCogvanaContactInfo(category?: string): {
   primary: string;
   secondary: string;
@@ -374,16 +374,16 @@ export function getCogvanaContactInfo(category?: string): {
 } {
   if (category === 'tutors' || category === 'creators' || category === 'support') {
     return {
-      primary: 'sales@cogvana.co.ke',
+      primary: 'sales@samuhia.co.ke',
       secondary: '+254-XXX-XXXX',
-      website: 'cogvana.co.ke/cogni'
+      website: 'samuhia.co.ke'
     };
   }
   
   return {
     primary: 'Available on Play Store',
-    secondary: 'cogvana.co.ke',
-    website: 'cogvana.co.ke'
+    secondary: 'samuhia.co.ke',
+    website: 'samuhia.co.ke'
   };
 }
 

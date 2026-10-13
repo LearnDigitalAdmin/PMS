@@ -1,3 +1,6 @@
+import PageHeader from '../components/ui/PageHeader';
+import { Link } from 'react-router-dom';
+import { Settings as SettingsGear } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import { User, Phone, Mail, Building, Crown, CheckCircle, Star, ArrowRight, ExternalLink, Zap } from 'lucide-react';
 import { useAuth } from '../components/auh/AuthWrapper';
@@ -17,6 +20,12 @@ const marketingMessages = [
   "📋 Lease Management Made Simple",
   "🎯 Trusted Property Management Company in Kenya"
 ];
+
+const HeaderLink = () => (
+  <Link to="/settings" aria-label="Settings" title="Settings" className="inline-flex h-10 min-w-10 items-center justify-center rounded-xl border border-line bg-surface px-2.5 text-ink-muted hover:bg-surface-sunken">
+    <SettingsGear className="h-5 w-5" />
+  </Link>
+);
 
 const Profile: React.FC = () => {
   const { user, company, logout } = useAuth();
@@ -67,6 +76,7 @@ const Profile: React.FC = () => {
 
   return (
     <>
+      <PageHeader title="Profile" subtitle="Your account and plan" icon={User} actions={<HeaderLink />} />
       <div className="p-4 pb-24 max-w-md mx-auto md:pb-10 lg:max-w-6xl lg:p-0">
         {/* Auto-rotating Marketing Banner */}
         <div className="mb-6 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl p-4 text-white shadow-lg">
@@ -96,7 +106,6 @@ const Profile: React.FC = () => {
                 <CheckCircle className="w-4 h-4 text-white" />
               </div>
             </div>
-            <h2 className="text-2xl font-bold text-ink mb-1">Profile</h2>
             <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${planDetails.bgColor} ${planDetails.color}`}>
               {user?.tier !== 'free' && <Crown className="w-3 h-3 mr-1" />}
               {planDetails.name} Plan
@@ -189,7 +198,7 @@ const Profile: React.FC = () => {
             <div className="w-16 h-16 bg-gradient-to-br from-emerald-600 to-teal-700 rounded-full flex items-center justify-center mx-auto mb-4">
               <Building className="w-8 h-8 text-white" />
             </div>
-            <h3 className="text-xl font-bold text-ink mb-2">SMB KENYA LTD</h3>
+            <h3 className="text-xl font-bold text-ink mb-2">PLOT YANGU</h3>
             <p className="text-sm text-ink-muted">Property Management Company</p>
             <p className="text-xs text-ink-subtle mt-1">Naivasha • Nakuru • Nairobi</p>
           </div>
@@ -237,7 +246,7 @@ const Profile: React.FC = () => {
               className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 px-4 rounded-xl transition-all duration-200 font-medium flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
             >
               <Mail className="w-5 h-5" />
-              <span>info@cogvana.co.ke</span>
+              <span>info@samuhia.co.ke</span>
             </button>
           </div>
 

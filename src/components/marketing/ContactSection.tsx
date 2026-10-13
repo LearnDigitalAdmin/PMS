@@ -9,7 +9,7 @@ const ContactSection: React.FC = () => {
       <div className="max-w-4xl mx-auto text-center">
         <h2 className="text-3xl sm:text-4xl font-bold text-white mb-3">Talk to us</h2>
         <p className="text-blue-100/80 max-w-xl mx-auto mb-12">
-          Questions about a plan, a feature, or getting your properties set up? Reach the Cogvana team directly.
+          Questions about a plan, a feature, or getting your properties set up? Reach the Samuhia team directly.
         </p>
 
         <div className="grid sm:grid-cols-3 gap-6">
@@ -53,7 +53,7 @@ const ContactSection: React.FC = () => {
             </div>
             <div>
               <p className="text-white font-semibold text-sm">Website</p>
-              <p className="text-blue-100/80 text-sm">cogvana.co.ke</p>
+              <p className="text-blue-100/80 text-sm">samuhia.co.ke</p>
             </div>
           </a>
         </div>

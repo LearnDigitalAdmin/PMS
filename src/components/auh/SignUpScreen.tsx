@@ -527,10 +527,10 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
               
               <div className="pt-2 border-t border-gray-100">
                 <a 
-                  href="https://cogvana.co.ke/"
+                  href="https://samuhia.co.ke/"
                   className="inline-block text-xs text-gray-600 hover:text-purple-600 font-medium transition-colors"
                 >
-                  Powered by: SMB KENYA LTD and Cogvana Technologies
+                  Powered by: Samuhia
                 </a>
                 
                 <a 

@@ -1,6 +1,7 @@
+import PageHeader from '../../components/ui/PageHeader';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Copy, Lock, LifeBuoy, Loader2, Plus, Trash2, UserCheck } from 'lucide-react';
+import { Settings as SettingsIcon, Copy, Lock, LifeBuoy, Loader2, Plus, Trash2, UserCheck } from 'lucide-react';
 import { addSupportAgent, DESK_TOP_CODE, errorText, listSupportAgents, removeSupportAgent, type SupportAgentsState } from '../../services/desk';
 
 const Settings: React.FC = () => {
@@ -43,8 +44,9 @@ const Settings: React.FC = () => {
   };
 
   return (
+    <>
+    <PageHeader title="Settings" subtitle="Account and preferences" icon={SettingsIcon} />
     <div className="mx-auto max-w-3xl space-y-6">
-      <h1 className="text-2xl font-bold text-ink">Settings</h1>
 
       {loadError && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
@@ -110,6 +112,7 @@ const Settings: React.FC = () => {
         </>
       )}
     </div>
+    </>
   );
 };
 export default Settings;

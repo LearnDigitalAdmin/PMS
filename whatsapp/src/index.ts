@@ -9,6 +9,9 @@ import axios from 'axios';
 import crypto from 'crypto';
 import { defineSecret } from 'firebase-functions/params';
 import {
+  attachShortLink, buildShortUrl, isAllowedRedirectTarget, newShortCode, parseShortCode,
+} from './shortLink';
+import {
   createDeskdelegate, createDeskScheduleRunner, resolveSubscriptionAttribution, firestoreAttributionDeps,
   type DeskSmsWiring,
 } from './desk';
@@ -383,35 +386,98 @@ function buildSmsMessage(
     type: SmsTemplateKey,
     params: Record<string, string>
 ): string {
-    let msg = "";
+    const SIGN = " PLOT YANGU";
+    let msg = "";        // normal wording (without the signature)
+    let compact = "";    // shorter wording, only used when a short link has to fit
+    let label = "Invoice:";
 
     switch (type) {
         case SMS_TEMPLATES.NEW_INVOICE:
             // params: tenantName, billingMonth, propertyName, agentName, agentPhone, agentEmail
             msg = `Dear ${params.tenantName}, your invoice for ${params.billingMonth} at ${params.propertyName} is ready. TOTAL AMOUNT: ${params.totalAmount}` +
-                  ` Contact ${params.agentName} on ${params.agentPhone} for queries.` +
-                  ` PLOT YANGU`;
+                  ` Contact ${params.agentName} on ${params.agentPhone} for queries.`;
+            compact = `Dear ${params.tenantName}, invoice for ${params.billingMonth} at ${params.propertyName}: ${params.totalAmount}.` +
+                      ` Queries: ${params.agentPhone}.`;
             break;
 
         case SMS_TEMPLATES.OVERDUE:
             // params: tenantName, outstandingAmount, daysOverdue, propertyName
-            msg = `Dear ${params.tenantName}, your rent at ${params.propertyName} is overdue by ${params.daysOverdue} day(s). ` + 
-                  ` Outstanding: ${params.outstandingAmount}. Please pay to avoid late fees.` + 
-                  ` PLOT YANGU`;
+            msg = `Dear ${params.tenantName}, your rent at ${params.propertyName} is overdue by ${params.daysOverdue} day(s). ` +
+                  ` Outstanding: ${params.outstandingAmount}. Please pay to avoid late fees.`;
+            compact = `Dear ${params.tenantName}, rent at ${params.propertyName} is ${params.daysOverdue} day(s) overdue.` +
+                      ` Outstanding: ${params.outstandingAmount}. Pay to avoid late fees.`;
             break;
 
         case SMS_TEMPLATES.PAYMENT_SUCCESS:
             // params: tenantName, amountPaid, propertyUnit
-            msg = `Dear ${params.tenantName}, ${params.agentName} has received your payment of ${params.amountPaid} for ${params.propertyUnit}. Thank you!` + 
-                   ` PLOT YANGU`;
+            msg = `Dear ${params.tenantName}, ${params.agentName} has received your payment of ${params.amountPaid} for ${params.propertyUnit}. Thank you!`;
+            compact = `Dear ${params.tenantName}, payment of ${params.amountPaid} for ${params.propertyUnit} received. Thank you!`;
+            label = "Receipt:";
             break;
 
         default:
-            msg = `Dear User, you have a new notification from your property manager.`+
-                  ` PLOT YANGU`;
+            msg = `Dear User, you have a new notification from your property manager.`;
+            compact = msg;
     }
 
-    return sanitizeSmsText(msg);
+    const base = sanitizeSmsText(msg + SIGN);
+
+    // Optional short link (params.link). Added only if it fits the credit budget:
+    // params.maxExtraTokens "0" = never costs more than the same SMS without the link.
+    if (!params.link) return base;
+    return attachShortLink({
+        base,
+        fullBody: msg,
+        compactBody: compact,
+        sign: SIGN,
+        label,
+        link: params.link,
+        maxExtraTokens: params.maxExtraTokens !== undefined ? Number(params.maxExtraTokens) : undefined,
+        sanitize: sanitizeSmsText,
+    });
+}
+
+// --- SHORT INVOICE LINKS ------------------------------------------------------
+// Returns https://plot.samuhia.co.ke/i/<code> for an invoice (created once, then reused),
+// or null when there is no PDF yet / anything fails - the SMS is then sent without a link.
+// Firestore: shortLinks/{code} = { userId, invoiceId, url, clicks, createdAt }
+//            shortLinkIndex/{sha256(userId/invoiceId)} = { code }   (so we never mint twice)
+// The redirect (invoiceLink, below) reads the invoice's *current* pdfUrl, so the same
+// link keeps working when the PDF is regenerated (e.g. after the invoice is paid).
+async function getInvoiceShortLink(invoice: any, invoiceLocalId: string): Promise<string | null> {
+    try {
+        const userId = invoice?.userId ? String(invoice.userId) : "";
+        if (!userId || !invoiceLocalId || invoiceLocalId === "unknown") return null;
+        if (!isAllowedRedirectTarget(invoice?.pdfUrl)) return null;
+
+        const idxRef = db.collection("shortLinkIndex")
+            .doc(crypto.createHash("sha256").update(`${userId}/${invoiceLocalId}`).digest("hex"));
+        const idx = await idxRef.get();
+        const existing = idx.exists ? idx.data()?.code : null;
+        if (typeof existing === "string" && existing) return buildShortUrl(existing);
+
+        for (let attempt = 0; attempt < 5; attempt++) {
+            const code = newShortCode();
+            try {
+                await db.collection("shortLinks").doc(code).create({
+                    userId,
+                    invoiceId: String(invoiceLocalId),
+                    url: invoice.pdfUrl,
+                    clicks: 0,
+                    createdAt: FieldValue.serverTimestamp(),
+                });
+                await idxRef.set({ code });
+                return buildShortUrl(code);
+            } catch (e: any) {
+                if (e?.code === 6 || /already exists/i.test(String(e?.message))) continue; // code taken, retry
+                throw e;
+            }
+        }
+        return null;
+    } catch (error) {
+        console.error("Short link creation failed, sending SMS without a link:", error);
+        return null;
+    }
 }
 
 // ─── CORE SENDER ─────────────────────────────────────────────────────────────
@@ -738,6 +804,7 @@ async function sendNewInvoiceNotification(
         if (!consentCheck.hasConsent) {
             // For SMS we skip consent; for WhatsApp we request it.
             // We still try SMS first (no consent needed), then request consent for WA.
+            const shortLink = await getInvoiceShortLink(invoice, invoiceLocalId);
             const smsMsg = buildSmsMessage(SMS_TEMPLATES.NEW_INVOICE, {
                 tenantName:   tenant.name,
                 billingMonth: invoice.billingMonth,
@@ -746,6 +813,7 @@ async function sendNewInvoiceNotification(
                 agentName:    company?.name  || user.name,
                 agentPhone:   company?.phone || user.phone || "",
                 agentEmail:   company?.email || user.email,
+                ...(shortLink ? { link: shortLink, maxExtraTokens: "0" } : {}),
             });
 
             const smsSent = await trySmsOnly(tenant.phone, smsMsg, invoice.userId);
@@ -774,6 +842,7 @@ async function sendNewInvoiceNotification(
             return false;
         }
 
+        const shortLink = await getInvoiceShortLink(invoice, invoiceLocalId);
         const smsMsg = buildSmsMessage(SMS_TEMPLATES.NEW_INVOICE, {
             tenantName:   tenant.name,
             billingMonth: invoice.billingMonth,
@@ -782,6 +851,7 @@ async function sendNewInvoiceNotification(
             agentName:    company?.name  || user.name,
             agentPhone:   company?.phone || user.phone || "",
             agentEmail:   company?.email || user.email,
+            ...(shortLink ? { link: shortLink } : {}),
         });
 
         const processedUrl = processFirebaseUrlForWhatsApp(invoice.pdfUrl);
@@ -828,11 +898,13 @@ async function sendPaymentSuccessNotification(
 
         const consentCheck = await checkTenantConsent(tenant.phone);
         if (!consentCheck.hasConsent) {
+            const shortLink = await getInvoiceShortLink(invoice, invoiceLocalId);
             const smsMsg = buildSmsMessage(SMS_TEMPLATES.PAYMENT_SUCCESS, {
                 tenantName:  tenant.name,
                 amountPaid:  formatCurrency(invoice.amountPaid),
                 propertyUnit: `${property.name} ${tenant.unitNumber || ""}`.trim(),
                 agentName:    company?.name  || user.name,
+                ...(shortLink ? { link: shortLink, maxExtraTokens: "0" } : {}),
             });
             const smsSent = await trySmsOnly(tenant.phone, smsMsg, invoice.userId);
             if (!smsSent) {
@@ -855,11 +927,13 @@ async function sendPaymentSuccessNotification(
             return false;
         }
 
+        const shortLink = await getInvoiceShortLink(invoice, invoiceLocalId);
         const smsMsg = buildSmsMessage(SMS_TEMPLATES.PAYMENT_SUCCESS, {
             tenantName:   tenant.name,
             amountPaid:   formatCurrency(invoice.amountPaid),
             propertyUnit: `${property.name} ${tenant.unitNumber || ""}`.trim(),
             agentName:    company?.name  || user.name,
+            ...(shortLink ? { link: shortLink } : {}),
         });
 
         const processedUrl  = processFirebaseUrlForWhatsApp(invoice.pdfUrl);
@@ -905,11 +979,13 @@ async function sendOverdueNotification(
         if (!consentCheck.hasConsent) {
             const daysOverdue      = getDaysOverdue(invoice.dueDate);
             const outstandingAmount = invoice.totalAmount - invoice.amountPaid;
+            const shortLink = await getInvoiceShortLink(invoice, invoiceLocalId);
             const smsMsg = buildSmsMessage(SMS_TEMPLATES.OVERDUE, {
                 tenantName:        tenant.name,
                 outstandingAmount: formatCurrency(outstandingAmount),
                 daysOverdue:       daysOverdue.toString(),
                 propertyName:      property.name,
+                ...(shortLink ? { link: shortLink, maxExtraTokens: "0" } : {}),
             });
             const smsSent = await trySmsOnly(tenant.phone, smsMsg, invoice.userId);
             if (!smsSent) {
@@ -926,11 +1002,13 @@ async function sendOverdueNotification(
         const daysOverdue       = getDaysOverdue(invoice.dueDate);
         const outstandingAmount = invoice.totalAmount - invoice.amountPaid;
 
+        const shortLink = await getInvoiceShortLink(invoice, invoiceLocalId);
         const smsMsg = buildSmsMessage(SMS_TEMPLATES.OVERDUE, {
             tenantName:        tenant.name,
             outstandingAmount: formatCurrency(outstandingAmount),
             daysOverdue:       daysOverdue.toString(),
             propertyName:      property.name,
+            ...(shortLink ? { link: shortLink } : {}),
         });
 
         const processedUrl  = processFirebaseUrlForWhatsApp(invoice.pdfUrl);
@@ -2562,6 +2640,58 @@ function isFlagsOnlySelfTrigger(before: any, after: any): boolean {
 }
 
 // NEW: Consent handler function
+// Short invoice link redirect: https://plot.samuhia.co.ke/i/<code> -> the invoice PDF.
+// Served through the Hosting rewrite "/i/**" (see firebase.json).
+export const invoiceLink = onRequest({
+    timeoutSeconds: 15,
+    memory: '256MiB',
+    // Hosting rewrites cannot target africa-south1, so this one function lives in a supported region
+    region: 'europe-west1',
+    invoker: 'public'
+}, async (req, res) => {
+    res.set("X-Robots-Tag", "noindex, nofollow");
+    res.set("Referrer-Policy", "no-referrer");
+    res.set("Cache-Control", "no-store");
+
+    if (req.method !== "GET" && req.method !== "HEAD") {
+        res.status(405).type("text/plain").send("Method not allowed");
+        return;
+    }
+    const code = parseShortCode(req.path);
+    if (!code) {
+        res.status(404).type("text/plain").send("Link not found.");
+        return;
+    }
+    try {
+        const ref = db.collection("shortLinks").doc(code);
+        const snap = await ref.get();
+        if (!snap.exists) {
+            res.status(404).type("text/plain").send("Link not found or expired.");
+            return;
+        }
+        const data = snap.data() || {};
+        let target: unknown = data.url;
+        // Prefer the invoice's current PDF (it is regenerated e.g. when the invoice is paid)
+        const inv = await db.collection("users").doc(String(data.userId))
+            .collection("invoices").doc(String(data.invoiceId)).get();
+        const live = inv.data()?.pdfUrl;
+        if (isAllowedRedirectTarget(live)) target = live;
+
+        if (!isAllowedRedirectTarget(target)) {
+            res.status(404).type("text/plain").send("Link not found or expired.");
+            return;
+        }
+        if (req.method === "GET") {
+            await ref.update({ clicks: FieldValue.increment(1), lastClickAt: FieldValue.serverTimestamp() })
+                .catch(() => undefined);
+        }
+        res.redirect(302, target);
+    } catch (error) {
+        console.error("invoiceLink error:", error);
+        res.status(500).type("text/plain").send("Something went wrong. Please try again.");
+    }
+});
+
 export const handleConsent = onRequest({
     timeoutSeconds: 30,
     memory: '256MiB',

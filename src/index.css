@@ -330,6 +330,17 @@
   .ui-page-title {
     @apply text-2xl font-bold tracking-tight text-ink lg:text-3xl;
   }
+  /* Sticky section header: pinned under the fixed status bar, bleeds to the content edges */
+  .ui-page-header {
+    @apply sticky z-30 -mx-4 -mt-6 mb-4 flex items-center justify-between gap-3 border-b border-line bg-surface/90 px-4 py-2.5 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-10 lg:-mt-8 lg:px-10;
+    top: calc(3.5rem + env(safe-area-inset-top, 0px));
+  }
+  @media (min-width: 640px) {
+    .ui-page-header { top: calc(2rem + env(safe-area-inset-top, 0px)); }
+  }
+  @media (min-width: 768px) {
+    .ui-page-header { top: calc(var(--topbar-height) + env(safe-area-inset-top, 0px)); }
+  }
   .ui-page-subtitle {
     @apply mt-1 text-sm text-ink-subtle lg:text-base;
   }

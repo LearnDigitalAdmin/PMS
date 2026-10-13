@@ -30,7 +30,7 @@ const MarketingNav: React.FC<MarketingNavProps> = ({ onGetStarted, onSignIn }) =
             />
             <div className="flex flex-col leading-none">
               <span className="text-white font-bold text-lg">Plot Yangu</span>
-              <span className="text-blue-200/70 text-[11px]">by Cogvana</span>
+              <span className="text-blue-200/70 text-[11px]">by Samuhia</span>
             </div>
           </div>
 

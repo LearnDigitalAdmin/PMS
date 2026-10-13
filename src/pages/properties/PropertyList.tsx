@@ -1,3 +1,4 @@
+import PageHeader, { HeaderAction } from '../../components/ui/PageHeader';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Plus, 
@@ -635,16 +636,11 @@ const Properties: React.FC<PropertyListProps> = ({
 
   return (
     <div>
-      {/* Header */}
-      <div className="ui-card">
-        <div className="px-4 py-6 lg:px-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center">
-              <Home className="w-6 h-6 text-blue-600 dark:text-blue-400 mr-3" />
-              <h1 className="text-xl font-bold text-ink lg:text-2xl">{properties.length === 1 ? 'Property' : 'Properties'}</h1>
-            </div>
-            
-            <div className="flex items-center gap-2">
+      <PageHeader
+        title={properties.length === 1 ? 'Property' : 'Properties'}
+        icon={Home}
+        actions={
+          <>
               {/* View Toggle */}
               <div className="flex bg-surface-sunken rounded-lg p-1">
                 <button
@@ -679,9 +675,13 @@ const Properties: React.FC<PropertyListProps> = ({
               >
                 <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
               </button>
-            </div>
-          </div>
+            {canAddProperty && <HeaderAction icon={Plus} label="Add property" onClick={() => setShowAddModal(true)} variant="primary" showLabel />}
+          </>
+        }
+      />
 
+      <div className="ui-card">
+        <div className="px-4 py-4 lg:px-6">
           {/* Search - Full width on mobile */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-ink-faint w-4 h-4" />
@@ -757,17 +757,6 @@ const Properties: React.FC<PropertyListProps> = ({
             />
           </div>
         </div>
-      )}
-
-      {/* Floating Action Button */}
-      {canAddProperty && (
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="fixed bottom-6 right-6 w-14 h-14 bg-brand-600 hover:bg-brand-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center z-40 md:mb-0! md:bottom-8 md:right-8"
-          style={{ marginBottom: '60px' }}
-        >
-          <Plus className="w-6 h-6" />
-        </button>
       )}
 
       {/* Upgrade Notice for Free Users */}

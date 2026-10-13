@@ -1,4 +1,5 @@
 // AgentView.tsx - Agent Dashboard (Updated with Multiple Payment Modes)
+import PageHeader, { HeaderAction } from '../../components/ui/PageHeader';
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -457,50 +458,19 @@ const AgentView: React.FC = () => {
 
   return (
     <div>
-      <header className="ui-card">
-        <div className="mx-auto px-4 sm:px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-ink">Agent Dashboard</h1>
-              <p className="text-sm text-ink-muted mt-1">Welcome, {agentData?.name}</p>
-              {agentData?.tier && (
-                <span className="inline-block mt-1 px-2 py-1 text-xs font-semibold rounded-full bg-indigo-100 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-300">
-                  {agentData.tier.toUpperCase()} Tier
-                </span>
-              )}
-            </div>
-            <div className="flex items-center space-x-2 sm:space-x-3">
-              <button
-                onClick={() => setShowTerminal(!showTerminal)}
-                className="flex items-center space-x-2 px-3 sm:px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm"
-              >
-                <CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span className="hidden sm:inline">Terminal</span>
-              </button>
-              <button
-                onClick={() => setShowPaymentSettings(!showPaymentSettings)}
-                className="flex items-center space-x-2 px-3 sm:px-4 py-2 text-ink-soft hover:bg-surface-sunken rounded-lg transition-colors"
-              >
-                <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
-              <button
-                onClick={handleHelp}
-                className="hidden sm:flex items-center space-x-2 px-4 py-2 text-ink-soft hover:bg-surface-sunken rounded-lg transition-colors"
-              >
-                <HelpCircle className="w-5 h-5" />
-                <span>Help</span>
-              </button>
-              {/* <button
-                onClick={handleSignOut}
-                className="flex items-center space-x-2 px-3 sm:px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span className="hidden sm:inline">Sign Out</span>
-              </button> */}
-            </div>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Agent Dashboard"
+        subtitle={<>Welcome, {agentData?.name}{agentData?.tier ? ` · ${agentData.tier.toUpperCase()} Tier` : ''}</>}
+        icon={CreditCard}
+        actions={
+          <>
+            <HeaderAction icon={CreditCard} label="Terminal" onClick={() => setShowTerminal(!showTerminal)} variant="primary" showLabel />
+            <HeaderAction icon={Settings} label="Payment settings" onClick={() => setShowPaymentSettings(!showPaymentSettings)} />
+            <span className="hidden sm:inline-flex"><HeaderAction icon={HelpCircle} label="Help" onClick={handleHelp} showLabel /></span>
+          </>
+        }
+      />
+
 
       <main className="mx-auto px-4 sm:px-6 lg:px-0 py-4 sm:py-8">
         {showTerminal && (

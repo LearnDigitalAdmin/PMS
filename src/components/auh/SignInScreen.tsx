@@ -269,7 +269,7 @@ const SignInScreen: React.FC<SignInScreenProps> = ({ onSwitchToSignUp }) => {
                 </button>
               </p>
               <p className="text-red-600 text-sm mt-2">
-                Powered by: SMB KENYA LTD and Cogvana Technologies
+                Powered by: Samuhia
               </p>
             </div>
           </div>

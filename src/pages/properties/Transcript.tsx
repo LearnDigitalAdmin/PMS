@@ -132,7 +132,7 @@ const Transcript: React.FC<TranscriptProps> = ({
       const result = await reportsPDFService.generateAndSaveTranscriptPDF(transcript, {
         customBranding: {
           companyName: 'PLOT YANGU',
-          contactInfo: 'SMB KENYA LTD | +254791286165'
+          contactInfo: 'PLOT YANGU | +254791286165'
         }
       });
 
@@ -329,7 +329,7 @@ const Transcript: React.FC<TranscriptProps> = ({
           {
             customBranding: {
               companyName: 'PLOT YANGU',
-              contactInfo: 'SMB KENYA LTD | +254791286165'
+              contactInfo: 'PLOT YANGU | +254791286165'
             }
           }
         );
@@ -341,7 +341,7 @@ const Transcript: React.FC<TranscriptProps> = ({
           {
             customBranding: {
               companyName: 'PLOT YANGU',
-              contactInfo: 'SMB KENYA LTD | +254791286165'
+              contactInfo: 'PLOT YANGU | +254791286165'
             }
           }
         );

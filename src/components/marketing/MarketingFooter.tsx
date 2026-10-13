@@ -28,9 +28,8 @@ const MarketingFooter: React.FC = () => {
           <p className="text-blue-100/60 text-sm">
             A product of{' '}
             <a href={CONTACT.website} target="_blank" rel="noopener noreferrer" className="underline hover:text-white">
-              Cogvana Technologies
-            </a>{' '}
-            (operated by SMB Kenya Ltd).
+              Samuhia
+            </a>.
           </p>
         </div>
 
@@ -46,7 +45,7 @@ const MarketingFooter: React.FC = () => {
           ))}
         </nav>
 
-        <p className="text-blue-100/50 text-xs">&copy; {year} Cogvana Technologies. All rights reserved.</p>
+        <p className="text-blue-100/50 text-xs">&copy; {year} Samuhia. All rights reserved.</p>
       </div>
     </footer>
   );

@@ -144,7 +144,7 @@ const Sheet: React.FC<SheetProps> = ({
       const result = await reportsPDFService.generateAndSaveRentRecordPDF(rentRecord, {
         customBranding: {
           companyName: 'PLOT YANGU',
-          contactInfo: 'SMB KENYA LTD | +254791286165'
+          contactInfo: 'PLOT YANGU | +254791286165'
         }
       });
 
@@ -275,7 +275,7 @@ const Sheet: React.FC<SheetProps> = ({
           {
             customBranding: {
               companyName: 'PLOT YANGU',
-              contactInfo: 'SMB KENYA LTD | +254791286165'
+              contactInfo: 'PLOT YANGU | +254791286165'
             }
           }
         );
@@ -287,7 +287,7 @@ const Sheet: React.FC<SheetProps> = ({
           {
             customBranding: {
               companyName: 'PLOT YANGU',
-              contactInfo: 'SMB KENYA LTD | +254791286165'
+              contactInfo: 'PLOT YANGU | +254791286165'
             }
           }
         );
