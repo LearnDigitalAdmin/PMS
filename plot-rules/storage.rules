@@ -65,8 +65,12 @@ service firebase.storage {
                  || (signedIn() && request.auth.uid == folder);
       allow list: if false;
 
+      // `resource == null` = the object does not exist yet, so an existing
+      // customer file can never be replaced (the emulator test showed that
+      // without this check an overwrite passes through the create rule).
       allow create: if (
-          file.matches('[0-9]+_.*')
+          resource == null
+          && file.matches('[0-9]+_.*')
           && maxBytes(10 * 1024 * 1024)
           && request.resource.contentType in [
                'application/pdf',
@@ -106,7 +110,7 @@ service firebase.storage {
     match /products/{userId}/{file} {
       allow get: if signedIn();
       allow list: if false;
-      allow create: if signedIn() && maxBytes(20 * 1024 * 1024);
+      allow create: if signedIn() && resource == null && maxBytes(20 * 1024 * 1024);
       allow update: if false;
       allow delete: if signedIn();
     }
@@ -120,7 +124,7 @@ service firebase.storage {
     match /passport-photos/{userId}/{file} {
       allow get, delete: if signedIn();
       allow list: if false;
-      allow create: if signedIn() && maxBytes(25 * 1024 * 1024);
+      allow create: if signedIn() && resource == null && maxBytes(25 * 1024 * 1024);
       allow update: if false;
     }
 
@@ -131,7 +135,7 @@ service firebase.storage {
     match /users/{uid}/conversions/{jobId}/images/{file} {
       allow get, delete: if signedIn() && request.auth.uid == uid;
       allow list: if false;
-      allow create: if signedIn() && request.auth.uid == uid && maxBytes(25 * 1024 * 1024);
+      allow create: if signedIn() && request.auth.uid == uid && resource == null && maxBytes(25 * 1024 * 1024);
       allow update: if false;
     }
 
@@ -149,13 +153,15 @@ service firebase.storage {
     match /invoices/{assetId}/{file} {
       allow get: if signedIn();
       allow list: if false;
-      allow create: if signedIn() && maxBytes(10 * 1024 * 1024);
+      allow create: if signedIn() && maxBytes(10 * 1024 * 1024)
+                    && (resource == null || isLandlordFolder(assetId));
       allow update, delete: if isLandlordFolder(assetId);
     }
     match /invoices/{assetId}/{sub}/{file} {
       allow get: if signedIn();
       allow list: if false;
-      allow create: if signedIn() && maxBytes(10 * 1024 * 1024);
+      allow create: if signedIn() && maxBytes(10 * 1024 * 1024)
+                    && (resource == null || isLandlordFolder(assetId));
       allow update, delete: if isLandlordFolder(assetId);
     }
 
