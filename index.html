@@ -300,18 +300,15 @@
       body {
         margin: 0;
         padding: 0;
-        overflow-x: hidden;
+        overflow-x: clip;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
       }
       
-      /* Safe area insets for notched devices */
-      body {
-        padding-top: env(safe-area-inset-top);
-        padding-bottom: env(safe-area-inset-bottom);
-        padding-left: env(safe-area-inset-left);
-        padding-right: env(safe-area-inset-right);
-      }
+      /* Safe-area insets are applied by the fixed status bar / bottom nav
+         themselves. Padding the body as well made the document taller than
+         the viewport (min-height + padding), so the page scrolled even when
+         it should not, and the insets were counted twice. */
     </style>
   </head>
   <body>

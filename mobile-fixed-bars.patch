@@ -1,0 +1,118 @@
+--- a/index.html	2026-10-14 16:20:48.595852108 +0300
++++ b/index.html	2026-10-14 16:20:48.899890980 +0300
+@@ -300,18 +300,15 @@
+       body {
+         margin: 0;
+         padding: 0;
+-        overflow-x: hidden;
++        overflow-x: clip;
+         -webkit-font-smoothing: antialiased;
+         -moz-osx-font-smoothing: grayscale;
+       }
+       
+-      /* Safe area insets for notched devices */
+-      body {
+-        padding-top: env(safe-area-inset-top);
+-        padding-bottom: env(safe-area-inset-bottom);
+-        padding-left: env(safe-area-inset-left);
+-        padding-right: env(safe-area-inset-right);
+-      }
++      /* Safe-area insets are applied by the fixed status bar / bottom nav
++         themselves. Padding the body as well made the document taller than
++         the viewport (min-height + padding), so the page scrolled even when
++         it should not, and the insets were counted twice. */
+     </style>
+   </head>
+   <body>
+--- a/src/index.css	2026-10-14 16:20:48.600413819 +0300
++++ b/src/index.css	2026-10-14 16:20:48.898896732 +0300
+@@ -156,11 +156,17 @@
+     text-size-adjust: 100%;
+     background-color: var(--c-canvas-solid);
+     scroll-padding-top: calc(var(--topbar-height) + 1rem);
++    /* `clip` (unlike `hidden`) is honoured by iOS Safari / Android Chrome, so a
++       too-wide child can no longer widen the layout viewport and make the
++       fixed ribbon / header / bottom nav appear to drift with the page. */
++    overflow-x: clip;
++    overscroll-behavior-y: none;
+   }
+ 
+   body {
+     margin: 0;
+     min-height: 100vh;
++    min-height: 100dvh;
+     background-color: var(--c-canvas-solid);
+     color: var(--c-ink);
+     font-family: var(--font-sans);
+@@ -168,7 +174,7 @@
+     -moz-osx-font-smoothing: grayscale;
+     text-rendering: optimizeLegibility;
+     -webkit-tap-highlight-color: transparent;
+-    overflow-x: hidden;
++    overflow-x: clip;
+   }
+ 
+   /* Tailwind v4 changed the default border colour to `currentColor`, which
+@@ -266,7 +272,11 @@
+   .app-canvas {
+     background: var(--c-canvas);
+     background-color: var(--c-canvas-solid);
+-    background-attachment: fixed;
++  }
++  /* `background-attachment: fixed` is unreliable on mobile browsers and makes
++     fixed bars jitter / repaint while scrolling, so only use it on desktop. */
++  @media (min-width: 768px) {
++    .app-canvas { background-attachment: fixed; }
+   }
+ 
+   /* Cards ------------------------------------------------------------------ */
+--- a/src/pages/Dashboard.tsx	2026-10-14 16:20:48.602923213 +0300
++++ b/src/pages/Dashboard.tsx	2026-10-14 16:20:48.900433059 +0300
+@@ -142,8 +142,9 @@
+     if (buttonRef.current) {
+       const rect = buttonRef.current.getBoundingClientRect();
+       setDropdownPosition({
+-        top: rect.bottom + window.scrollY + 8,
+-        left: rect.left + window.scrollX,
++        // The overlay is `fixed`, so use viewport coordinates (no scroll offset)
++        top: rect.bottom + 8,
++        left: rect.left,
+         width: rect.width
+       });
+     }
+@@ -763,7 +764,7 @@
+       <TrialStatsBanner userId={userData?.id} />
+ 
+       {/* Filters: side by side on large screens */}
+-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
++      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6 [&>*]:min-w-0">
+       {/* Property Selector */}
+       <PropertySelector
+         properties={properties}
+@@ -780,7 +781,7 @@
+       </div>
+ 
+       {/* Enhanced Quick Stats Cards Grid */}
+-      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4 xl:gap-6">
++      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4 xl:gap-6 [&>*]:min-w-0">
+         <StatsCard
+           title="Properties"
+           value={properties.length || 0}
+@@ -820,7 +821,7 @@
+       </div>
+ 
+       {/* Charts Row */}
+-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
++      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 [&>*]:min-w-0">
+         {/* Revenue Chart - Takes 2 columns on large screens */}
+         <div className="xl:col-span-2 [&>*]:h-full">
+           <RevenueChart data={monthlyStats} loading={loading} />
+@@ -837,7 +838,7 @@
+       </div>
+ 
+       {/* Collection, occupancy and performance metrics */}
+-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
++      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2 [&>*]:min-w-0">
+         {/* Collection Rate Card */}
+       <div className="ui-card p-6">
+         <div className="flex items-center justify-between mb-6">

@@ -156,11 +156,17 @@
     text-size-adjust: 100%;
     background-color: var(--c-canvas-solid);
     scroll-padding-top: calc(var(--topbar-height) + 1rem);
+    /* `clip` (unlike `hidden`) is honoured by iOS Safari / Android Chrome, so a
+       too-wide child can no longer widen the layout viewport and make the
+       fixed ribbon / header / bottom nav appear to drift with the page. */
+    overflow-x: clip;
+    overscroll-behavior-y: none;
   }
 
   body {
     margin: 0;
     min-height: 100vh;
+    min-height: 100dvh;
     background-color: var(--c-canvas-solid);
     color: var(--c-ink);
     font-family: var(--font-sans);
@@ -168,7 +174,7 @@
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
     -webkit-tap-highlight-color: transparent;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
 
   /* Tailwind v4 changed the default border colour to `currentColor`, which
@@ -266,7 +272,11 @@
   .app-canvas {
     background: var(--c-canvas);
     background-color: var(--c-canvas-solid);
-    background-attachment: fixed;
+  }
+  /* `background-attachment: fixed` is unreliable on mobile browsers and makes
+     fixed bars jitter / repaint while scrolling, so only use it on desktop. */
+  @media (min-width: 768px) {
+    .app-canvas { background-attachment: fixed; }
   }
 
   /* Cards ------------------------------------------------------------------ */

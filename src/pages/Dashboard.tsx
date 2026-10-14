@@ -142,8 +142,9 @@ const PropertySelector: React.FC<{
     if (buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
       setDropdownPosition({
-        top: rect.bottom + window.scrollY + 8,
-        left: rect.left + window.scrollX,
+        // The overlay is `fixed`, so use viewport coordinates (no scroll offset)
+        top: rect.bottom + 8,
+        left: rect.left,
         width: rect.width
       });
     }
@@ -763,7 +764,7 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
       <TrialStatsBanner userId={userData?.id} />
 
       {/* Filters: side by side on large screens */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6 [&>*]:min-w-0">
       {/* Property Selector */}
       <PropertySelector
         properties={properties}
@@ -780,7 +781,7 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
       </div>
 
       {/* Enhanced Quick Stats Cards Grid */}
-      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4 xl:gap-6">
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4 xl:gap-6 [&>*]:min-w-0">
         <StatsCard
           title="Properties"
           value={properties.length || 0}
@@ -820,7 +821,7 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 [&>*]:min-w-0">
         {/* Revenue Chart - Takes 2 columns on large screens */}
         <div className="xl:col-span-2 [&>*]:h-full">
           <RevenueChart data={monthlyStats} loading={loading} />
@@ -837,7 +838,7 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
       </div>
 
       {/* Collection, occupancy and performance metrics */}
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2 [&>*]:min-w-0">
         {/* Collection Rate Card */}
       <div className="ui-card p-6">
         <div className="flex items-center justify-between mb-6">
