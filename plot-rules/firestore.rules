@@ -1,0 +1,465 @@
+rules_version = '2';
+
+// =============================================================================
+//  firestore.rules  —  project plot-9fd6e, (default) database
+//  Shared by three apps:  CYBER (agents / cyber operators + desk),
+//                         PMS   (landlord app),
+//                         PAY   (landlord / tenant payments portal).
+//
+//  DESIGN RULES
+//   1. Cloud Functions use the Admin SDK and BYPASS these rules. Anything a
+//      server writes is closed to browsers (allow write: if false).
+//   2. Anything not matched below is DENIED (Firestore default). This is what
+//      "any other app besides these three is blocked" means: no catch-all allow.
+//   3. Where the apps, as currently built, need broader access than is ideal,
+//      the rule is left only as open as the app needs and a
+//      "GAP / NEXT STEP" comment says how to close it.
+//   4. Identity model (verified in the code):
+//        users/{id}    landlord. {id} = national ID string. For self sign-ups
+//                      the Firebase Auth uid == {id}. Fallbacks: the doc field
+//                      firebaseAuthUid, and PAY's custom claims
+//                      (role == 'landlord', agentId == {id}).
+//        agents/{uid}  cyber operator. {uid} = Firebase uid, field pId = COG-xxxx.
+//        tenants/{uid} tenant, phone-auth uid.
+//        An operator "manages" a landlord when users/{id}.cyberId == agents/{uid}.pId.
+//
+//  ROLLBACK: Firebase keeps previous rule versions. Console > Firestore > Rules
+//  > history (or `firebase deploy --only firestore:rules` with the old file).
+// =============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Caller is a cyber operator (has an agents/{uid} document).
+    function isAgent() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/agents/$(request.auth.uid));
+    }
+
+    // The operator's own pId (COG-xxxx). Never equals '' so an empty cyberId
+    // can never match.
+    function myPid() {
+      return get(/databases/$(database)/documents/agents/$(request.auth.uid)).data.get('pId', '__none__');
+    }
+
+    // Caller is the landlord who owns users/{userId}.
+    // Cheapest check first; later branches only evaluate if earlier ones fail.
+    function isLandlord(userId) {
+      return signedIn() && (
+        request.auth.uid == userId
+        || (request.auth.token.get('role', '') == 'landlord'
+            && request.auth.token.get('agentId', '') == userId)
+        || (exists(/databases/$(database)/documents/users/$(userId))
+            && get(/databases/$(database)/documents/users/$(userId)).data.get('firebaseAuthUid', '') == request.auth.uid)
+      );
+    }
+
+    // Caller is an operator who manages landlord {userId}.
+    function managesAsset(userId) {
+      return isAgent()
+        && exists(/databases/$(database)/documents/users/$(userId))
+        && get(/databases/$(database)/documents/users/$(userId)).data.get('cyberId', '') == myPid();
+    }
+
+    // -------------------------------------------------------------------------
+    // users/{userId}  — landlord account (PMS / PAY). MOST SENSITIVE COLLECTION.
+    // Holds passwordHash and every entitlement field (tier, tokens, expiry ...).
+    // -------------------------------------------------------------------------
+
+    // Fields a landlord can never change from a browser. The clients only READ
+    // these (verified: useSubscriptionInfo, useSmsTokens, useTrialStats).
+    // tier/type/isPremium/storage may be changed only DOWNWARD (the PMS app may
+    // downgrade a lapsed account locally and sync that).
+    // TROUBLESHOOTING: if a legitimate sync ever fails with permission-denied on
+    // users/{id}, temporarily make this function `return true;`, redeploy, and
+    // look at which field the client is changing.
+    function entitlementsUntouched() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return !changed.hasAny([
+          'tokens', 'credits', 'subscriptionExpiry', 'isTrial', 'trialEndedAt',
+          'storageType', 'storageCapBytes', 'landlordCode',
+          'cyberId', 'firebaseAuthUid', 'creationType'
+        ])
+        && (!changed.hasAny(['tier'])      || request.resource.data.tier == 'free')
+        && (!changed.hasAny(['type'])      || request.resource.data.type == 'free')
+        && (!changed.hasAny(['isPremium'])  || request.resource.data.isPremium == false)
+        && (!changed.hasAny(['storage'])    || request.resource.data.storage == false);
+    }
+
+    // A client-created users doc must start as a free account with no credits.
+    // (Server-side signup via createUserWithFirebaseAuth is unaffected.)
+    function startsAsFree() {
+      return request.resource.data.get('tier', 'free') == 'free'
+        && request.resource.data.get('type', 'free') == 'free'
+        && request.resource.data.get('isPremium', false) == false
+        && request.resource.data.get('storage', false) == false
+        && request.resource.data.get('tokens', 0) == 0
+        && request.resource.data.get('credits', 0) == 0
+        && !('subscriptionExpiry' in request.resource.data)
+        && !('landlordCode' in request.resource.data)
+        && !('cyberId' in request.resource.data);
+    }
+
+    match /users/{userId} {
+      // GAP: any cyber operator can read ANY landlord doc (needed by the walk-in
+      //      rent flow: Terminal.tsx / PaymentsSuccess.tsx read users/{assetId}).
+      //      That doc contains passwordHash. Rules cannot hide one field.
+      // NEXT STEPS: (a) stop writing passwordHash to Firestore (PMS
+      //      FirebaseSync.uploadUserData / AuthWrapper offline login) and delete
+      //      the field from existing docs; (b) move landlord display info
+      //      (name, company, phone) to a separate public doc, e.g.
+      //      landlordProfiles/{id}, then restrict this get to isLandlord() only.
+      allow get: if isLandlord(userId) || isAgent();
+
+      // list is used by (1) PMS login lookup `where email == <own email>` and
+      // (2) CYBER operator asset list `where cyberId == <own pId>`.
+      allow list: if signedIn() && (
+        resource.data.email == request.auth.token.email
+        || (isAgent() && resource.data.cyberId == myPid())
+      );
+
+      allow create: if signedIn() && request.auth.uid == userId && startsAsFree();
+      allow update: if isLandlord(userId) && entitlementsUntouched();
+      allow delete: if false;
+
+      // ---- users/{userId}/properties/{propertyId}[/units/{unitId}] ----------
+      match /properties/{propertyId} {
+        allow read: if isLandlord(userId) || isAgent();
+        allow create, update, delete: if isLandlord(userId) || managesAsset(userId);
+
+        match /units/{unitId} {
+          allow read: if isLandlord(userId) || isAgent();
+          allow create, update, delete: if isLandlord(userId) || managesAsset(userId);
+        }
+      }
+
+      // ---- users/{userId}/tenants/{tenantId} --------------------------------
+      // READ is granted by the collection-group rule further down.
+      match /tenants/{tenantId} {
+        allow create, delete: if isLandlord(userId) || managesAsset(userId);
+        allow update: if isLandlord(userId) || managesAsset(userId)
+          // Walk-in rent payment: ANY operator may stamp the last-payment info
+          // (CYBER PaymentsSuccess.tsx). Nothing else.
+          || (isAgent()
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['lastPaymentDate', 'lastPaymentAmount', 'updatedAt']));
+      }
+
+      // ---- users/{userId}/invoices/{invoiceId}[/payments/{paymentId}] --------
+      // READ is granted by the collection-group rule further down.
+      match /invoices/{invoiceId} {
+        allow create, delete: if isLandlord(userId) || managesAsset(userId);
+        allow update: if isLandlord(userId) || managesAsset(userId)
+          // Walk-in rent payment: ANY operator may mark an invoice paid with
+          // exactly these fields (CYBER PaymentsSuccess.tsx).
+          // GAP: not verified against a real transaction. NEXT STEP: move the
+          //      "mark invoice paid" step into the Paystack webhook (PAY
+          //      functions, already server-side) and delete this branch.
+          || (isAgent()
+              && request.resource.data.isPaid == true
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['isPaid', 'amountPaid', 'arrears', 'paidDate',
+                             'pdfUrl', 'paymentReference', 'updatedAt']));
+
+        match /payments/{paymentId} {
+          allow read: if isLandlord(userId) || isAgent();
+          allow create, update, delete: if isLandlord(userId) || managesAsset(userId);
+        }
+      }
+
+      // ---- server-written, owner may read ----------------------------------
+      match /topup-history/{ref} {
+        allow read: if isLandlord(userId);
+        allow write: if false;
+      }
+      // Any other users/{id}/* subcollection (deskSmsSchedules, ...) is
+      // server-only and falls through to default-deny.
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection-group reads  (tenants / invoices at ANY depth)
+    // Used by: CYBER Terminal.tsx (operator rent lookup across all landlords)
+    //          PAY / PMS tenant portal (find my invoices by national ID).
+    // Collection-group queries can only be granted by a data-independent rule.
+    //
+    // GAP: any signed-in user (including a tenant who signed up by phone) can
+    //      read every landlord's tenants and invoices. This is the biggest
+    //      remaining exposure. NEXT STEPS: replace both client lookups with a
+    //      callable Cloud Function that takes the national ID (tenant) or the
+    //      tenant ID / phone (operator), verifies the caller server-side, and
+    //      returns only the matching rows. Then change these two rules to
+    //      `allow read: if false;` and keep per-user access via isLandlord().
+    // SIDE EFFECT: these wildcard rules also match the top-level /tenants/{uid}
+    //      and /invoices/{id} collections, so those become readable to any
+    //      signed-in user as well. /invoices (top-level) is written by PAY
+    //      functions only; /tenants holds tenant account docs (phone, ID number).
+    // -------------------------------------------------------------------------
+    match /{path=**}/tenants/{tenantId} {
+      allow read: if signedIn();
+    }
+    match /{path=**}/invoices/{invoiceId} {
+      allow read: if signedIn();
+    }
+
+    // -------------------------------------------------------------------------
+    // tenants/{uid}  — tenant account (phone auth). Create once, never edited
+    // from the client (PAY/PMS Firebase.tsx createTenant). Read: own doc here,
+    // others via the collection-group rule above.
+    // -------------------------------------------------------------------------
+    match /tenants/{tenantUid} {
+      allow get: if signedIn() && request.auth.uid == tenantUid;
+      allow create: if signedIn()
+        && request.auth.uid == tenantUid
+        && request.resource.data.id == tenantUid
+        && request.resource.data.role == 'tenant';
+      allow update, delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // agents/{agentId}  — cyber operator profile
+    //
+    // GAP (HIGH): the public /upload page (unauthenticated customers) queries
+    //      agents by pId and the embedded Services component lists ALL agents
+    //      and their products. So agents MUST be publicly readable today. The
+    //      doc also stores KYC download URLs (uploads.idUrl / kraUrl /
+    //      passportUrl / shopUrl) — anyone who reads the doc holds working
+    //      links to those documents (download tokens bypass Storage rules).
+    // NEXT STEPS: (1) write KYC URLs to a private doc, e.g.
+    //      agentPrivate/{uid}, and delete the `uploads` map from agents/{uid};
+    //      (2) revoke/regenerate download tokens of existing KYC files
+    //      (Console > Storage > file > Access token > revoke);
+    //      (3) make the public pages read a trimmed doc,
+    //      e.g. agentPublic/{pId} {name, shopName, phone, address, uid};
+    //      (4) then change `allow read: if true` to owner / signed-in only.
+    // The client writes this doc ONCE at signup and never updates it
+    // (SignupPage.tsx). Everything else is written by Cloud Functions.
+    // -------------------------------------------------------------------------
+    match /agents/{agentId} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.auth.uid == agentId
+        && request.resource.data.uid == agentId
+        // server-owned money / payout fields can never be set by the client
+        && !request.resource.data.keys().hasAny([
+             'paymentInfo', 'totalIncome', 'totalSubscriptions', 'lastIncomeDate',
+             'lastIncomeAmount', 'totalMovieSubscriptions', 'totalMovieRevenue',
+             'lastMovieSubscriptionDate', 'lastMovieSubscriptionAmount'
+           ]);
+      // GAP: SignupPage.tsx sends isVerified: true from the browser, so it
+      //      cannot be blocked here. NEXT STEP: create agent docs in a callable
+      //      (isVerified decided server-side), then add
+      //      `request.resource.data.get('isVerified', false) == false` above.
+      allow update, delete: if false;
+
+      // Customer file-print requests. ANYONE (unauthenticated) may create a
+      // well-formed request for this agent; only the agent reads / updates /
+      // deletes. Keys cover both writers: public Uploads.tsx and the operator's
+      // PaymentsSuccess.tsx.
+      match /uploads/{uploadId} {
+        allow create: if request.resource.data.keys().hasOnly([
+              'name', 'phone', 'type', 'notes', 'files', 'status', 'date', 'time',
+              'createdAt', 'cyberId', 'cyberName',
+              'service', 'invoiceId', 'amount', 'reference'
+            ])
+          && request.resource.data.status == 'pending'
+          && request.resource.data.get('cyberId', agentId) == agentId
+          && request.resource.data.name is string
+          && request.resource.data.name.size() <= 200
+          && request.resource.data.phone is string
+          && request.resource.data.phone.size() <= 60
+          && request.resource.data.files is list
+          && request.resource.data.files.size() <= 25
+          && request.resource.data.get('notes', '').size() <= 2000;
+        allow read, update, delete: if signedIn() && request.auth.uid == agentId;
+        // GAP: a public create can still be spammed. NEXT STEP: enable App
+        //      Check (reCAPTCHA) for Firestore/Storage, or route the public
+        //      upload through a callable with rate limiting.
+      }
+
+      // Products shown on the public marketplace; the agent manages them.
+      match /products/{productId} {
+        allow read: if true;
+        allow create, update, delete: if signedIn() && request.auth.uid == agentId;
+      }
+
+      // Earnings written by Cloud Functions; the agent may read their own.
+      match /cyber-income/{id}  { allow read: if signedIn() && request.auth.uid == agentId; allow write: if false; }
+      match /plot-income/{id}   { allow read: if signedIn() && request.auth.uid == agentId; allow write: if false; }
+      match /movies-income/{id} { allow read: if signedIn() && request.auth.uid == agentId; allow write: if false; }
+    }
+
+    // -------------------------------------------------------------------------
+    // cyber-transactions/{reference}  — written by chargeCustomer / Paystack
+    // webhook (server). The unauthenticated payer's page listens to ONE doc by
+    // its reference to see "paid / failed".
+    // GAP: reference = CYBER_{pId}_{timestamp} is guessable and the doc holds the
+    //      payer's phone. NEXT STEP: generate the reference with a random
+    //      suffix on the server (PAY functions chargeCustomer), or poll a
+    //      callable instead of reading the doc. Then require signedIn().
+    // -------------------------------------------------------------------------
+    match /cyber-transactions/{reference} {
+      allow get: if true;
+      allow list, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // transactions/{reference}  — all rent/SMS/subscription payments (server).
+    // Read by the landlord (where agentId == self) and by the tenant portal
+    // (where userId == tenant id / get by reference).
+    // GAP: any signed-in user can read every transaction (payer phone, amount).
+    //      NEXT STEP: serve landlord history by `resource.data.agentId ==
+    //      request.auth.uid` once every landlord has uid == users doc id (or the
+    //      agentId claim), and serve tenants through a callable.
+    // -------------------------------------------------------------------------
+    match /transactions/{reference} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // payments/{tenantId}/billingMonths/{month} — server-written, read by tenants
+    // GAP: same as transactions (read open to any signed-in user).
+    match /payments/{tenantId}/billingMonths/{month} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // screening/{tenantNationalId} and screening_quick_view/{id}
+    // Cross-landlord tenant screening written by PMS and CYBER, read by CYBER,
+    // PMS and the tenant portal. Keyed by the tenant's national ID, so no
+    // per-user ownership exists to check. sourceUserId is a number in PMS and a
+    // string in CYBER, so it cannot be compared to the uid reliably.
+    // GAP: any signed-in user can read and overwrite any screening record.
+    // NEXT STEPS: store screening under users/{sourceUserId}/screening/{id} (owner
+    //      scoped) or write it from a callable, then drop write here.
+    // Minimal protection kept: signed-in only, no deletes.
+    // -------------------------------------------------------------------------
+    match /screening/{id} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.resource.data.keys().hasAny(['sourceUserId']);
+      allow delete: if false;
+    }
+    match /screening_quick_view/{id} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.resource.data.keys().hasAny(['sourceUserId']);
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // conversions/{jobId}  — image-to-PDF jobs. Created and read by the operator
+    // (userId == their uid, conversionService.ts); the worker updates via Admin.
+    // -------------------------------------------------------------------------
+    match /conversions/{jobId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // payment_errors — write-only error log from the operator client
+    match /payment_errors/{id} {
+      allow create: if signedIn();
+      allow read, update, delete: if false;
+    }
+
+    // Public reference data
+    match /plans/{planId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /forms/{formId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // MyChama connector (from PAY docs/mychama/firestore.rules.fragment)
+    // -------------------------------------------------------------------------
+    match /chamaSnapshots/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+    match /chamaLinks/{uid}/links/{linkId} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+    match /chamaLinkChallenges/{id} { allow read, write: if false; }
+    match /chamaSyncState/{uid}     { allow read, write: if false; }
+
+    // -------------------------------------------------------------------------
+    // Desk (from CYBER desk.rules.fragment). agentId == Firebase Auth uid.
+    // Top-desk privileges are enforced in server code, not here.
+    // -------------------------------------------------------------------------
+    match /desk_agents/{id} {
+      allow read: if signedIn() && request.auth.uid == id;
+      allow write: if false;
+    }
+    match /desk_sessions/{id} {
+      allow read: if signedIn() && resource.data.agentId == request.auth.uid;
+      allow write: if false;
+    }
+    match /desk_tickets/{id} {
+      allow read: if signedIn() && resource.data.agentId == request.auth.uid;
+      allow write: if false;
+    }
+    match /desk_ledger/{id} {
+      allow read: if signedIn() && resource.data.agentId == request.auth.uid;
+      allow write: if false;
+    }
+    match /desk_rent_batches/{id} {
+      allow read: if signedIn() && resource.data.agentId == request.auth.uid;
+      allow write: if false;
+    }
+    match /desk_support/{id} {
+      allow read: if signedIn() && resource.data.agentId == request.auth.uid;
+      allow write: if false;
+    }
+    match /desk_config/{id}      { allow read, write: if false; }
+    match /desk_customers/{id}   { allow read, write: if false; }
+    match /desk_actionOtps/{id}  { allow read, write: if false; }
+    match /desk_topOtps/{id}     { allow read, write: if false; }
+    match /desk_audit/{id}       { allow read, write: if false; }
+    match /desk_events/{id}      { allow read, write: if false; }
+    match /desk_counters/{id}    { allow read, write: if false; }
+    match /desk_split_codes/{id} { allow read, write: if false; }
+    match /desk_requests/{id}    { allow read, write: if false; }
+    match /desk_docs/{id}        { allow read, write: if false; }
+
+    // -------------------------------------------------------------------------
+    // SERVER-ONLY collections (Admin SDK). No client in CYBER / PMS / PAY reads
+    // or writes these, so they are explicitly closed. This also documents what
+    // exists. (They would be denied by default anyway.)
+    // -------------------------------------------------------------------------
+    match /subscriptions/{id}            { allow read, write: if false; }
+    match /sms-topup-transactions/{id}   { allow read, write: if false; }
+    match /sms-sent-log/{id}             { allow read, write: if false; }
+    match /platform_stats/{id}           { allow read, write: if false; }
+    match /platform_revenue/{id}         { allow read, write: if false; }
+    match /report_charges/{id}           { allow read, write: if false; }
+    match /storagePurchases/{id}         { allow read, write: if false; }
+    match /paymentAccounts/{id}          { allow read, write: if false; }
+    match /splitCodes/{id}               { allow read, write: if false; }
+    match /notifications/{id}            { allow read, write: if false; }
+    match /whatsappAuditLog/{id}         { allow read, write: if false; }
+    match /attempts/{id}                 { allow read, write: if false; }   // OTP / rate limits
+    match /shortLinks/{id}               { allow read, write: if false; }
+    match /shortLinkIndex/{id}           { allow read, write: if false; }
+    match /allowed/{id}                  { allow read, write: if false; }
+    match /deskDelegateRequests/{id}     { allow read, write: if false; }
+    match /deskRequestQuota/{id}         { allow read, write: if false; }
+    match /shops/{id}                    { allow read, write: if false; }
+    match /bookings/{id}                 { allow read, write: if false; }
+    match /photographers/{id}            { allow read, write: if false; }
+
+    // No catch-all: every other path is denied by default.
+  }
+}

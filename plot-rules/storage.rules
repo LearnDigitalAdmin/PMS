@@ -1,0 +1,178 @@
+rules_version = '2';
+
+// =============================================================================
+//  storage.rules  —  default bucket of project plot-9fd6e
+//  Shared by CYBER, PMS and PAY. Cloud Functions use the Admin SDK and bypass
+//  these rules; anything not matched below is DENIED (no catch-all allow).
+//
+//  IMPORTANT FACT: a Firebase "download URL" carries a secret token and works
+//  WITHOUT passing these rules. So these rules protect the object paths, but a
+//  URL that was stored in a readable Firestore document (see the `agents` note
+//  in firestore.rules) keeps working until its token is revoked.
+//
+//  Real client paths (verified in the code):
+//   uploads/{agentUid}/{passport|id|kra|shop}        agent KYC, SignupPage.tsx
+//   uploads/{agentNationalId}/{timestamp}_{name}      PUBLIC customer files, Uploads.tsx
+//   products/{userId}/{timestamp}_{name}              marketplace images, snp.ts
+//   passport-photos/{userId}/{timestamp}-{name}       passport tool, firebaseStorage.ts
+//   users/{uid}/conversions/{jobId}/images/{file}     image-to-PDF, storageService.ts
+//   invoices/{landlordId}/{invoiceId}_{status}.pdf    PMS FirebaseSync.tsx
+//   invoices/{assetId}/{billingMonth}/{file}.pdf      CYBER PaymentsSuccess.tsx
+//  Server-only (Admin SDK): desk-docs, deskExports, passport-results, forms,
+//   and the server's own invoices/{assetId}/{tenantId}/... files.
+// =============================================================================
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function maxBytes(n) {
+      return request.resource.size <= n;
+    }
+
+    // A landlord writing to their own invoices folder. uid == id for self
+    // sign-ups; PAY accounts may instead carry the agentId custom claim.
+    function isLandlordFolder(id) {
+      return signedIn() && (
+        request.auth.uid == id
+        || request.auth.token.get('agentId', '') == id
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // uploads/{folder}/{file}  — TWO different things share this prefix
+    //  1) Agent KYC (ID, KRA, passport, shop photo). SENSITIVE.
+    //     {folder} == the agent's uid, file name is exactly one of 4 names.
+    //     Only that agent can create or read them.
+    //  2) Customer files sent to a cyber from the PUBLIC /upload page
+    //     (unauthenticated). {folder} is the agent's national ID number and the
+    //     file name is `<digits>_<safe-name>`. Anyone may create one (limited to
+    //     10 MB and the same document/image types the page allows). The page
+    //     calls getDownloadURL after uploading, so `get` is public for these;
+    //     `list` is not, so files cannot be enumerated.
+    // GAP: customer files are readable by anyone who knows the exact path
+    //      (national ID + timestamp + file name — not guessable in practice).
+    //      The agent's national ID is also part of the path.
+    // NEXT STEPS: serve public uploads through a callable that returns a signed
+    //      upload URL and uses an opaque folder id (not the national ID);
+    //      enable App Check on Storage to stop scripted abuse.
+    // -------------------------------------------------------------------------
+    match /uploads/{folder}/{file} {
+      allow get: if file.matches('[0-9]+_.*')
+                 || (signedIn() && request.auth.uid == folder);
+      allow list: if false;
+
+      allow create: if (
+          file.matches('[0-9]+_.*')
+          && maxBytes(10 * 1024 * 1024)
+          && request.resource.contentType in [
+               'application/pdf',
+               'image/png',
+               'image/jpeg',
+               'application/msword',
+               'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+               'application/vnd.ms-excel',
+               'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+               'application/vnd.ms-powerpoint',
+               'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+               'application/x-mspublisher'
+             ]
+        ) || (
+          signedIn()
+          && request.auth.uid == folder
+          && file in ['passport', 'id', 'kra', 'shop']
+          && maxBytes(20 * 1024 * 1024)
+        );
+
+      allow update: if false;
+
+      // Operators delete customer files after printing (Cyber.tsx). The folder
+      // is a national ID, not a uid, so ownership cannot be proven here.
+      // GAP: any signed-in user can delete a customer file. NEXT STEP: make the
+      //      folder the agent uid (or delete via callable), then require
+      //      request.auth.uid == folder.
+      allow delete: if signedIn() && file.matches('[0-9]+_.*');
+    }
+
+    // -------------------------------------------------------------------------
+    // products/{userId}/{file}  — marketplace images (agent uploads, deletes)
+    // GAP: {userId} is not verified against the caller. NEXT STEP: confirm
+    //      snp.ts always passes the Firebase uid, then require
+    //      request.auth.uid == userId.
+    // -------------------------------------------------------------------------
+    match /products/{userId}/{file} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() && maxBytes(20 * 1024 * 1024);
+      allow update: if false;
+      allow delete: if signedIn();
+    }
+
+    // -------------------------------------------------------------------------
+    // passport-photos/{userId}/{file} — passport tool uploads (deleted after use)
+    // GAP: the app passes user.id (not necessarily the uid), so ownership
+    //      cannot be enforced yet. NEXT STEP: switch the client to user.uid,
+    //      then require request.auth.uid == userId.
+    // -------------------------------------------------------------------------
+    match /passport-photos/{userId}/{file} {
+      allow get, delete: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() && maxBytes(25 * 1024 * 1024);
+      allow update: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // users/{uid}/conversions/{jobId}/images/{file}  — image-to-PDF inputs.
+    // The client passes its own Firebase uid (ImageToPdfModal: user.uid).
+    // -------------------------------------------------------------------------
+    match /users/{uid}/conversions/{jobId}/images/{file} {
+      allow get, delete: if signedIn() && request.auth.uid == uid;
+      allow list: if false;
+      allow create: if signedIn() && request.auth.uid == uid && maxBytes(25 * 1024 * 1024);
+      allow update: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // invoices/{assetId}/...  — invoice PDFs.
+    //  * PMS landlord:   invoices/{landlordId}/{invoiceId}_{status}.pdf
+    //                    (re-uploaded when status changes, so landlord may overwrite)
+    //  * CYBER operator: invoices/{assetId}/{billingMonth}/{file}.pdf for ANY
+    //                    landlord (walk-in rent payments), new unique name each time.
+    // The upload has no contentType in PMS (raw bytes), so only size is checked.
+    // GAP: any signed-in user can create a file under any landlord's folder.
+    // NEXT STEP: generate the PDF server-side in the payment webhook (PAY
+    //      functions) and remove client create here.
+    // -------------------------------------------------------------------------
+    match /invoices/{assetId}/{file} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() && maxBytes(10 * 1024 * 1024);
+      allow update, delete: if isLandlordFolder(assetId);
+    }
+    match /invoices/{assetId}/{sub}/{file} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() && maxBytes(10 * 1024 * 1024);
+      allow update, delete: if isLandlordFolder(assetId);
+    }
+
+    // -------------------------------------------------------------------------
+    // Desk registration documents — only via Cloud Functions (Admin SDK).
+    // (from CYBER desk.storage.rules.fragment)
+    // -------------------------------------------------------------------------
+    match /desk-docs/{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // Server-only paths (explicit, also denied by default): desk exports,
+    // passport results written by the passport function, generated forms.
+    match /deskExports/{allPaths=**}      { allow read, write: if false; }
+    match /passport-results/{allPaths=**} { allow read, write: if false; }
+    match /forms/{allPaths=**}            { allow read, write: if false; }
+
+    // No catch-all: every other path is denied by default.
+  }
+}
