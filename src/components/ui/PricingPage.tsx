@@ -4,6 +4,7 @@ import { Purchases, type PurchasesPackage } from '@revenuecat/purchases-capacito
 import { Capacitor } from '@capacitor/core';
 import { db } from '../../services/database/FirebaseSync';
 import { collection, getDocs } from 'firebase/firestore';
+import LegalLink from '../../pages/legal/LegalLink';
 import { initializeApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import SmsPurchaseModal from '../../pages/sms/SmsPurchaseModal';
@@ -282,7 +283,7 @@ const WebPaymentModal: React.FC<WebPaymentModalProps> = ({
           </button>
 
           <p className="text-xs text-ink-subtle text-center leading-relaxed px-4">
-            By continuing, you agree to our Terms of Service and Privacy Policy.
+            By continuing, you agree to our <LegalLink to="terms" /> and <LegalLink to="privacy" />.
             <br />
             No automatic renewals - you control when to pay next.
           </p>
@@ -435,7 +436,7 @@ const PurchaseConfirmationModal: React.FC<PurchaseConfirmationProps> = ({
           </div>
 
           <p className="text-xs text-ink-subtle mt-4 text-center">
-            By continuing, you agree to our Terms of Service and Privacy Policy.
+            By continuing, you agree to our <LegalLink to="terms" /> and <LegalLink to="privacy" />.
             You can cancel your subscription anytime.
           </p>
         </div>

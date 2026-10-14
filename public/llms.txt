@@ -38,6 +38,8 @@ sign up.
 ## Key pages
 
 - Home / marketing page: https://plot.samuhia.co.ke/
+- Terms of Service: https://plot.samuhia.co.ke/terms
+- Privacy Policy: https://plot.samuhia.co.ke/privacy
 - How it works: https://plot.samuhia.co.ke/#how-it-works
 - Features: https://plot.samuhia.co.ke/#features
 - Pricing: https://plot.samuhia.co.ke/#pricing

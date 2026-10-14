@@ -1,7 +1,8 @@
 import PageHeader from '../../components/ui/PageHeader';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Settings as SettingsIcon, Copy, Lock, LifeBuoy, Loader2, Plus, Trash2, UserCheck } from 'lucide-react';
+import { Settings as SettingsIcon, Copy, Lock, LifeBuoy, Loader2, Plus, Trash2, UserCheck, ScrollText } from 'lucide-react';
+import LegalLink from '../legal/LegalLink';
 import { addSupportAgent, DESK_TOP_CODE, errorText, listSupportAgents, removeSupportAgent, type SupportAgentsState } from '../../services/desk';
 
 const Settings: React.FC = () => {
@@ -111,6 +112,15 @@ const Settings: React.FC = () => {
           </Link>
         </>
       )}
+
+      <section className="rounded-2xl border border-line bg-surface p-5">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-ink"><ScrollText className="h-5 w-5 text-blue-600" /> Legal</h2>
+        <p className="mt-1 text-sm text-ink-muted">How Plot Yangu works with your data, SMS credits and payments.</p>
+        <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium text-blue-700 dark:text-blue-300">
+          <LegalLink to="terms" />
+          <LegalLink to="privacy" />
+        </div>
+      </section>
     </div>
     </>
   );

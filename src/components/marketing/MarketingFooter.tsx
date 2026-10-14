@@ -1,6 +1,7 @@
 // src/components/marketing/MarketingFooter.tsx
 import React from 'react';
 import { CONTACT } from './marketingContent';
+import LegalLink from '../../pages/legal/LegalLink';
 
 const LINKS = [
   { href: '#how-it-works', label: 'How it works' },
@@ -43,9 +44,11 @@ const MarketingFooter: React.FC = () => {
               {link.label}
             </a>
           ))}
+          <LegalLink to="terms" className="text-blue-100/70 hover:text-white text-sm transition-colors">Terms</LegalLink>
+          <LegalLink to="privacy" className="text-blue-100/70 hover:text-white text-sm transition-colors">Privacy</LegalLink>
         </nav>
 
-        <p className="text-blue-100/50 text-xs">&copy; {year} Samuhia. All rights reserved.</p>
+        <p className="text-blue-100/50 text-xs">&copy; {year} SAMUHIA BUSINESSES KENYA. All rights reserved.</p>
       </div>
     </footer>
   );

@@ -3,6 +3,7 @@ import { Building, Eye, EyeOff, User, Mail, Phone, Lock, Briefcase, MapPin, Chec
 import { database } from '../../services/database/Database';
 import { useAuth, createUserWithFirebaseAuth } from './AuthWrapper';
 import PricingModal from '../ui/PricingPage';
+import LegalLink from '../../pages/legal/LegalLink';
 
 interface SignUpScreenProps {
   onSwitchToSignIn: () => void;
@@ -522,7 +523,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
               </p>
               
               <p className="text-xs text-gray-500">
-                By creating an account, you agree to our Terms of Service and Privacy Policy
+                By creating an account, you agree to our <LegalLink to="terms" className="underline hover:text-purple-600" /> and <LegalLink to="privacy" className="underline hover:text-purple-600" />
               </p>
               
               <div className="pt-2 border-t border-gray-100">

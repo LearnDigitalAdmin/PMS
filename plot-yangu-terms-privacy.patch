@@ -1,0 +1,1233 @@
+diff --git a/public/llms.txt b/public/llms.txt
+index 288ae15..5dd700a 100644
+--- a/public/llms.txt
++++ b/public/llms.txt
+@@ -38,6 +38,8 @@ sign up.
+ ## Key pages
+ 
+ - Home / marketing page: https://plot.samuhia.co.ke/
++- Terms of Service: https://plot.samuhia.co.ke/terms
++- Privacy Policy: https://plot.samuhia.co.ke/privacy
+ - How it works: https://plot.samuhia.co.ke/#how-it-works
+ - Features: https://plot.samuhia.co.ke/#features
+ - Pricing: https://plot.samuhia.co.ke/#pricing
+diff --git a/public/sitemap.xml b/public/sitemap.xml
+index a89178b..caface3 100644
+--- a/public/sitemap.xml
++++ b/public/sitemap.xml
+@@ -12,4 +12,14 @@
+     <changefreq>weekly</changefreq>
+     <priority>1.0</priority>
+   </url>
++  <url>
++    <loc>https://plot.samuhia.co.ke/terms</loc>
++    <changefreq>yearly</changefreq>
++    <priority>0.3</priority>
++  </url>
++  <url>
++    <loc>https://plot.samuhia.co.ke/privacy</loc>
++    <changefreq>yearly</changefreq>
++    <priority>0.3</priority>
++  </url>
+ </urlset>
+diff --git a/src/components/auh/SignUpScreen.tsx b/src/components/auh/SignUpScreen.tsx
+index 87db42b..d252154 100644
+--- a/src/components/auh/SignUpScreen.tsx
++++ b/src/components/auh/SignUpScreen.tsx
+@@ -3,6 +3,7 @@ import { Building, Eye, EyeOff, User, Mail, Phone, Lock, Briefcase, MapPin, Chec
+ import { database } from '../../services/database/Database';
+ import { useAuth, createUserWithFirebaseAuth } from './AuthWrapper';
+ import PricingModal from '../ui/PricingPage';
++import LegalLink from '../../pages/legal/LegalLink';
+ 
+ interface SignUpScreenProps {
+   onSwitchToSignIn: () => void;
+@@ -522,7 +523,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
+               </p>
+               
+               <p className="text-xs text-gray-500">
+-                By creating an account, you agree to our Terms of Service and Privacy Policy
++                By creating an account, you agree to our <LegalLink to="terms" className="underline hover:text-purple-600" /> and <LegalLink to="privacy" className="underline hover:text-purple-600" />
+               </p>
+               
+               <div className="pt-2 border-t border-gray-100">
+diff --git a/src/components/marketing/MarketingFooter.tsx b/src/components/marketing/MarketingFooter.tsx
+index ce24439..7f2f401 100644
+--- a/src/components/marketing/MarketingFooter.tsx
++++ b/src/components/marketing/MarketingFooter.tsx
+@@ -1,6 +1,7 @@
+ // src/components/marketing/MarketingFooter.tsx
+ import React from 'react';
+ import { CONTACT } from './marketingContent';
++import LegalLink from '../../pages/legal/LegalLink';
+ 
+ const LINKS = [
+   { href: '#how-it-works', label: 'How it works' },
+@@ -43,9 +44,11 @@ const MarketingFooter: React.FC = () => {
+               {link.label}
+             </a>
+           ))}
++          <LegalLink to="terms" className="text-blue-100/70 hover:text-white text-sm transition-colors">Terms</LegalLink>
++          <LegalLink to="privacy" className="text-blue-100/70 hover:text-white text-sm transition-colors">Privacy</LegalLink>
+         </nav>
+ 
+-        <p className="text-blue-100/50 text-xs">&copy; {year} Samuhia. All rights reserved.</p>
++        <p className="text-blue-100/50 text-xs">&copy; {year} SAMUHIA BUSINESSES KENYA. All rights reserved.</p>
+       </div>
+     </footer>
+   );
+diff --git a/src/components/ui/PricingPage.tsx b/src/components/ui/PricingPage.tsx
+index 63a652e..6e6cf68 100644
+--- a/src/components/ui/PricingPage.tsx
++++ b/src/components/ui/PricingPage.tsx
+@@ -4,6 +4,7 @@ import { Purchases, type PurchasesPackage } from '@revenuecat/purchases-capacito
+ import { Capacitor } from '@capacitor/core';
+ import { db } from '../../services/database/FirebaseSync';
+ import { collection, getDocs } from 'firebase/firestore';
++import LegalLink from '../../pages/legal/LegalLink';
+ import { initializeApp } from 'firebase/app';
+ import { getFunctions, httpsCallable } from 'firebase/functions';
+ import SmsPurchaseModal from '../../pages/sms/SmsPurchaseModal';
+@@ -282,7 +283,7 @@ const WebPaymentModal: React.FC<WebPaymentModalProps> = ({
+           </button>
+ 
+           <p className="text-xs text-ink-subtle text-center leading-relaxed px-4">
+-            By continuing, you agree to our Terms of Service and Privacy Policy.
++            By continuing, you agree to our <LegalLink to="terms" /> and <LegalLink to="privacy" />.
+             <br />
+             No automatic renewals - you control when to pay next.
+           </p>
+@@ -435,7 +436,7 @@ const PurchaseConfirmationModal: React.FC<PurchaseConfirmationProps> = ({
+           </div>
+ 
+           <p className="text-xs text-ink-subtle mt-4 text-center">
+-            By continuing, you agree to our Terms of Service and Privacy Policy.
++            By continuing, you agree to our <LegalLink to="terms" /> and <LegalLink to="privacy" />.
+             You can cancel your subscription anytime.
+           </p>
+         </div>
+diff --git a/src/main.tsx b/src/main.tsx
+index 5c3d29a..499d646 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -1,8 +1,9 @@
+ // src/main.tsx
+-import { StrictMode } from 'react'
++import { StrictMode, Suspense, lazy } from 'react'
+ import { createRoot } from 'react-dom/client'
+ import './index.css'
+ import App from './App.tsx'
++import { legalKeyForPath } from './pages/legal/legalConfig'
+ 
+ // Start listening for install / update events before React renders (a beforeinstallprompt fired early is otherwise lost)
+ import { pwaManager } from './pwa/pwaManager'
+@@ -17,10 +18,20 @@ const removeLoadingScreen = () => {
+   }
+ };
+ 
++// Public legal pages (/terms, /privacy) render on their own, without the app's sign-in, database or sync
++const LegalRoot = lazy(() => import('./pages/legal/LegalRoot'))
++const showLegalPage = legalKeyForPath(window.location.pathname) !== null
++
+ // Create and render app
+ createRoot(document.getElementById('root')!).render(
+   <StrictMode>
+-    <App />
++    {showLegalPage ? (
++      <Suspense fallback={<div style={{ padding: 24, textAlign: 'center' }}>Loading…</div>}>
++        <LegalRoot />
++      </Suspense>
++    ) : (
++      <App />
++    )}
+   </StrictMode>,
+ )
+ 
+diff --git a/src/pages/legal/LegalLayout.tsx b/src/pages/legal/LegalLayout.tsx
+new file mode 100644
+index 0000000..b73e1b4
+--- /dev/null
++++ b/src/pages/legal/LegalLayout.tsx
+@@ -0,0 +1,302 @@
++// src/pages/legal/LegalLayout.tsx
++//
++// Renders a LegalDocument (see legalTypes.ts) as a standalone public page: sticky table of contents,
++// plain-language summary, numbered sections, print-friendly, light/dark aware. It does not touch the
++// app's auth, database or sync, so it loads instantly for signed-out visitors, tenants and regulators.
++import React, { useEffect, useMemo, useState } from 'react';
++import { ArrowLeft, Printer, Mail, MessageCircle, Info, AlertTriangle, CheckCircle2, ListTree } from 'lucide-react';
++import { COMPANY, LEGAL_EFFECTIVE, LEGAL_PATHS, LEGAL_UPDATED, LEGAL_VERSION, type LegalDocKey } from './legalConfig';
++import type { LegalBlock, LegalDocument } from './legalTypes';
++
++// ---- tiny inline markup: **bold** and [label](href) -----------------------------------------------------
++const INLINE = /\*\*(.+?)\*\*|\[([^\]]+)\]\(([^)\s]+)\)/g;
++const SAFE_HREF = /^(https:\/\/|mailto:|tel:|\/|#)/;
++
++function renderInline(text: string): React.ReactNode[] {
++  const out: React.ReactNode[] = [];
++  let last = 0;
++  let key = 0;
++  for (const m of text.matchAll(INLINE)) {
++    const at = m.index ?? 0;
++    if (at > last) out.push(text.slice(last, at));
++    if (m[1] !== undefined) {
++      out.push(<strong key={key++} className="font-semibold text-ink">{m[1]}</strong>);
++    } else if (m[2] !== undefined && m[3] !== undefined && SAFE_HREF.test(m[3])) {
++      const external = m[3].startsWith('https://');
++      out.push(
++        <a
++          key={key++}
++          href={m[3]}
++          {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
++          className="font-medium text-blue-700 underline underline-offset-2 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200"
++        >
++          {m[2]}
++        </a>,
++      );
++    } else {
++      out.push(m[0]);
++    }
++    last = at + m[0].length;
++  }
++  if (last < text.length) out.push(text.slice(last));
++  return out;
++}
++
++const NOTE_STYLE = {
++  info: { box: 'border-blue-200 bg-blue-50 dark:border-blue-500/30 dark:bg-blue-500/10', icon: 'text-blue-600 dark:text-blue-300', Icon: Info },
++  warn: { box: 'border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10', icon: 'text-amber-600 dark:text-amber-300', Icon: AlertTriangle },
++  good: { box: 'border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10', icon: 'text-emerald-600 dark:text-emerald-300', Icon: CheckCircle2 },
++} as const;
++
++const Block: React.FC<{ block: LegalBlock }> = ({ block }) => {
++  switch (block.type) {
++    case 'p':
++      return <p className="leading-7 text-ink-soft">{renderInline(block.text)}</p>;
++    case 'ul':
++      return (
++        <ul className="list-disc space-y-2 pl-6 leading-7 text-ink-soft marker:text-ink-faint">
++          {block.items.map((item, i) => <li key={i}>{renderInline(item)}</li>)}
++        </ul>
++      );
++    case 'ol':
++      return (
++        <ol className="list-decimal space-y-2 pl-6 leading-7 text-ink-soft marker:text-ink-faint">
++          {block.items.map((item, i) => <li key={i}>{renderInline(item)}</li>)}
++        </ol>
++      );
++    case 'note': {
++      const s = NOTE_STYLE[block.tone];
++      return (
++        <div className={`flex gap-3 rounded-xl border p-4 ${s.box}`} role="note">
++          <s.Icon className={`mt-0.5 h-5 w-5 shrink-0 ${s.icon}`} aria-hidden="true" />
++          <div className="min-w-0 text-sm leading-6 text-ink-soft">
++            {block.title && <p className="mb-1 font-semibold text-ink">{block.title}</p>}
++            <p>{renderInline(block.text)}</p>
++          </div>
++        </div>
++      );
++    }
++    case 'table':
++      return (
++        <div className="overflow-x-auto rounded-xl border border-line">
++          <table className="w-full min-w-[34rem] text-left text-sm">
++            <thead className="bg-surface-sunken text-ink">
++              <tr>{block.head.map((h, i) => <th key={i} className="px-4 py-2.5 font-semibold">{h}</th>)}</tr>
++            </thead>
++            <tbody className="divide-y divide-line text-ink-soft">
++              {block.rows.map((row, r) => (
++                <tr key={r} className="align-top">
++                  {row.map((cell, c) => (
++                    <td key={c} className={`px-4 py-2.5 leading-6 ${c === 0 ? 'font-medium text-ink' : ''}`}>{renderInline(cell)}</td>
++                  ))}
++                </tr>
++              ))}
++            </tbody>
++          </table>
++        </div>
++      );
++  }
++};
++
++// ---- theme: same rule App.tsx uses (saved choice, else the OS) -----------------------------------------
++function useAppTheme() {
++  useEffect(() => {
++    try {
++      const saved = localStorage.getItem('darkMode');
++      const dark = saved === 'true' || (saved === null && window.matchMedia('(prefers-color-scheme: dark)').matches);
++      document.documentElement.classList.toggle('dark', dark);
++    } catch {
++      /* storage blocked: the OS preference still applies through the CSS tokens */
++    }
++  }, []);
++}
++
++// ---- document meta -------------------------------------------------------------------------------------
++function useDocumentMeta(title: string, description: string, path: string) {
++  useEffect(() => {
++    const previousTitle = document.title;
++    document.title = `${title} | ${COMPANY.product} by ${COMPANY.shortName}`;
++
++    const setMeta = (selector: string, create: () => HTMLElement, attr: string, value: string) => {
++      let el = document.head.querySelector<HTMLElement>(selector);
++      if (!el) { el = create(); document.head.appendChild(el); }
++      const prev = el.getAttribute(attr);
++      el.setAttribute(attr, value);
++      return () => { if (prev === null) el?.remove(); else el?.setAttribute(attr, prev); };
++    };
++    const undoDescription = setMeta('meta[name="description"]', () => Object.assign(document.createElement('meta'), { name: 'description' }), 'content', description);
++    const undoCanonical = setMeta('link[rel="canonical"]', () => Object.assign(document.createElement('link'), { rel: 'canonical' }), 'href', `${COMPANY.appUrl}${path}`);
++
++    return () => { document.title = previousTitle; undoDescription(); undoCanonical(); };
++  }, [title, description, path]);
++}
++
++interface LegalLayoutProps {
++  docKey: LegalDocKey;
++  doc: LegalDocument;
++}
++
++const OTHER: Record<LegalDocKey, { key: LegalDocKey; label: string }> = {
++  terms: { key: 'privacy', label: 'Privacy Policy' },
++  privacy: { key: 'terms', label: 'Terms of Service' },
++};
++
++const LegalLayout: React.FC<LegalLayoutProps> = ({ docKey, doc }) => {
++  useAppTheme();
++  useDocumentMeta(doc.title, doc.description, LEGAL_PATHS[docKey]);
++
++  const sections = useMemo(() => doc.sections.map((s, i) => ({ ...s, n: i + 1 })), [doc.sections]);
++  const [active, setActive] = useState(sections[0]?.id ?? '');
++  const other = OTHER[docKey];
++
++  // Browsers cannot jump to #hash on a page that rendered after load, so do it here.
++  useEffect(() => {
++    const id = decodeURIComponent(window.location.hash.replace('#', ''));
++    if (!id) return;
++    const t = window.setTimeout(() => document.getElementById(id)?.scrollIntoView(), 50);
++    return () => window.clearTimeout(t);
++  }, []);
++
++  // Highlight the section being read.
++  useEffect(() => {
++    if (typeof IntersectionObserver === 'undefined') return;
++    const obs = new IntersectionObserver(
++      (entries) => {
++        const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
++        if (visible) setActive(visible.target.id);
++      },
++      { rootMargin: '-15% 0px -70% 0px' },
++    );
++    sections.forEach((s) => { const el = document.getElementById(s.id); if (el) obs.observe(el); });
++    return () => obs.disconnect();
++  }, [sections]);
++
++  const goBack = () => {
++    if (window.history.length > 1 && document.referrer) window.history.back();
++    else window.location.assign('/');
++  };
++
++  const year = new Date().getFullYear();
++
++  return (
++    <div className="app-canvas min-h-screen text-ink">
++      {/* Top bar */}
++      <header className="sticky top-0 z-30 border-b border-line bg-surface/85 backdrop-blur-xl print:hidden" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
++        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
++          <a href="/" className="flex min-w-0 items-center gap-2.5" aria-label={`${COMPANY.product} home`}>
++            <img src="/icons/apple-icon-180.png" alt="" className="h-8 w-8 rounded-lg" />
++            <span className="flex min-w-0 flex-col leading-none">
++              <span className="truncate text-base font-bold text-ink">{COMPANY.product}</span>
++              <span className="text-[11px] text-ink-subtle">by {COMPANY.shortName}</span>
++            </span>
++          </a>
++          <nav aria-label="Legal documents" className="flex items-center gap-1.5 text-sm">
++            <a href={LEGAL_PATHS.terms} aria-current={docKey === 'terms' ? 'page' : undefined}
++              className={`rounded-lg px-3 py-1.5 font-medium ${docKey === 'terms' ? 'bg-brand-600 text-white' : 'text-ink-soft hover:bg-surface-sunken'}`}>Terms</a>
++            <a href={LEGAL_PATHS.privacy} aria-current={docKey === 'privacy' ? 'page' : undefined}
++              className={`rounded-lg px-3 py-1.5 font-medium ${docKey === 'privacy' ? 'bg-brand-600 text-white' : 'text-ink-soft hover:bg-surface-sunken'}`}>Privacy</a>
++          </nav>
++        </div>
++      </header>
++
++      <main className="mx-auto max-w-6xl px-4 pb-16 pt-8 sm:px-6 lg:pt-10">
++        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 print:hidden">
++          <button onClick={goBack} className="inline-flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-ink-soft hover:bg-surface-sunken">
++            <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back
++          </button>
++          <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-ink-soft hover:bg-surface-sunken">
++            <Printer className="h-4 w-4" aria-hidden="true" /> Print or save as PDF
++          </button>
++        </div>
++
++        {/* Title block */}
++        <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm sm:p-8">
++          <p className="text-xs font-semibold uppercase tracking-wider text-brand-600 dark:text-brand-300">{COMPANY.product} · {COMPANY.legalName}</p>
++          <h1 className="mt-2 text-3xl font-bold tracking-tight text-ink sm:text-4xl">{doc.title}</h1>
++          <p className="mt-3 max-w-3xl leading-7 text-ink-muted">{doc.intro}</p>
++          <dl className="mt-5 grid gap-x-8 gap-y-1 text-sm text-ink-subtle sm:grid-cols-3">
++            <div><dt className="inline font-medium text-ink-soft">Version </dt><dd className="inline">{LEGAL_VERSION}</dd></div>
++            <div><dt className="inline font-medium text-ink-soft">Effective </dt><dd className="inline">{LEGAL_EFFECTIVE}</dd></div>
++            <div><dt className="inline font-medium text-ink-soft">Last updated </dt><dd className="inline">{LEGAL_UPDATED}</dd></div>
++          </dl>
++        </div>
++
++        {/* Summary */}
++        <section aria-labelledby="summary-title" className="mt-6 rounded-3xl border border-blue-200 bg-blue-50 p-6 dark:border-blue-500/30 dark:bg-blue-500/10 sm:p-8">
++          <h2 id="summary-title" className="text-lg font-bold text-ink">{doc.summaryTitle}</h2>
++          <ul className="mt-3 space-y-2.5">
++            {doc.summary.map((point, i) => (
++              <li key={i} className="flex gap-3 leading-7 text-ink-soft">
++                <CheckCircle2 className="mt-1.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-300" aria-hidden="true" />
++                <span>{renderInline(point)}</span>
++              </li>
++            ))}
++          </ul>
++          <p className="mt-4 text-xs leading-5 text-ink-subtle">The summary is a convenience. The numbered sections below are the full and binding text.</p>
++        </section>
++
++        <div className="mt-8 grid gap-8 lg:grid-cols-[16rem_minmax(0,1fr)]">
++          {/* Table of contents */}
++          <aside className="print:hidden">
++            <details className="rounded-2xl border border-line bg-surface p-4 lg:hidden">
++              <summary className="flex cursor-pointer list-none items-center gap-2 font-semibold text-ink">
++                <ListTree className="h-4 w-4" aria-hidden="true" /> On this page
++              </summary>
++              <ol className="mt-3 space-y-1 text-sm">
++                {sections.map((s) => (
++                  <li key={s.id}><a href={`#${s.id}`} className="block rounded-md px-2 py-1 text-ink-soft hover:bg-surface-sunken">{s.n}. {s.title}</a></li>
++                ))}
++              </ol>
++            </details>
++            <nav aria-label="Table of contents" className="sticky top-20 hidden max-h-[calc(100vh-6rem)] overflow-y-auto rounded-2xl border border-line bg-surface p-4 lg:block">
++              <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-ink-subtle"><ListTree className="h-4 w-4" aria-hidden="true" /> On this page</p>
++              <ol className="space-y-0.5 text-sm">
++                {sections.map((s) => (
++                  <li key={s.id}>
++                    <a href={`#${s.id}`} aria-current={active === s.id ? 'location' : undefined}
++                      className={`block rounded-md px-2 py-1.5 leading-5 ${active === s.id ? 'bg-brand-50 font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300' : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'}`}>
++                      {s.n}. {s.title}
++                    </a>
++                  </li>
++                ))}
++              </ol>
++            </nav>
++          </aside>
++
++          {/* Sections */}
++          <article className="min-w-0 space-y-10">
++            {sections.map((s) => (
++              <section key={s.id} id={s.id} aria-labelledby={`${s.id}-h`} className="scroll-mt-24">
++                <h2 id={`${s.id}-h`} className="text-xl font-bold text-ink sm:text-2xl">
++                  <span className="mr-2 text-ink-faint">{s.n}.</span>{s.title}
++                </h2>
++                <div className="mt-4 space-y-4">
++                  {s.blocks.map((b, i) => <Block key={i} block={b} />)}
++                </div>
++              </section>
++            ))}
++
++            {/* Contact + cross link */}
++            <section className="rounded-2xl border border-line bg-surface p-6 print:break-inside-avoid">
++              <h2 className="text-lg font-bold text-ink">Questions about this {doc.title.toLowerCase()}?</h2>
++              <p className="mt-1 text-sm leading-6 text-ink-muted">
++                {COMPANY.legalName}{COMPANY.registrationNumber ? ` (reg. no. ${COMPANY.registrationNumber})` : ''}, {COMPANY.location}.
++              </p>
++              <div className="mt-4 flex flex-wrap gap-3 text-sm">
++                <a href={`mailto:${COMPANY.email}`} className="inline-flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-ink-soft hover:bg-surface-sunken"><Mail className="h-4 w-4" aria-hidden="true" /> {COMPANY.email}</a>
++                <a href={COMPANY.whatsappHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-ink-soft hover:bg-surface-sunken"><MessageCircle className="h-4 w-4" aria-hidden="true" /> WhatsApp {COMPANY.whatsapp}</a>
++                <a href={LEGAL_PATHS[other.key]} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-2 font-medium text-white hover:bg-brand-700">Read the {other.label}</a>
++              </div>
++            </section>
++          </article>
++        </div>
++      </main>
++
++      <footer className="border-t border-line py-6 text-center text-xs text-ink-subtle print:hidden" style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}>
++        &copy; {year} {COMPANY.legalName}. {COMPANY.product} is a product of <a href={COMPANY.website} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">{COMPANY.shortName}</a>.
++      </footer>
++    </div>
++  );
++};
++
++export default LegalLayout;
+diff --git a/src/pages/legal/LegalLink.tsx b/src/pages/legal/LegalLink.tsx
+new file mode 100644
+index 0000000..707be2b
+--- /dev/null
++++ b/src/pages/legal/LegalLink.tsx
+@@ -0,0 +1,48 @@
++// src/pages/legal/LegalLink.tsx
++//
++// Link to the Terms / Privacy Policy from anywhere in the app.
++//  - Web / PWA: opens the page in a NEW tab, so someone halfway through sign-up never loses the form.
++//  - Android / iOS / desktop shell: opens the hosted page in the system browser (the legal pages are
++//    public web pages, they are not part of the offline app shell).
++import React from 'react';
++import { Capacitor } from '@capacitor/core';
++import { Browser } from '@capacitor/browser';
++import { COMPANY, LEGAL_PATHS, type LegalDocKey } from './legalConfig';
++
++interface LegalLinkProps {
++  to: LegalDocKey;
++  className?: string;
++  children?: React.ReactNode;
++}
++
++const LABELS: Record<LegalDocKey, string> = {
++  terms: 'Terms of Service',
++  privacy: 'Privacy Policy',
++};
++
++const LegalLink: React.FC<LegalLinkProps> = ({ to, className, children }) => {
++  const path = LEGAL_PATHS[to];
++  const hosted = `${COMPANY.appUrl}${path}`;
++
++  const onClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
++    if (!Capacitor.isNativePlatform()) return; // plain anchor, new tab
++    e.preventDefault();
++    void Browser.open({ url: hosted }).catch(() => {
++      window.open(hosted, '_blank', 'noopener,noreferrer');
++    });
++  };
++
++  return (
++    <a
++      href={path}
++      target="_blank"
++      rel="noopener noreferrer"
++      onClick={onClick}
++      className={className ?? 'underline underline-offset-2 hover:opacity-80'}
++    >
++      {children ?? LABELS[to]}
++    </a>
++  );
++};
++
++export default LegalLink;
+diff --git a/src/pages/legal/LegalRoot.tsx b/src/pages/legal/LegalRoot.tsx
+new file mode 100644
+index 0000000..d047397
+--- /dev/null
++++ b/src/pages/legal/LegalRoot.tsx
+@@ -0,0 +1,19 @@
++// src/pages/legal/LegalRoot.tsx
++//
++// Entry for the public legal pages (/terms and /privacy). main.tsx renders this INSTEAD of <App />
++// for those two paths, so the pages work for signed-out visitors, tenants and regulators, and never
++// start the app's database, sign-in or sync.
++import React from 'react';
++import LegalLayout from './LegalLayout';
++import { termsDocument } from './termsContent';
++import { privacyDocument } from './privacyContent';
++import { legalKeyForPath } from './legalConfig';
++
++const LegalRoot: React.FC = () => {
++  const key = legalKeyForPath(window.location.pathname) ?? 'terms';
++  return key === 'privacy'
++    ? <LegalLayout docKey="privacy" doc={privacyDocument} />
++    : <LegalLayout docKey="terms" doc={termsDocument} />;
++};
++
++export default LegalRoot;
+diff --git a/src/pages/legal/legalConfig.ts b/src/pages/legal/legalConfig.ts
+new file mode 100644
+index 0000000..8b87bc7
+--- /dev/null
++++ b/src/pages/legal/legalConfig.ts
+@@ -0,0 +1,70 @@
++// src/pages/legal/legalConfig.ts
++//
++// Single source of truth for everything the Terms and the Privacy Policy say about
++// WHO we are and the few numbers that are policy choices (not facts of the code).
++// Change a value here and both documents, the footer links and the page headers follow.
++//
++// Facts in the two documents were taken from what Plot Yangu (this repo), PAY
++// (payments / SMS top-ups / trial grant) and CYBER (Samuhia Desk) actually do today.
++// If one of those behaviours changes, update the matching clause and bump LEGAL_VERSION.
++
++export const COMPANY = {
++  /** Registered name. */
++  legalName: 'SAMUHIA BUSINESSES KENYA',
++  /** Short form used inside the documents ("we", "us"). */
++  shortName: 'Samuhia',
++  product: 'Plot Yangu',
++  country: 'Kenya',
++  /** Principal place of business. Add a street / P.O. Box here if you want it printed. */
++  location: 'Nakuru, Kenya',
++  /** Optional: printed only when non-empty. */
++  registrationNumber: '',
++  /** Optional: Office of the Data Protection Commissioner registration number. Printed only when non-empty. */
++  odpcRegistrationNumber: '',
++  email: 'info@samuhia.co.ke',
++  salesEmail: 'sales@samuhia.co.ke',
++  whatsapp: '+254 791 286 165',
++  whatsappHref: 'https://wa.me/254791286165',
++  website: 'https://samuhia.co.ke/',
++  appUrl: 'https://plot.samuhia.co.ke',
++  odpcUrl: 'https://www.odpc.go.ke',
++} as const;
++
++/** Bump whenever either document changes in substance. */
++export const LEGAL_VERSION = '1.0';
++/** Human-readable dates shown at the top of both documents. */
++export const LEGAL_EFFECTIVE = '14 October 2026';
++export const LEGAL_UPDATED = '14 October 2026';
++
++/** Policy choices (not facts of the code). Edit freely; the documents read from here. */
++export const POLICY = {
++  /** Days a person has to report a duplicate or unapplied payment. */
++  paymentDisputeDays: 30,
++  /** Days we take to delete or anonymise cloud data after a closure request is verified. */
++  deletionDays: 90,
++  /** Minimum notice before a material change to the Terms takes effect. */
++  changeNoticeDays: 30,
++  /** Years payment and subscription records are kept (Kenyan tax and accounting record-keeping). */
++  financialRecordYears: 7,
++  /** Days we aim to answer a privacy request. */
++  privacyReplyDays: 30,
++  /** Minimum age of an account holder. */
++  minimumAge: 18,
++  /** Liability cap fallback (KES) for accounts that have paid nothing in the previous 12 months. */
++  liabilityFloorKes: 5000,
++} as const;
++
++export const LEGAL_PATHS = {
++  terms: '/terms',
++  privacy: '/privacy',
++} as const;
++
++export type LegalDocKey = keyof typeof LEGAL_PATHS;
++
++/** Which legal page (if any) a URL path points at. Tolerates a trailing slash and any letter case. */
++export function legalKeyForPath(pathname: string): LegalDocKey | null {
++  const p = pathname.replace(/\/+$/, '').toLowerCase();
++  if (p === LEGAL_PATHS.terms) return 'terms';
++  if (p === LEGAL_PATHS.privacy) return 'privacy';
++  return null;
++}
+diff --git a/src/pages/legal/legalTypes.ts b/src/pages/legal/legalTypes.ts
+new file mode 100644
+index 0000000..afda0e7
+--- /dev/null
++++ b/src/pages/legal/legalTypes.ts
+@@ -0,0 +1,31 @@
++// src/pages/legal/legalTypes.ts
++//
++// Shape of a legal document. The content files (termsContent.ts / privacyContent.ts) are plain
++// data in this shape; LegalLayout.tsx renders them. Inline text supports two tiny bits of markup:
++//   **bold**            and            [label](https://link  or  mailto:x@y  or  /terms)
++
++export type LegalBlock =
++  | { type: 'p'; text: string }
++  | { type: 'ul'; items: string[] }
++  | { type: 'ol'; items: string[] }
++  | { type: 'note'; tone: 'info' | 'warn' | 'good'; title?: string; text: string }
++  | { type: 'table'; head: string[]; rows: string[][] };
++
++export interface LegalSection {
++  /** Anchor id, also used by the table of contents. Keep stable: people link to these. */
++  id: string;
++  title: string;
++  blocks: LegalBlock[];
++}
++
++export interface LegalDocument {
++  title: string;
++  /** One-line description (also used as the page's meta description). */
++  description: string;
++  /** Short plain-language lead-in shown above the summary. */
++  intro: string;
++  summaryTitle: string;
++  /** "The short version" bullets. Plain language; the numbered sections below are what binds. */
++  summary: string[];
++  sections: LegalSection[];
++}
+diff --git a/src/pages/legal/privacyContent.ts b/src/pages/legal/privacyContent.ts
+new file mode 100644
+index 0000000..975bc7f
+--- /dev/null
++++ b/src/pages/legal/privacyContent.ts
+@@ -0,0 +1,267 @@
++// src/pages/legal/privacyContent.ts
++//
++// Privacy Policy for Plot Yangu. Plain data (see legalTypes.ts); rendered by LegalLayout.
++// Written from what this repo (PMS), PAY and CYBER (Samuhia Desk) actually collect and do.
++// Section ids are anchors people link to: keep them stable.
++import { COMPANY, POLICY } from './legalConfig';
++import type { LegalDocument } from './legalTypes';
++
++export const privacyDocument: LegalDocument = {
++  title: 'Privacy Policy',
++  description: `How ${COMPANY.legalName} collects, uses, stores and protects personal data in ${COMPANY.product}: what we hold, who handles it, how long we keep it and the rights you have under Kenya's Data Protection Act, 2019.`,
++  intro: `This policy explains what personal data ${COMPANY.product} handles, why, where it is kept, who can see it and what rights you have. It is written for landlords and agents who use the app, for tenants whose details a landlord has entered, and for desk agents.`,
++  summaryTitle: 'The short version',
++  summary: [
++    `**We never sell your data and we never share it for advertising or marketing.** There are no advertising networks, data brokers or analytics trackers in ${COMPANY.product}.`,
++    `**Your data is used by our own systems to deliver the service**: to keep your records, send the messages you ask for, take payments and support you.`,
++    `**A few infrastructure providers carry data for us, because the service cannot work without them**: Google (cloud hosting), Paystack and M-Pesa (payments), our SMS gateway, and Meta's WhatsApp platform. They act on our instructions and only receive what their part of the job needs. They are listed in full [below](#providers).`,
++    `**Landlords are in charge of their tenants' details.** When a landlord enters a tenant into ${COMPANY.product}, the landlord decides why; we process it for them. Tenants can ask us or their landlord about their data.`,
++    `**Your records live on your device first.** Cloud copies exist only on trial and paid plans with Cloud Sync.`,
++    `**You have rights** to see, correct, delete and move your data, and to complain to the Data Protection Commissioner. Write to **${COMPANY.email}**.`,
++  ],
++  sections: [
++    {
++      id: 'who-we-are',
++      title: 'Who we are and our role',
++      blocks: [
++        { type: 'p', text: `${COMPANY.product} is operated by **${COMPANY.legalName}**, registered in ${COMPANY.country} and operating from ${COMPANY.location} ("**${COMPANY.shortName}**", "**we**", "**us**").${COMPANY.odpcRegistrationNumber ? ` We are registered with the Office of the Data Protection Commissioner (registration no. ${COMPANY.odpcRegistrationNumber}).` : ''} We handle personal data in line with the **Data Protection Act, 2019** and its regulations.` },
++        {
++          type: 'table',
++          head: ['Data', 'Our role', 'Who decides why it is used'],
++          rows: [
++            ['Account Data: you (the landlord, agent or company) and your business details', '**Data controller**', 'Samuhia'],
++            ['Tenant and property records you enter: tenant names, phones, emails, rent, deposits, leases, invoices, payments', '**Data processor** for you', 'You (the landlord or agent)'],
++            ['Messaging consent records (who allowed or stopped WhatsApp messages), payment and security records, desk audit trail', '**Data controller**', 'Samuhia'],
++          ],
++        },
++        { type: 'p', text: `Where this policy says "**you**" it means whoever the sentence is about: an account holder, a tenant, or a desk agent. The [Terms of Service](/terms) apply alongside this policy.` },
++      ],
++    },
++    {
++      id: 'what-we-collect',
++      title: 'What we collect',
++      blocks: [
++        {
++          type: 'table',
++          head: ['Who it is about', 'What we hold'],
++          rows: [
++            ['Account holders (landlords, agents, companies)', `Full name, email address, mobile number, **National ID number**, password (stored only as a salted one-way hash, never as readable text), optional company name, address, phone and email; plan, trial and subscription dates; SMS Credit balance; your Landlord code (PYL-…) and the desks you have connected; when you last synchronised.`],
++            ['Properties and units', 'Property names, addresses, descriptions and photos, units and their rent, your agent commission rate, billing mode, and restricted flags.'],
++            ['Tenants (entered by a landlord)', 'Name, phone number, email, unit, rent, service charges and standing fees, deposit, lease start and end dates, active or restricted status.'],
++            ['Invoices and payments', 'Billing month, rent, water and power meter readings and prices, other charges, totals, amounts paid, arrears, due and paid dates, payment method and notes, and the invoice PDF (which carries your business details, the tenant\'s details and your payment instructions).'],
++            ['Tenant payment-behaviour summaries', 'Where Cloud Sync is on: a per-tenant summary worked out from payment history (on-time rate, arrears, months tracked, a score, a risk level, warning flags and a suggested action). See [automated processing](#automated).'],
++            ['Landlord reports and finances', 'Monthly landlord statements, commission summaries, business expenses and income records, which you create in the app.'],
++            ['Messages', 'The tenant\'s name and number and the text of the message, while it is being sent; and, for our records, counts of recipients, credits used and successes and failures (not the text or numbers). Delivery providers keep their own records.'],
++            ['WhatsApp consent register', 'A tenant\'s phone number and name, the landlord/agent and property that asked, whether they chose **allow** or **stop**, and when.'],
++            ['Payments we process', `The M-Pesa number used, amount, reference, status and time of subscription, SMS Credit and rent payments, and, for rent collection, your settlement account details (M-Pesa number, bank, paybill or till). We never see or keep an M-Pesa PIN or a card number.`],
++            ['Desk activity', 'Desk requests you send (category, subject, message, your name, phone, Landlord code), replies, and an audit trail of actions a desk takes for you.'],
++            ['Technical data', 'Device and app information needed to run the service, and technical logs of our cloud systems, which can include phone numbers, names and reference numbers for fixing problems.'],
++          ],
++        },
++        { type: 'note', tone: 'info', title: 'About National ID numbers', text: `We ask account holders for a National ID number to identify the person behind an account. It is also used as the account's reference inside our systems, so it can appear in internal references, such as a payment reference sent to our payment provider and in the storage address of your invoice PDFs. We do not show it to tenants as a field, do not use it for marketing and do not sell it. We do not ask tenants for National ID numbers.` },
++        { type: 'p', text: `We do not knowingly collect special categories of data (such as health, religion or biometrics). Please do not enter them into free-text fields such as notes.` },
++      ],
++    },
++    {
++      id: 'sources',
++      title: 'Where the data comes from',
++      blocks: [
++        { type: 'ul', items: [
++          '**From you**: when you sign up, set up your business, enter properties and tenants, create invoices, send messages or contact us.',
++          '**From your tenants**: when they pay through the app, or choose **allow** or **stop** for WhatsApp messages.',
++          '**From payment confirmations** from Paystack and M-Pesa about payments you or your tenants make.',
++          '**From desks** you connect, when they import tenants or send requests for you.',
++          '**From your device and our systems**, such as sign-in status and sync times.',
++        ] },
++      ],
++    },
++    {
++      id: 'uses',
++      title: 'How we use data, and why we are allowed to',
++      blocks: [
++        { type: 'p', text: `We use data **only** to run ${COMPANY.product}. The Data Protection Act requires a lawful basis for each use:` },
++        {
++          type: 'table',
++          head: ['What we do', 'Lawful basis'],
++          rows: [
++            ['Create and run your account; sign you in; keep your records; synchronise devices', 'To perform our contract with you'],
++            ['Generate invoices and reports; send the messages, invoice links and reminders you ask for or switch on', 'To perform our contract with you (and, for tenants, your landlord\'s lawful basis, such as the tenancy)'],
++            ['Take and settle payments, apply plans and credits, pay desk commission, keep payment records', 'Contract; legal obligation (tax and accounting records)'],
++            ['Let desks you connect help you, and log what they do', 'Contract; your instruction when you connect a desk'],
++            ['WhatsApp messages to tenants who allowed them', 'Consent of the tenant, which can be withdrawn at any time'],
++            ['Protect accounts and money: detect fraud and misuse, rate-limit, investigate problems, keep security logs', 'Our legitimate interest in security and preventing fraud; legal obligation'],
++            ['Answer your questions and requests; send service and billing notices, security alerts and notice of changes to our terms', 'Contract; legitimate interest'],
++            ['Comply with law, court orders and regulator requests', 'Legal obligation'],
++          ],
++        },
++        { type: 'p', text: `We do **not** use your data for advertising, to build marketing profiles, or to decide anything about you automatically with legal effect.` },
++      ],
++    },
++    {
++      id: 'no-sale',
++      title: 'We never sell or share your data',
++      blocks: [
++        { type: 'note', tone: 'good', title: 'Our promise', text: `We do **not sell, rent or trade** personal data. We do **not share** it with advertisers, data brokers, marketing companies or anyone else for their own purposes. ${COMPANY.product} contains no advertising or third-party analytics trackers.` },
++        { type: 'p', text: `Your data is used by our own systems to deliver the service. To run those systems, a small number of providers must handle some data on our behalf: a mobile network cannot deliver an SMS without the phone number, and a payment cannot be taken without the amount. These providers are **processors**: they act on our instructions, under agreements that require them to protect the data and use it only for that job. We also disclose data where the law requires it, for example to a court, the police or a regulator acting under a valid legal order, and we will only give what is legally required. If ${COMPANY.shortName} is ever sold or merged, personal data would go to the new owner only under this same policy, and we would tell you first.` },
++      ],
++    },
++    {
++      id: 'providers',
++      title: 'The providers that carry data for us',
++      blocks: [
++        {
++          type: 'table',
++          head: ['Provider', 'What it does for us', 'What it receives'],
++          rows: [
++            ['**Google** (Firebase and Google Cloud)', 'Hosting, sign-in (Firebase Authentication), our database (Firestore), file storage (invoice PDFs) and the cloud functions that run the service', 'Everything stored in the cloud: Account Data and, on Cloud Sync plans, your synchronised records and PDFs'],
++            ['**Paystack** and **Safaricom M-Pesa**', 'Take and settle payments: subscriptions, SMS Credits and rent', 'Payer name or reference, M-Pesa number, amount, payment reference and, for rent collection, settlement account details and the split'],
++            ['**HostPinnacle** (SMS gateway)', 'Deliver SMS messages to tenants in Kenya', 'The recipient\'s phone number and the message text, and our sender name'],
++            ['**Meta** (WhatsApp Business Platform)', 'Deliver backup WhatsApp messages and consent requests to tenants who allowed them', 'The recipient\'s phone number and the message template contents'],
++            ['**Google Play** and **RevenueCat** (Android app purchases only)', 'Process subscriptions bought inside the Android app', 'Purchase and entitlement details; they tell us which plan is active'],
++          ],
++        },
++        { type: 'p', text: `These providers have their own privacy policies for data they handle as independent services (for example Safaricom for M-Pesa and Meta for WhatsApp). We do not add other providers without updating this policy.` },
++      ],
++    },
++    {
++      id: 'desks',
++      title: 'Desks and support agents',
++      blocks: [
++        { type: 'p', text: `A **desk** is a Samuhia Desk agent that Samuhia has reviewed and activated. The **Top Desk (COG-0000)** is Samuhia's own and is always connected to every account. You can connect up to five more desks and remove them at any time in Settings.` },
++        { type: 'p', text: `A connected desk can, through our secure connection: see your account summary and credit balance; import new tenants; list your tenants with phone numbers partly hidden and the amount each owes; export your tenant list (a file with names, full phone numbers, emails, units, rent, deposits and lease dates, available through a link that expires after an hour); and send or schedule SMS to your tenants using your credits. It cannot see your password, sign in as you, or edit or delete your existing records. Tenants and properties you mark as restricted are left out. Every action is written to an audit trail. Desk agents can see requests you send them and any details you put in them.` },
++        { type: 'p', text: `Desks and agents may earn a commission share of payments you make, as described in the [Terms](/terms#billing). The commission does not change what you pay and does not involve sharing your data with anyone else.` },
++      ],
++    },
++    {
++      id: 'messaging',
++      title: 'SMS and WhatsApp',
++      blocks: [
++        { type: 'p', text: `When you or an automatic notification sends a message, our system composes it from the tenant's name, the message text and your signature (company or name, and your phone number), and passes it with the tenant's number to the SMS gateway (or, as a backup, to WhatsApp for tenants who allowed it). We keep, for our records, only counts (recipients, credits used, successes, failures). Message text and numbers can also appear in technical logs of our cloud systems and in the records of the delivery providers.` },
++        { type: 'p', text: `Automatic messages can include a short link (${COMPANY.appUrl}/i/...) to an invoice PDF. **Anyone who has the link can open that invoice**, which contains the tenant's and your business details. Link visits are counted. The link only identifies the invoice; it does not reveal the account holder's identity.` },
++        { type: 'p', text: `For WhatsApp we send a consent request first. A tenant's choice of **allow** or **stop** is saved in a register keyed by their phone number, with their name and the landlord/agent and property that asked. We check this register before every WhatsApp message.` },
++      ],
++    },
++    {
++      id: 'tenants',
++      title: 'If you are a tenant',
++      blocks: [
++        { type: 'p', text: `Your landlord or agent put your details into ${COMPANY.product} to manage your tenancy: send invoices and reminders, record payments and keep records. **They decide why your data is used, and we process it for them.** The messages you receive come from your landlord or agent through us; the signature at the end shows who. We do not use your details to contact you for our own purposes or for marketing, and we do not sell them.` },
++        { type: 'ul', items: [
++          '**To see, correct or ask about your data**, ask your landlord or agent first. You can also write to us at ' + COMPANY.email + ' and we will help you reach them or deal with the request ourselves where we hold the data.',
++          '**To stop WhatsApp messages**, use the **stop** option in the WhatsApp consent message. For SMS about your tenancy, tell your landlord or agent, whose number is in the message, and they must stop. You can also write to us.',
++          '**Payments you make** by M-Pesa through the app are processed by Paystack and M-Pesa as described above.',
++        ] },
++      ],
++    },
++    {
++      id: 'storage',
++      title: 'Where your data lives: your device and our cloud',
++      blocks: [
++        { type: 'p', text: `**On your device.** ${COMPANY.product} stores your records in a local database on your device (and some settings in your browser or app storage), so it works offline. On the Free plan this is the **only** copy. Anyone who can unlock your device and open the app can see it, so please use a device lock.` },
++        { type: 'p', text: `**In the cloud.** On trial and paid plans with Cloud Sync, we upload your properties, units, tenants, invoices, payments, invoice PDFs and tenant payment-behaviour summaries so you can use several devices and so automatic notifications can work. Account Data is always kept in the cloud, because it is how you sign in. When a trial or subscription ends, sync stops, but we do not delete your cloud data at that moment (see [Retention](#retention)).` },
++      ],
++    },
++    {
++      id: 'transfers',
++      title: 'Sending data outside Kenya',
++      blocks: [
++        { type: 'p', text: `Our cloud providers run data centres and services outside Kenya. Our cloud functions run in Google Cloud regions in **South Africa, the United States and Europe**, and Google may store and process cloud data in its facilities, which can be outside Kenya. WhatsApp and payment processing may involve systems abroad. Where personal data leaves Kenya, we rely on providers that apply strong security and contractual protections, and we transfer only what the service needs, as the Data Protection Act, 2019 requires. You can ask us for more detail at ${COMPANY.email}.` },
++      ],
++    },
++    {
++      id: 'retention',
++      title: 'How long we keep data',
++      blocks: [
++        {
++          type: 'table',
++          head: ['Data', 'How long'],
++          rows: [
++            ['Account Data', 'While your account is open, then up to ' + POLICY.deletionDays + ' days after we confirm a closure request, except what we must keep by law'],
++            ['Cloud copies of properties, tenants, invoices, payments and PDFs', 'While your account is open; deleted or anonymised within ' + POLICY.deletionDays + ' days of a verified closure request. When a trial or subscription ends we stop syncing but do not delete at once'],
++            ['Payment, subscription and commission records', `${POLICY.financialRecordYears} years, for tax, accounting and dispute purposes`],
++            ['Desk audit trail and desk requests', 'As long as needed to resolve disputes and prove what was done, and then removed'],
++            ['WhatsApp consent register', 'As long as needed to honour a tenant\'s choice (an old "stop" is kept so we do not message them again)'],
++            ['SMS send logs (counts only)', 'While your account is open'],
++            ['Technical and security logs', 'For a limited period set by our cloud provider and our security needs'],
++            ['Data on your own devices', 'Until you delete it or uninstall the app'],
++          ],
++        },
++        { type: 'p', text: `Backups of deleted data may remain for a short period before they are overwritten. If the law or a court requires us to keep something longer, we will.` },
++      ],
++    },
++    {
++      id: 'security',
++      title: 'How we protect data',
++      blocks: [
++        { type: 'ul', items: [
++          'Data moves between your device and our systems over encrypted connections (HTTPS), and our cloud providers encrypt stored data.',
++          'Passwords are stored only as salted one-way hashes. Sign-in goes through Firebase Authentication.',
++          'Our cloud functions require you to be signed in, and prices, credits and plans are decided on our servers, not on your device.',
++          'Payment notifications are checked for authenticity; payment secrets and SMS gateway credentials are kept in a managed secret store, not in the app.',
++          'Desk access is limited to specific actions, hides tenant phone numbers in lists, expires export links after one hour and is logged.',
++          'Access to production systems is limited to authorised staff.',
++        ] },
++        { type: 'p', text: `No system is perfectly secure. You help by using a strong password, locking your device, signing out of shared devices, keeping desk codes private and being careful who opens invoice links. If a breach puts your personal data at risk, we will tell the Data Protection Commissioner and the people affected within the times the law requires, and say what happened and what to do.` },
++      ],
++    },
++    {
++      id: 'rights',
++      title: 'Your rights',
++      blocks: [
++        { type: 'p', text: `Under the Data Protection Act, 2019 you have the right to:` },
++        { type: 'ul', items: [
++          'be **informed** how your data is used (this policy);',
++          '**access** the personal data we hold about you;',
++          '**correct** data that is wrong or misleading;',
++          '**delete** data that is false or misleading, or that we no longer need;',
++          '**object** to, or ask us to **restrict**, certain uses;',
++          '**receive** your data in a common format and move it (data portability);',
++          '**withdraw consent** where we rely on it (for example WhatsApp), without affecting earlier use; and',
++          'not be subject to a decision based **only** on automated processing that has legal or similarly significant effects.',
++        ] },
++        { type: 'p', text: `**How to use them.** Email ${COMPANY.email} from the address on your account (or, if you are a tenant, from the phone or email we hold for you). We may need to confirm who you are. We aim to answer within **${POLICY.privacyReplyDays} days**. For tenant data held for a landlord, we may direct you to the landlord, or deal with it with their help. Some data we must keep by law, and we will explain if so.` },
++        { type: 'p', text: `**Complaints.** If you are not happy, please tell us first. You can also complain to the **Office of the Data Protection Commissioner** at ${COMPANY.odpcUrl}.` },
++      ],
++    },
++    {
++      id: 'automated',
++      title: 'Automated processing and tenant screening',
++      blocks: [
++        { type: 'p', text: `The app works out, from the payment history in your own records, a tenant payment-behaviour score, a risk level, warning flags and a suggested action (approve, conditional, review or reject). This is a tool for the landlord, calculated by software, based only on data in the landlord's account. **Samuhia does not use it to make decisions about anyone**; the landlord does, and it is not a credit report. Landlords should review a score before acting and must not rely on it alone. A tenant who thinks a score is wrong can ask the landlord to review the records, or write to us.` },
++      ],
++    },
++    {
++      id: 'storage-tech',
++      title: 'Cookies, local storage and similar technology',
++      blocks: [
++        { type: 'p', text: `${COMPANY.product} does **not** use advertising cookies or third-party analytics. It uses browser or app storage that the app needs to work: your signed-in session, your local database, your settings (such as dark mode and saved payment instructions), cached app files so it opens offline (a service worker), and an in-app install and update prompt. You can clear this in your browser or app settings, but you may then be signed out and unsynchronised data on that device may be lost.` },
++      ],
++    },
++    {
++      id: 'children',
++      title: 'Children',
++      blocks: [
++        { type: 'p', text: `${COMPANY.product} is for adults of ${POLICY.minimumAge} and over. We do not knowingly open accounts for children. Landlords are responsible for having a lawful basis to enter details about any minor occupant, and should avoid it unless needed. If you think a child has an account, write to us and we will act.` },
++      ],
++    },
++    {
++      id: 'changes',
++      title: 'Changes to this policy',
++      blocks: [
++        { type: 'p', text: `We may update this policy as the service or the law changes. The date and version at the top show when it last changed. For a material change we will give notice in the app, by email or by SMS before it takes effect.` },
++      ],
++    },
++    {
++      id: 'contact',
++      title: 'Contact us',
++      blocks: [
++        { type: 'ul', items: [
++          `**Company:** ${COMPANY.legalName}, ${COMPANY.location}.`,
++          `**Privacy requests and questions:** [${COMPANY.email}](mailto:${COMPANY.email})`,
++          `**WhatsApp:** [${COMPANY.whatsapp}](${COMPANY.whatsappHref})`,
++          `**Regulator:** Office of the Data Protection Commissioner, [${COMPANY.odpcUrl}](${COMPANY.odpcUrl})`,
++        ] },
++      ],
++    },
++  ],
++};
+diff --git a/src/pages/legal/termsContent.ts b/src/pages/legal/termsContent.ts
+new file mode 100644
+index 0000000..2e7165e
+--- /dev/null
++++ b/src/pages/legal/termsContent.ts
+@@ -0,0 +1,279 @@
++// src/pages/legal/termsContent.ts
++//
++// Terms of Service for Plot Yangu. Plain data (see legalTypes.ts); rendered by LegalLayout.
++// Behaviour described here was checked against this repo (PMS), PAY (payments, SMS top-ups, trial grant)
++// and CYBER (Samuhia Desk). Section ids are anchors people link to: keep them stable.
++import { COMPANY, POLICY } from './legalConfig';
++import type { LegalDocument } from './legalTypes';
++
++export const termsDocument: LegalDocument = {
++  title: 'Terms of Service',
++  description: `The terms that apply when you use ${COMPANY.product}, the property management app from ${COMPANY.legalName}: plans, M-Pesa payments, SMS credits, support desks, responsibilities and liability.`,
++  intro: `These Terms are the agreement between you and ${COMPANY.legalName} for using ${COMPANY.product}. They cover how plans and payments work, how SMS credits and tenant messages work, what you and we are each responsible for, and what happens if something goes wrong. Please read them before you create an account.`,
++  summaryTitle: 'The short version',
++  summary: [
++    `${COMPANY.product} is software that helps landlords and property agents keep properties, tenants, invoices and payments in order. **We are a software provider. We are not your property manager, agent, bank, lawyer or tax adviser.**`,
++    `**You are responsible for your records and your tenants.** What you enter, the invoices you issue, the messages you send and your dealings with tenants are yours. Check them before you send them.`,
++    `**SMS runs on prepaid credits.** Every message uses credits. Failed sends are refunded. You must only message people you are entitled to contact, and never for harassment, threats or marketing.`,
++    `**Money is paid by M-Pesa through Paystack.** Subscriptions are prepaid and do not renew by themselves. Payments are final once confirmed, except in the cases listed in the [billing section](#billing).`,
++    `**Support desks only act with your permission.** The Samuhia top desk is always connected; you can connect or remove other desks yourself. Everything a desk does for you is logged.`,
++    `**Your data stays yours.** We use it to run the service, we do not sell it, and the [Privacy Policy](/privacy) explains exactly what is collected and why.`,
++    `**Back up what matters.** On the Free plan your data lives on your device only. If the device is lost and you never synced, we cannot recover it.`,
++    `Kenyan law governs these Terms. Questions: **${COMPANY.email}**.`,
++  ],
++  sections: [
++    {
++      id: 'who-we-are',
++      title: 'Who we are and what Plot Yangu is',
++      blocks: [
++        { type: 'p', text: `${COMPANY.product} (the **Service**) is a property management application owned and operated by **${COMPANY.legalName}**, a business registered in ${COMPANY.country} and operating from ${COMPANY.location} ("**${COMPANY.shortName}**", "**we**", "**us**").${COMPANY.registrationNumber ? ` Our registration number is ${COMPANY.registrationNumber}.` : ''}` },
++        { type: 'p', text: `The Service lets landlords, property agents and property managers record properties, units and tenants; produce invoices and statements; record and collect rent and other charges; send tenant notifications by SMS and WhatsApp; and, on paid plans, keep their data synchronised across devices. It is available as a web app at ${COMPANY.appUrl}, as an installable web app (PWA), as an Android app and as a desktop app.` },
++        { type: 'p', text: `Payments for subscriptions, SMS credits and rent collection are processed through our payments system (the "**PAY**" platform, which uses Paystack and M-Pesa). Support and assisted services are provided through the **Samuhia Desk** network. Both are described below. They are part of the Service for the purposes of these Terms.` },
++        { type: 'note', tone: 'info', title: 'We are a software provider', text: `${COMPANY.product} is a tool. We do not manage your properties, we are not a party to any tenancy agreement, we do not collect rent on your behalf in any legal capacity other than as described in the [rent payments section](#rent-payments), and we do not give legal, tax or financial advice.` },
++      ],
++    },
++    {
++      id: 'definitions',
++      title: 'Words we use',
++      blocks: [
++        {
++          type: 'table',
++          head: ['Term', 'Meaning'],
++          rows: [
++            ['You / Account Holder', `The person or business that creates a ${COMPANY.product} account: a landlord, property agent, property manager or company. If you use the Service for a business, you confirm you can bind it to these Terms.`],
++            ['Tenant', 'A person whose details you enter into the Service as a tenant, occupant or payer.'],
++            ['Account Data', 'Information about you and your business that you give us to open and run your account (name, email, phone, National ID number, company details, plan and billing status).'],
++            ['Your Data', 'Everything you put into the Service about properties, units, tenants, invoices, payments and related records, including Tenant details.'],
++            ['SMS Credits', 'Prepaid units that pay for messages sent through the Service. See [SMS and tenant messaging](#sms).'],
++            ['Cloud Sync', 'The feature that backs up and synchronises Your Data to our cloud systems so you can use several devices. Available on trial and paid plans.'],
++            ['Desk', `A Samuhia Desk agent (for example COG-0001) that Samuhia has reviewed and activated and that can help with your account when you allow it. The **Top Desk** (COG-0000) is Samuhia's own desk.`],
++            ['Landlord code', 'The code in your Settings (for example PYL-0001) that a desk uses to find your account.'],
++            ['PAY / Payments', 'The Samuhia payments system that handles M-Pesa subscription payments, SMS credit purchases and rent collection, using Paystack.'],
++          ],
++        },
++      ],
++    },
++    {
++      id: 'account',
++      title: 'Your account',
++      blocks: [
++        { type: 'p', text: `**Who can sign up.** You must be at least ${POLICY.minimumAge} years old and able to enter a binding contract under the laws of ${COMPANY.country}. The Service is not for children.` },
++        { type: 'p', text: `**Accurate details.** To open an account we ask for your full name, email address, mobile number and National ID number, and optionally your company name, address, phone and email. You promise that these are yours, true and kept up to date. Your National ID number is used as your account identifier (see the [Privacy Policy](/privacy)). Do not register an account using someone else's identity.` },
++        { type: 'p', text: `**Keep your sign-in safe.** You are responsible for your password, your devices and everything done through your account, including by staff or helpers you let use it. Tell us at once on ${COMPANY.email} if you think someone else has access. We may ask you to confirm your identity before we help with an account.` },
++        { type: 'p', text: `**One account, one holder.** Do not share an account between unrelated businesses or sell, rent or transfer an account without our written agreement. If you manage properties for several landlords, you are responsible to each of them for the data you enter.` },
++        { type: 'p', text: `**Signing in offline.** The app stores a protected copy of your sign-in information on your device so it can open without internet. Anyone who can unlock and use your device may be able to open the app. Use a device lock and sign out on shared devices.` },
++      ],
++    },
++    {
++      id: 'service',
++      title: 'What the Service does, and what it does not',
++      blocks: [
++        { type: 'p', text: `**Records and documents come from what you enter.** Invoices, receipts, rent record sheets, landlord statements, commission summaries, arrears figures and reports are calculated from the information you (or a desk acting for you) entered. If the inputs are wrong or incomplete, the outputs will be too. Check every document before you send it or rely on it.` },
++        { type: 'p', text: `**Not tax or legal documents.** Documents produced by the Service are business records. Unless a feature says otherwise, they are not tax invoices, are not issued through the Kenya Revenue Authority's systems, and are not legal notices under any tenancy law. You remain responsible for your own tax returns, VAT or rental income tax obligations, record-keeping, tenancy agreements, notices to vacate and any court or tribunal process.` },
++        { type: 'p', text: `**Tenant screening is informational.** Where the Service shows tenant payment-behaviour scores, risk levels, warning flags or a recommended action, these are calculated automatically from the payment history in your own records. They are not a credit reference, not a report from a credit reference bureau and not a verdict about any person. A score built on a few months of data can be misleading. Do not use it as the only reason to refuse, evict or penalise anyone, and review it yourself before you act on it.` },
++        { type: 'p', text: `**Offline first.** The app keeps your records on your device first, so you can keep working without a connection. Features that need the internet (sign-up, sign-in on a new device, Cloud Sync, SMS, WhatsApp, payments, desk requests and invoice links) work only when you are online.` },
++        { type: 'p', text: `**Plan features and limits.** Which features you can use, how many properties and tenants you can hold, whether Cloud Sync and automated notifications are included, and how invoices are branded depend on your plan. The current plan details and limits are shown in the app and on the website at ${COMPANY.appUrl}. If you reach a limit you can still view existing records, but you may not be able to add more until you upgrade or reduce your records.` },
++      ],
++    },
++    {
++      id: 'plans',
++      title: 'Plans, the free trial and downgrades',
++      blocks: [
++        { type: 'p', text: `**Free plan.** The Free plan has no time limit. It is restricted to a small number of properties and tenants, stores data on your device only (no Cloud Sync), and puts prominent ${COMPANY.product} branding on invoices.` },
++        { type: 'p', text: `**Free trial.** When you create an account yourself, we give you a **3-month trial of the Business plan** with no card needed, together with **50 free SMS Credits**. The trial includes the Business plan's limits and features, including Cloud Sync, for its length. The trial ends automatically on its end date shown in the app. It does not turn into a paid subscription; nothing is charged unless you choose to pay. Trial SMS Credits are a gift: they have no cash value, cannot be refunded or transferred, and do not earn desk commission. We may limit the trial to one per person or business and may end it for misuse.` },
++        { type: 'p', text: `**What happens when a trial or subscription ends.** Our systems check for expired trials and subscriptions weekly, so there can be a short delay between the end date and the change. When one ends, your account returns to the Free plan: Cloud Sync and automated notifications stop, branding and limits revert to Free, and you may be unable to add or edit records above the Free limits. **Data already on your device stays on your device.** We do not delete your cloud data at that moment, but we cannot promise to keep unsynchronised cloud copies available on the Free plan indefinitely. Export or upgrade before your plan ends if you need continuity.` },
++        { type: 'p', text: `**Changing plans.** You can upgrade at any time. Features and limits change when your payment is confirmed. Downgrading, or letting a subscription end, does not entitle you to a refund of the unused part of a period already paid, except as set out in the [billing section](#billing).` },
++        { type: 'p', text: `**Android app purchases.** If you subscribe inside the Android app through Google Play, Google Play's billing terms apply to that purchase, and the store (not us) handles that payment, renewals and its refund rules. Subscriptions paid by M-Pesa through our website or app are covered by the [billing section](#billing).` },
++      ],
++    },
++    {
++      id: 'billing',
++      title: 'Prices, payments and refunds',
++      blocks: [
++        { type: 'p', text: `**Prices.** All prices are in Kenya Shillings (KES) and are shown in the app before you pay. The amount shown at checkout is the amount you pay. We may change prices for future purchases; a change never affects a period or a credit purchase you have already paid for. If a tax applies to a purchase, it is shown at checkout or included in the price shown.` },
++        { type: 'p', text: `**How you pay.** You pay by **M-Pesa**. After you confirm a purchase, a prompt appears on the phone number you entered and you approve it by entering your M-Pesa PIN **on your own phone**. We never see or store your PIN. The payment is processed by **Paystack** using M-Pesa. You must only use an M-Pesa number that belongs to you, or whose owner has agreed to the payment.` },
++        { type: 'p', text: `**Prepaid, no automatic renewal.** Subscriptions bought by M-Pesa are prepaid and **do not renew automatically**. You choose when to pay again. A monthly plan gives you **30 days** and an annual plan **365 days**, counted from the moment we receive Paystack's confirmation of your payment. Paying while time remains on your current plan starts the new period from the confirmation date; unused days are not added on top. To avoid losing time, pay close to the end of your current period.` },
++        { type: 'p', text: `**Confirmation.** Plans and credits are applied only after Paystack confirms the payment to our systems, which normally takes moments but can take longer when networks are slow. If you approved the M-Pesa prompt and nothing has been applied after a reasonable time, keep your M-Pesa confirmation message and contact us (see below). A prompt you do not approve, or that times out, is not a charge and activates nothing.` },
++        { type: 'p', text: `**Refunds.** Plans and SMS Credits are digital services delivered when your payment is confirmed, so purchases are **final**, except that we will correct or refund the following if you tell us within **${POLICY.paymentDisputeDays} days** of the payment:` },
++        {
++          type: 'ul',
++          items: [
++            'you were charged twice for the same purchase;',
++            'your payment was confirmed but the plan or credits were not applied and we cannot apply them;',
++            'the amount charged was different from the amount shown at checkout; or',
++            'a refund is required by law.',
++          ],
++        },
++        { type: 'p', text: `Send the M-Pesa confirmation code, the phone number used, the date and the amount to ${COMPANY.email}. Where we refund, we return the money to the M-Pesa number that paid, or give credit, as we agree with you; the time it takes depends on Paystack and Safaricom. Messages that fail to send are refunded automatically as SMS Credits (see [SMS and tenant messaging](#sms)).` },
++        { type: 'p', text: `**Reversed or disputed payments.** If a payment is reversed or disputed after we have delivered the service, we may remove the plan or credits it paid for, suspend features until the amount is resolved, and recover the amount from you.` },
++        { type: 'p', text: `**Desk commission.** A Samuhia Desk (or the agent who onboarded your account) may earn a share of the subscription and SMS Credit payments made by accounts connected to it. The share comes out of the payment through the payment split; **it does not increase what you pay**. Free signup credits and trial grants earn no commission.` },
++        { type: 'p', text: `**Rent collection fees.** Fees that apply when tenants pay rent through Plot Yangu Payments are described in the [rent payments section](#rent-payments).` },
++      ],
++    },
++    {
++      id: 'sms',
++      title: 'SMS and tenant messaging',
++      blocks: [
++        { type: 'p', text: `${COMPANY.product} can send SMS messages to your tenants, and WhatsApp messages as a backup, from your account. These messages are sent **by you** (or by a desk you authorised, or automatically on your behalf). You are the sender; we deliver them.` },
++        { type: 'p', text: `**SMS Credits.** Messages use prepaid SMS Credits. One credit covers roughly 144 to 150 characters of the **whole** message (greeting, your text and the sender signature together); a longer message uses more credits. A message sent from the app is priced on its final text, not just the part you typed. A WhatsApp message sent as a backup uses **2 credits** on the Professional and Enterprise plans and **3 credits** on every other plan.` },
++        { type: 'p', text: `**Buying credits.** You buy credits by M-Pesa. The minimum purchase is 10 credits. The price per credit depends on your plan, is shown before you pay, and is always calculated by our systems from your actual plan; the amount shown at checkout governs. Credits belong to one account, have no cash value, cannot be transferred, withdrawn or resold, and are not refundable except as set out in the [billing section](#billing). We do not currently expire purchased credits.` },
++        { type: 'p', text: `**When credits are charged, and refunds.** Credits are reserved when you send. A message counts as sent when our SMS gateway accepts it for delivery. If it is rejected, the credits are returned to your balance automatically. **We cannot guarantee that a message reaches a phone.** Delivery depends on mobile networks and the recipient's phone (switched off, out of coverage, blocked senders or number errors). Credits for messages the gateway accepted are not refunded if the message is later delayed or not delivered.` },
++        { type: 'p', text: `**How messages look.** Messages you compose are sent in the form "Dear (tenant name), (your text) - (your company or name, your phone number)". The SMS sender name is shared across ${COMPANY.product}, so this signature is how a tenant knows who the message is from; you cannot remove it. For your messages and your tenants' safety, the text must use plain letters, numbers and common punctuation; links, emojis, symbols and line breaks are not accepted. A single send, from the app or by a desk, can go to at most 200 recipients.` },
++        { type: 'p', text: `**Automatic notifications.** On trial and paid plans with Cloud Sync switched on, the Service can automatically message a tenant when a new invoice is created, when a payment is received and when an invoice becomes overdue. Which of these are available depends on your plan: new-invoice messages on all eligible plans, overdue reminders from Solo upward, and payment confirmations on Professional and Enterprise. Automatic notifications run only while your account has synchronised recently, and only while you have the credits to pay for them. If an SMS cannot be sent, the Service may use WhatsApp as a backup for tenants who have allowed WhatsApp messages. Automatic messages use your credits like any other.` },
++        { type: 'p', text: `**Invoice links.** An automatic message may include a short link to the invoice PDF at ${COMPANY.appUrl}/i/... Anyone who has the link can open that invoice, so treat the link like the invoice itself. The link always opens the latest version of that invoice. We may disable links, for example when an account is closed.` },
++        { type: 'p', text: `**WhatsApp.** WhatsApp messages are sent through Meta's WhatsApp Business Platform, using message templates, only to tenants who have allowed them through the consent message we send, and not to a tenant who has chosen to stop. We keep a record of each tenant's choice. WhatsApp's own terms also apply to those messages.` },
++        { type: 'note', tone: 'warn', title: 'Your duties when you message tenants', text: `Message only people you have a genuine, lawful reason to contact about their tenancy (rent, invoices, payments, notices, maintenance). Make sure each number is right and belongs to that tenant. Do not use ${COMPANY.product} for advertising, promotions, political messages, chain messages, threats, harassment, shaming of people who owe money, or anything that reveals one person's information to another. If someone asks you to stop messaging them, stop and remove or update their number. You are responsible for telling your tenants that you will contact them this way and for having the right to do so under Kenyan law, including the Data Protection Act, 2019.` },
++        { type: 'p', text: `**Misuse.** We may block or reject messages, pause sending, cancel credits that were obtained or used through abuse, and report unlawful use to the authorities. We do not write, review or approve your messages and are not responsible for what they say.` },
++        { type: 'p', text: `**Messages sent by a desk.** A desk you have connected can send, or schedule, messages to your tenants for you, using your credits, under these same rules and with your signature on them. You are responsible for those messages as the sender. If you remove a desk, it can no longer take new actions for you, but **messages it already scheduled are not cancelled automatically**: contact us on ${COMPANY.email} if you want a schedule stopped.` },
++      ],
++    },
++    {
++      id: 'rent-payments',
++      title: 'Collecting rent through Plot Yangu Payments',
++      blocks: [
++        { type: 'p', text: `Plot Yangu Payments is an optional feature that lets your tenants pay you by M-Pesa and records the payment against the right invoice. It runs on our PAY platform, with Paystack and M-Pesa carrying out the payment itself.` },
++        { type: 'ol', items: [
++          `You give us a **settlement account**: an M-Pesa number, bank account, paybill or till that should receive your money. We set it up with Paystack as your payment account. You can ask us to do this, or use the Payments page in the app.`,
++          `A tenant starts a payment and approves the M-Pesa prompt on their own phone.`,
++          `Paystack takes the payment, **deducts its own processing fee**, and splits the rest between **your settlement account** and **Samuhia's platform fee**, then settles to you on Paystack's and the receiving bank's or M-Pesa's timelines.`,
++          `Plot Yangu records the payment against the invoice.`,
++        ] },
++        { type: 'p', text: `**Fees.** Samuhia's platform fee is shown in your Payments page and may be changed on notice under the [changes section](#changes). Paystack's and the payment networks' charges apply in addition and are taken out of each payment before settlement. You agree to those deductions.` },
++        { type: 'p', text: `**We are not a bank.** We do not take deposits or hold balances for you. Money moves through Paystack and the mobile money or banking networks, whose terms and timelines apply, and which we do not control. We are not responsible for delays or failures in their systems.` },
++        { type: 'p', text: `**Your responsibilities.** You are responsible for entering your settlement details correctly (money sent to a wrong account may not be recoverable), for the correctness of the invoices tenants pay, for any dispute with a tenant about an amount, for any refund you choose to make to a tenant, for the tax on the rent you receive, and for obeying the law on rent and deposits. A payment recorded in the app by you manually (cash, bank transfer, a payment made outside Plot Yangu) is only your own record: we have not received or checked that money.` },
++        { type: 'p', text: `**Reversals and checks.** If a payment is reversed, charged back or found to be fraudulent, we or Paystack may recover it from later settlements and we may reverse the record. We may delay, hold or refuse a payment, and ask you for identity or business documents, where the law, Paystack, or a payment network requires it, or where we reasonably suspect misuse or fraud.` },
++      ],
++    },
++    {
++      id: 'desk',
++      title: 'Samuhia Desk and support agents',
++      blocks: [
++        { type: 'p', text: `Samuhia Desk is our network of support and assisted-service agents. A desk can help you with things such as importing tenants, sending reminders and answering questions. Desks are reviewed, registered and activated by Samuhia, and can be suspended or closed by us.` },
++        { type: 'ul', items: [
++          `**The Top Desk (COG-0000)** is Samuhia's own desk. It is always connected to every account and cannot be removed.`,
++          `**Other desks.** You can connect up to **5** other desks from Settings by entering a desk code (for example COG-0001), and remove them at any time. Only an active desk can be connected.`,
++          `**Landlord code.** Your Landlord code (for example PYL-0001) is how a desk finds your account. Share it only with desks you trust.`,
++          `**Requests.** From Desk requests in the app you can ask a desk for help, up to **5 requests a day**, and see the replies.`,
++        ] },
++        { type: 'p', text: `**What a connected desk can do for you.** With your permission, through our secure desk connection, a desk can: see your account summary (business name, your name and phone, plan and SMS Credit balance); validate and import tenants (it can **add** new tenants but cannot change or delete existing ones); see a list of your tenants with phone numbers partly hidden and the amount each owes; export your tenant list as a file (with full phone numbers and tenancy details) through a download link that expires after one hour; and send or schedule SMS to your tenants using your credits. Tenants and properties you have marked as restricted are left out.` },
++        { type: 'p', text: `**What a desk cannot do.** A desk cannot see your password, sign in as you, edit or delete your existing records, or move your money. Desks cannot use these tools for anyone who has not connected them (the Top Desk excepted, because it is always connected).` },
++        { type: 'p', text: `**Logging.** Every action a desk takes through this connection is recorded in an audit trail (which action, which account, which desk and when).` },
++        { type: 'p', text: `**Your responsibility.** By connecting a desk, you authorise it to take those actions for you. You are responsible for who you connect and for the instructions you give. Check the work a desk does for you; if a desk acts outside what this section allows, tell us on ${COMPANY.email} and we will investigate and, where needed, suspend it.` },
++      ],
++    },
++    {
++      id: 'your-duties',
++      title: 'Your responsibilities',
++      blocks: [
++        { type: 'p', text: 'You agree that you will:' },
++        { type: 'ul', items: [
++          `use ${COMPANY.product} only for lawful property management and related business, and follow the laws that apply to you, including tenancy, rent, deposit, tax, consumer and data protection laws of ${COMPANY.country};`,
++          `have the right to put each tenant's details into the Service, tell tenants how you use their information, and respond to tenants who ask you about it (**for Tenant details, you decide why and how they are used; we process them for you**: see the [Privacy Policy](/privacy));`,
++          `check amounts, dates, readings, tenant details and every document before you send or rely on it;`,
++          `keep your device, passwords, desk codes and settlement details secure, and use your own device lock;`,
++          `back up what matters. On the Free plan, and between syncs on any plan, your records exist **only on your device**. Data on a lost, reset, broken or uninstalled device may be lost for good. Use Cloud Sync (where your plan includes it) and the export tools, and keep copies you need;`,
++          `give us true information and tell us promptly when it changes; and`,
++          `cooperate with us if we ask for information to investigate misuse, a payment problem or a legal request.`,
++        ] },
++      ],
++    },
++    {
++      id: 'acceptable-use',
++      title: 'What you must not do',
++      blocks: [
++        { type: 'ul', items: [
++          'break the law, or help anyone else do so, through the Service;',
++          'harass, threaten, intimidate or unlawfully evict a tenant, or use the Service to shame or expose tenants;',
++          'send spam, marketing, scam or misleading messages, or impersonate another person or business;',
++          `enter someone else's personal data without a lawful reason, or use the Service to collect data about people you have no business dealing with;`,
++          `use another person's identity, phone number or payment details without permission;`,
++          'bypass or interfere with plan limits, SMS Credit charging, security features, rate limits or the payment system, or create accounts to repeat a free trial;',
++          'resell SMS Credits or message capacity, or run a bulk-messaging business through the Service;',
++          'copy, decompile, reverse-engineer, scrape or attack the Service, or upload malware;',
++          'overload our systems or the networks and providers we use; or',
++          'use the Service in a way that could damage Samuhia, its users or its providers.',
++        ] },
++      ],
++    },
++    {
++      id: 'data',
++      title: 'Your data and our rights',
++      blocks: [
++        { type: 'p', text: `**Your Data is yours.** You keep all rights in Your Data. You give us permission to store, process, display, back up and transmit it only as needed to provide the Service to you, including sending messages and documents you or your desk ask for, and as the law requires. We do not sell Your Data. The [Privacy Policy](/privacy) explains what we collect, who handles it and how long we keep it.` },
++        { type: 'p', text: `**Our roles.** For Account Data, we decide how it is used and are the "data controller" under the Data Protection Act, 2019. For Tenant details and other records you enter about other people, **you** are the controller and we are your "data processor": we handle them on your instructions to run the Service. You are responsible for having a lawful basis and for the notices that the law requires you to give your tenants.` },
++        { type: 'p', text: `**Export and closing.** You can use the export and sharing tools in the app, and a desk can export your tenant list at your request. You can ask us to close your account at any time (see [Ending your account](#ending)).` },
++        { type: 'p', text: `**Our property.** The Service, its software, design, text, logos and the names ${COMPANY.product} and ${COMPANY.shortName} belong to ${COMPANY.legalName} or its licensors. We give you a limited, personal, non-exclusive, non-transferable right to use the Service under these Terms. Invoices carry ${COMPANY.product} branding on the plans that include it; you may not remove it. If you send us feedback or ideas, we may use them without owing you anything.` },
++        { type: 'p', text: `**Your branding.** If you upload your company name or logo, you confirm you have the right to use it and allow us to show it on your invoices and messages.` },
++      ],
++    },
++    {
++      id: 'availability',
++      title: 'Availability, updates and outside providers',
++      blocks: [
++        { type: 'p', text: `We work to keep the Service available but **do not promise it will be uninterrupted or error-free**. We may carry out maintenance, update the apps (some updates may be needed to keep using the Service), change or retire features, and change plan limits, with notice where the change is material.` },
++        { type: 'p', text: `The Service depends on outside systems that we do not control: mobile networks, Safaricom M-Pesa, Paystack, Google Cloud and Firebase, our SMS gateway, Meta's WhatsApp platform and Google Play. Outages, delays, rule changes or errors in those systems can affect messages, payments, sign-in and sync. We are not responsible for them, but we will try to tell you about significant disruptions and help you recover.` },
++        { type: 'p', text: `Events beyond our reasonable control (including power or network failures, cyber-attacks, government action, strikes, floods, epidemics or the failure of a provider) excuse delay or failure on either side to the extent they cause it.` },
++      ],
++    },
++    {
++      id: 'ending',
++      title: 'Ending your account, and suspension',
++      blocks: [
++        { type: 'p', text: `**By you.** You can stop using the Service at any time. To close your account and have your cloud data removed, email ${COMPANY.email} from the address on the account (we may check your identity). We will delete or anonymise your cloud data within **${POLICY.deletionDays} days** of confirming your request, except for records we must keep by law (such as payment records, for ${POLICY.financialRecordYears} years). Data on your own devices is yours to delete. Closing an account does not entitle you to a refund and unused SMS Credits are lost.` },
++        { type: 'p', text: `**By us.** We may suspend or end your access, remove content, or refuse a transaction, with notice where we reasonably can, if: you break these Terms; you misuse messaging or payments; we suspect fraud or an unlawful purpose; a payment is reversed or unpaid; the law, a court, a regulator or a provider requires it; or the Service is being withdrawn. If we end your account without a breach on your part, we will give you at least **${POLICY.changeNoticeDays} days' notice** and a chance to export your data, and refund the unused part of any paid period.` },
++        { type: 'p', text: `Sections that by their nature should continue after the account ends (including payments owed, liability, indemnity, governing law and data retention) continue.` },
++      ],
++    },
++    {
++      id: 'liability',
++      title: 'What we promise, and what we are not responsible for',
++      blocks: [
++        { type: 'p', text: `We provide the Service with reasonable skill and care. Beyond what these Terms say, **the Service is provided "as is" and "as available"**, and we give no promise that it will meet your particular needs, always be accurate, available or free of errors, or that messages will be delivered or payments settled by a set time.` },
++        { type: 'p', text: `To the fullest extent the law allows, we are **not liable** for: loss of rent, income, profit or business; losses from wrong data you or a desk entered; disputes, claims, evictions or legal proceedings between you and a tenant or any other person; messages not delivered, delayed or misunderstood; money sent to the wrong account because of details you gave us; losses caused by Safaricom, Paystack, mobile networks, Google, Meta, Google Play or any other outside provider; loss of data stored only on your device, or lost because you did not sync or back up; and indirect or consequential loss.` },
++        { type: 'p', text: `Our total liability to you for all claims arising out of or in connection with the Service in any 12-month period is limited to the greater of: the amount you paid us for the Service in the 12 months before the event that gave rise to the claim, and **KES ${POLICY.liabilityFloorKes.toLocaleString('en-KE')}**.` },
++        { type: 'note', tone: 'info', title: 'What these limits do not do', text: `Nothing in these Terms limits or excludes liability for fraud, for death or personal injury caused by negligence, or for anything else that cannot lawfully be limited, and nothing takes away rights you have under the Consumer Protection Act, 2012 or the Data Protection Act, 2019 that cannot be waived.` },
++        { type: 'p', text: `**Indemnity.** You will compensate us for losses, costs and claims (including reasonable legal fees) that arise from your breach of these Terms, your unlawful use of the Service, your messages, or a claim by a tenant or other person about information you entered or actions you took through the Service. This does not apply to the extent we caused the loss through our own fraud or gross negligence.` },
++      ],
++    },
++    {
++      id: 'general',
++      title: 'General terms',
++      blocks: [
++        { type: 'ul', items: [
++          `**Entire agreement.** These Terms and the [Privacy Policy](/privacy), together with prices, limits and instructions shown in the app at the time you buy, are the whole agreement between you and ${COMPANY.legalName} about the Service.`,
++          `**Notices.** We may notify you in the app, by email, by SMS or on our websites. You can notify us at ${COMPANY.email}. A notice we send to the contact details on your account counts as received when sent.`,
++          `**If part is invalid.** If a court finds part of these Terms unenforceable, the rest stays in force.`,
++          `**No waiver.** If we do not enforce a right immediately, we have not given it up.`,
++          `**Transfer.** You may not transfer your rights under these Terms. We may transfer ours as part of a business transfer, with notice to you, if your rights are not reduced.`,
++          `**Language.** These Terms are written in English. Where we give a translation, the English text prevails.`,
++        ] },
++      ],
++    },
++    {
++      id: 'changes',
++      title: 'Changes to these Terms',
++      blocks: [
++        { type: 'p', text: `We may update these Terms, for example when features, prices, fees or the law change. We will post the new version here with a new date and version number. For a **material** change we will give you at least **${POLICY.changeNoticeDays} days' notice** in the app, by email or by SMS before it takes effect. If you do not accept the change, you may stop using the Service and close your account before it takes effect. Using the Service after the change takes effect means you accept it. Changes required by law, or that fix an error or add a feature without reducing your rights, may take effect immediately.` },
++      ],
++    },
++    {
++      id: 'law',
++      title: 'Governing law and disagreements',
++      blocks: [
++        { type: 'p', text: `These Terms are governed by the laws of ${COMPANY.country}. If you have a complaint or dispute, first write to ${COMPANY.email} so we can try to settle it in good faith; we aim to reply within 14 days. If we cannot settle it within ${POLICY.changeNoticeDays} days, either of us may refer it to mediation in ${COMPANY.location.split(',')[0]}, and, failing that, to the courts of ${COMPANY.country}, which have jurisdiction (the court at ${COMPANY.location.split(',')[0]} being the first choice of venue where the law allows a choice). Complaints about how we handle personal data may also be made to the **Office of the Data Protection Commissioner** (${COMPANY.odpcUrl}). Nothing here stops either of us from asking a court for urgent relief.` },
++      ],
++    },
++    {
++      id: 'contact',
++      title: 'Contact us',
++      blocks: [
++        { type: 'ul', items: [
++          `**Company:** ${COMPANY.legalName}, ${COMPANY.location}.${COMPANY.registrationNumber ? ` Registration no. ${COMPANY.registrationNumber}.` : ''}`,
++          `**Email:** [${COMPANY.email}](mailto:${COMPANY.email}) (sales: [${COMPANY.salesEmail}](mailto:${COMPANY.salesEmail}))`,
++          `**WhatsApp:** [${COMPANY.whatsapp}](${COMPANY.whatsappHref})`,
++          `**Website:** [${COMPANY.website}](${COMPANY.website})`,
++        ] },
++      ],
++    },
++  ],
++};
+diff --git a/src/pages/settings/Settings.tsx b/src/pages/settings/Settings.tsx
+index 90539c8..8dd2f69 100644
+--- a/src/pages/settings/Settings.tsx
++++ b/src/pages/settings/Settings.tsx
+@@ -1,7 +1,8 @@
+ import PageHeader from '../../components/ui/PageHeader';
+ import React, { useCallback, useEffect, useState } from 'react';
+ import { Link } from 'react-router-dom';
+-import { Settings as SettingsIcon, Copy, Lock, LifeBuoy, Loader2, Plus, Trash2, UserCheck } from 'lucide-react';
++import { Settings as SettingsIcon, Copy, Lock, LifeBuoy, Loader2, Plus, Trash2, UserCheck, ScrollText } from 'lucide-react';
++import LegalLink from '../legal/LegalLink';
+ import { addSupportAgent, DESK_TOP_CODE, errorText, listSupportAgents, removeSupportAgent, type SupportAgentsState } from '../../services/desk';
+ 
+ const Settings: React.FC = () => {
+@@ -111,6 +112,15 @@ const Settings: React.FC = () => {
+           </Link>
+         </>
+       )}
++
++      <section className="rounded-2xl border border-line bg-surface p-5">
++        <h2 className="flex items-center gap-2 text-lg font-semibold text-ink"><ScrollText className="h-5 w-5 text-blue-600" /> Legal</h2>
++        <p className="mt-1 text-sm text-ink-muted">How Plot Yangu works with your data, SMS credits and payments.</p>
++        <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium text-blue-700 dark:text-blue-300">
++          <LegalLink to="terms" />
++          <LegalLink to="privacy" />
++        </div>
++      </section>
+     </div>
+     </>
+   );
