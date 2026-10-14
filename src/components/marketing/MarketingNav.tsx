@@ -1,6 +1,7 @@
 // src/components/marketing/MarketingNav.tsx
 import React, { useState } from 'react';
 import { Menu, X } from 'lucide-react';
+import InstallButton from '../../pwa/InstallButton';
 
 interface MarketingNavProps {
   onGetStarted: () => void;
@@ -47,6 +48,7 @@ const MarketingNav: React.FC<MarketingNavProps> = ({ onGetStarted, onSignIn }) =
           </nav>
 
           <div className="hidden md:flex items-center gap-3">
+            <InstallButton tone="onDark" />
             <button
               onClick={onSignIn}
               className="px-4 py-2 text-sm font-semibold text-white hover:text-blue-200 transition-colors"
@@ -61,13 +63,16 @@ const MarketingNav: React.FC<MarketingNavProps> = ({ onGetStarted, onSignIn }) =
             </button>
           </div>
 
-          <button
-            onClick={() => setMenuOpen((v) => !v)}
-            aria-label="Toggle menu"
-            className="md:hidden text-white p-2 -mr-2"
-          >
-            {menuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
+          <div className="flex items-center gap-2 md:hidden">
+            <InstallButton tone="onDark" />
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              aria-label="Toggle menu"
+              className="text-white p-2 -mr-2"
+            >
+              {menuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
 
         {menuOpen && (

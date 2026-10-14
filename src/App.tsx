@@ -1,6 +1,8 @@
 // App.tsx - Updated with Enhanced User State Management, Sync Integration, and Exit Confirmation
 import React, { useState, useEffect, Suspense, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, NavLink } from 'react-router-dom';
+import PWAPrompts from './pwa/PWAPrompts';
+import InstallButton from './pwa/InstallButton';
 import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, DollarSign, MessageSquare, Settings as SettingsIcon, LifeBuoy } from 'lucide-react';
 import { database } from './services/database/Database';
 import { firebaseSyncService } from './services/database/FirebaseSync';
@@ -173,6 +175,7 @@ const StatusBar = () => {
       </div>
       
       <div className="flex items-center gap-3 flex-shrink-0 md:gap-4">
+        <InstallButton tone="bar" />
         {user.storage && (
           <>
             {syncStatus.syncInProgress ? (
@@ -1116,6 +1119,7 @@ const App: React.FC = () => {
     <AppErrorBoundary>
       <AuthProvider>
         <AppContent />
+        <PWAPrompts />
       </AuthProvider>
     </AppErrorBoundary>
   );

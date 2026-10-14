@@ -337,78 +337,9 @@
       }
     </script>
     
-    <!-- Service Worker Registration -->
-    <script>
-      // Register service worker early (before React loads)
-      if ('serviceWorker' in navigator && !window.location.protocol.startsWith('capacitor')) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
-            .then(registration => {
-              console.log('✅ Service Worker registered:', registration.scope);
-              
-              // Check for updates on page load
-              registration.update();
-            })
-            .catch(error => {
-              console.error('❌ Service Worker registration failed:', error);
-            });
-        });
-      }
-    </script>
-    
-    <!-- PWA Install Detection -->
-    <script>
-      // Detect PWA install prompt
-      let deferredPrompt;
-      
-      window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferredPrompt = e;
-        
-        // Notify app that install is available
-        window.dispatchEvent(new CustomEvent('pwa-installable'));
-        
-        console.log('💾 PWA install prompt available');
-      });
-      
-      window.addEventListener('appinstalled', () => {
-        deferredPrompt = null;
-        console.log('✅ PWA installed successfully');
-      });
-      
-      // Make install prompt available globally
-      window.showInstallPrompt = async function() {
-        if (!deferredPrompt) {
-          console.log('⚠️ Install prompt not available');
-          return false;
-        }
-        
-        try {
-          await deferredPrompt.prompt();
-          const { outcome } = await deferredPrompt.userChoice;
-          console.log(`User ${outcome} the install prompt`);
-          deferredPrompt = null;
-          return outcome === 'accepted';
-        } catch (error) {
-          console.error('Install prompt error:', error);
-          return false;
-        }
-      };
-    </script>
-    
     <!-- Storage Persistence Detection -->
     <script>
-      // Request persistent storage on load
-      if ('storage' in navigator && 'persist' in navigator.storage) {
-        navigator.storage.persist().then(granted => {
-          if (granted) {
-            console.log('✅ Persistent storage granted');
-          } else {
-            console.log('⚠️ Persistent storage denied');
-          }
-        });
-      }
-      
+      // (Persistent storage is requested by src/pwa/pwaManager.ts)
       // Monitor storage usage
       if ('storage' in navigator && 'estimate' in navigator.storage) {
         navigator.storage.estimate().then(estimate => {

@@ -1,306 +1,187 @@
-// public/service-worker.js
-const CACHE_NAME = 'plot-yangu-v2';
-const RUNTIME_CACHE = 'plot-yangu-runtime-v2';
+// public/service-worker.js — Plot Yangu
+//
+// BUILD_ID and PRECACHE_ASSETS are stamped at build time by tools/vite-plugin-pwa-sw.ts.
+// The placeholders below stay as-is in source (and in `vite dev`, where this file is not registered).
+//
+// Update policy: a new worker installs in the background and WAITS. It only takes over when the
+// app posts SKIP_WAITING after the user taps "Update" (see src/pwa/pwaManager.ts). It never calls
+// skipWaiting() on its own, so nobody gets a new version swapped in under them mid-entry.
+const BUILD_ID = /*__BUILD_ID__*/ 'dev';
+const PRECACHE_ASSETS = /*__PRECACHE_ASSETS__*/ [];
 
-// Assets to cache on install
-const PRECACHE_ASSETS = [
+const STATIC_CACHE = `plotyangu-static-${BUILD_ID}`; // app shell + hashed build files, replaced per build
+const RUNTIME_CACHE = 'plotyangu-runtime-v3';          // icons, sql.js WASM, other runtime fetches
+const LEGACY_CACHES = ['plot-yangu-v2', 'plot-yangu-runtime-v2'];
+
+const APP_SHELL = [
   '/',
   '/index.html',
   '/manifest.json',
   '/icons/manifest-icon-192.maskable.png',
-  '/icons/manifest-icon-512.maskable.png'
+  '/icons/manifest-icon-512.maskable.png',
+  '/icons/apple-icon-180.png'
 ];
 
-// WA-SQLite WASM files to cache
- const WASM_ASSETS = [
-   'https://sql.js.org/dist/sql-wasm.wasm',
- ];
+// sql.js loads its WASM from this CDN (UniversalSQLiteAdapter.locateFile)
+const SQLJS_HOST = 'sql.js.org';
+const SQLJS_WASM = 'https://sql.js.org/dist/sql-wasm.wasm';
 
-// Install event - cache essential assets
+// ───────────────────────────── lifecycle ─────────────────────────────
+
 self.addEventListener('install', (event) => {
-  console.log('[ServiceWorker] Install');
-  
-  event.waitUntil(
-    (async () => {
-      const cache = await caches.open(CACHE_NAME);
-      
-      // Cache app assets
-      try {
-        await cache.addAll(PRECACHE_ASSETS);
-        console.log('[ServiceWorker] App assets cached');
-      } catch (error) {
-        console.error('[ServiceWorker] Failed to cache app assets:', error);
-      }
-      
-      // Cache WASM files separately (they may fail if not yet loaded)
-      for (const url of WASM_ASSETS) {
-        try {
-          const response = await fetch(url, { mode: 'cors' });
-          if (response.ok) {
-            await cache.put(url, response);
-            console.log('[ServiceWorker] Cached:', url);
-          }
-        } catch (error) {
-          console.warn('[ServiceWorker] Failed to cache WASM:', url);
-        }
-      }
-      
-      // Skip waiting to activate immediately
-      self.skipWaiting();
-    })()
-  );
-});
-
-// Activate event - cleanup old caches
-self.addEventListener('activate', (event) => {
-  console.log('[ServiceWorker] Activate');
-  
-  event.waitUntil(
-    (async () => {
-      // Remove old caches
-      const cacheNames = await caches.keys();
-      await Promise.all(
-        cacheNames
-          .filter(name => name !== CACHE_NAME && name !== RUNTIME_CACHE)
-          .map(name => {
-            console.log('[ServiceWorker] Deleting old cache:', name);
-            return caches.delete(name);
-          })
-      );
-      
-      // Claim all clients
-      await self.clients.claim();
-      console.log('[ServiceWorker] Claimed clients');
-    })()
-  );
-});
-
-// Fetch event - serve from cache, fallback to network
-self.addEventListener('fetch', (event) => {
-  const { request } = event;
-  const url = new URL(request.url);
-  
-  // Skip non-GET requests
-  if (request.method !== 'GET') {
-    return;
-  }
-  
-  // Short invoice links (/i/<code>) are redirected by a Cloud Function: never serve them from the app shell cache
-  if (url.origin === location.origin && url.pathname.startsWith('/i/')) {
-    return;
-  }
-
-  // Skip chrome-extension and other non-http(s) requests
-  if (!url.protocol.startsWith('http')) {
-    return;
-  }
-  
-  // Handle different resource types
-  if (url.origin === location.origin) {
-    // Same-origin requests - use cache-first strategy
-    event.respondWith(cacheFirst(request));
-  } else if (url.hostname.includes('jsdelivr.net')) {
-    // CDN resources (WASM) - cache-first with long expiry
-    event.respondWith(cacheFirst(request, 7 * 24 * 60 * 60 * 1000)); // 7 days
-  } else if (url.hostname.includes('firebase')) {
-    // Firebase - network-first (always fresh data)
-    event.respondWith(networkFirst(request));
-  } else {
-    // Other resources - network-first with cache fallback
-    event.respondWith(networkFirst(request));
-  }
-});
-
-// Cache-first strategy
-async function cacheFirst(request, maxAge = 24 * 60 * 60 * 1000) {
-  const cache = await caches.open(RUNTIME_CACHE);
-  const cached = await cache.match(request);
-  
-  if (cached) {
-    // Check if cache is still fresh
-    const cachedDate = new Date(cached.headers.get('date') || 0);
-    const age = Date.now() - cachedDate.getTime();
-    
-    if (age < maxAge) {
-      console.log('[ServiceWorker] Serving from cache:', request.url);
-      return cached;
-    }
-  }
-  
-  // Fetch from network and cache
-  try {
-    const response = await fetch(request);
-    
-    // Only cache successful responses
-    if (response.ok) {
-      const clonedResponse = response.clone();
-      await cache.put(request, clonedResponse);
-      console.log('[ServiceWorker] Cached from network:', request.url);
-    }
-    
-    return response;
-  } catch (error) {
-    // Network failed, return stale cache if available
-    if (cached) {
-      console.log('[ServiceWorker] Network failed, serving stale cache:', request.url);
-      return cached;
-    }
-    
-    throw error;
-  }
-}
-
-// Network-first strategy
-async function networkFirst(request) {
-  const cache = await caches.open(RUNTIME_CACHE);
-  
-  try {
-    const response = await fetch(request);
-    
-    // Cache successful responses
-    if (response.ok) {
-      const clonedResponse = response.clone();
-      await cache.put(request, clonedResponse);
-    }
-    
-    return response;
-  } catch (error) {
-    // Network failed, try cache
-    const cached = await cache.match(request);
-    
-    if (cached) {
-      console.log('[ServiceWorker] Network failed, serving from cache:', request.url);
-      return cached;
-    }
-    
-    throw error;
-  }
-}
-
-// Background sync for data synchronization
-self.addEventListener('sync', (event) => {
-  console.log('[ServiceWorker] Background sync:', event.tag);
-  
-  if (event.tag === 'sync-properties') {
-    event.waitUntil(syncProperties());
-  } else if (event.tag === 'sync-invoices') {
-    event.waitUntil(syncInvoices());
-  } else if (event.tag === 'sync-all') {
-    event.waitUntil(syncAll());
-  }
-});
-
-async function syncProperties() {
-  try {
-    console.log('[ServiceWorker] Syncing properties...');
-    // Notify all clients to perform sync
-    const clients = await self.clients.matchAll();
-    clients.forEach(client => {
-      client.postMessage({
-        type: 'SYNC_PROPERTIES'
-      });
-    });
-  } catch (error) {
-    console.error('[ServiceWorker] Property sync failed:', error);
-  }
-}
-
-async function syncInvoices() {
-  try {
-    console.log('[ServiceWorker] Syncing invoices...');
-    const clients = await self.clients.matchAll();
-    clients.forEach(client => {
-      client.postMessage({
-        type: 'SYNC_INVOICES'
-      });
-    });
-  } catch (error) {
-    console.error('[ServiceWorker] Invoice sync failed:', error);
-  }
-}
-
-async function syncAll() {
-  try {
-    console.log('[ServiceWorker] Syncing all data...');
-    const clients = await self.clients.matchAll();
-    clients.forEach(client => {
-      client.postMessage({
-        type: 'SYNC_ALL'
-      });
-    });
-  } catch (error) {
-    console.error('[ServiceWorker] Full sync failed:', error);
-  }
-}
-
-// Handle messages from clients
-self.addEventListener('message', (event) => {
-  console.log('[ServiceWorker] Message received:', event.data);
-  
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  } else if (event.data && event.data.type === 'CLEAR_CACHE') {
-    event.waitUntil(
-      caches.keys().then(cacheNames => {
-        return Promise.all(
-          cacheNames.map(cacheName => caches.delete(cacheName))
-        );
-      })
+  event.waitUntil((async () => {
+    const cache = await caches.open(STATIC_CACHE);
+    // allSettled: one missing optional file must not abort the whole install
+    await Promise.allSettled(
+      [...APP_SHELL, ...PRECACHE_ASSETS].map((url) => cache.add(new Request(url, { cache: 'reload' })))
     );
+
+    // Warm the offline database engine in the background. Deliberately NOT awaited: a slow or blocked
+    // CDN must never hold up installing (and therefore updating) the app itself.
+    warmSqlWasm();
+    // No skipWaiting() here on purpose — see the update policy above.
+  })());
+});
+
+async function warmSqlWasm() {
+  try {
+    const runtime = await caches.open(RUNTIME_CACHE);
+    if (await runtime.match(SQLJS_WASM)) return;
+    const res = await fetch(SQLJS_WASM, { mode: 'cors' });
+    if (res.ok) await runtime.put(SQLJS_WASM, res);
+  } catch (_) { /* best effort; the first real request is cached by the fetch handler */ }
+}
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    const keep = new Set([STATIC_CACHE, RUNTIME_CACHE]);
+    const names = await caches.keys();
+    await Promise.all(
+      names
+        .filter((n) => !keep.has(n) && (n.startsWith('plotyangu-static-') || LEGACY_CACHES.includes(n)))
+        .map((n) => caches.delete(n))
+    );
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener('message', (event) => {
+  const type = event.data && event.data.type;
+  if (type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  } else if (type === 'GET_VERSION') {
+    event.ports[0] && event.ports[0].postMessage({ buildId: BUILD_ID });
+  } else if (type === 'CLEAR_CACHE') {
+    event.waitUntil(caches.keys().then((names) => Promise.all(names.map((n) => caches.delete(n)))));
   }
 });
 
-// Periodic background sync (if supported)
+// ─────────────────────────────── fetch ───────────────────────────────
+
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  if (!url.protocol.startsWith('http')) return;
+
+  if (url.origin === self.location.origin) {
+    // Short invoice links (/i/<code>) are redirected by a Cloud Function — never serve them from the shell cache
+    if (url.pathname.startsWith('/i/')) return;
+    // Firebase Auth helper pages and the worker script itself always go to the network
+    if (url.pathname.startsWith('/__/') || url.pathname === '/service-worker.js') return;
+
+    if (req.mode === 'navigate') {
+      event.respondWith(handleNavigation(req));
+    } else if (url.pathname.startsWith('/assets/')) {
+      // Hashed, immutable build files
+      event.respondWith(cacheFirst(req, STATIC_CACHE));
+    } else if (['image', 'font', 'manifest'].includes(req.destination)) {
+      event.respondWith(staleWhileRevalidate(req, RUNTIME_CACHE));
+    }
+    return;
+  }
+
+  // sql.js WASM — large, versioned by URL, needed for the offline database
+  if (url.hostname === SQLJS_HOST && url.pathname.startsWith('/dist/')) {
+    event.respondWith(cacheFirst(req, RUNTIME_CACHE));
+  }
+  // Everything else cross-origin (Firebase, Paystack, APIs, storage) goes straight to the network.
+});
+
+// Navigations: network first so a deploy is seen immediately; the cached shell is the offline fallback.
+async function handleNavigation(req) {
+  try {
+    return await fetch(req);
+  } catch (_) {
+    const cache = await caches.open(STATIC_CACHE);
+    return (await cache.match('/index.html')) || (await cache.match('/')) || Response.error();
+  }
+}
+
+async function cacheFirst(req, cacheName) {
+  const cache = await caches.open(cacheName);
+  const hit = await cache.match(req);
+  if (hit) return hit;
+  const res = await fetch(req);
+  if (res.ok) cache.put(req, res.clone());
+  return res;
+}
+
+async function staleWhileRevalidate(req, cacheName) {
+  const cache = await caches.open(cacheName);
+  const hit = await cache.match(req);
+  const refresh = fetch(req)
+    .then((res) => { if (res.ok) cache.put(req, res.clone()); return res; })
+    .catch(() => null);
+  return hit || (await refresh) || Response.error();
+}
+
+// ──────────────────────── background sync ────────────────────────
+
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'sync-properties') event.waitUntil(notifyClients('SYNC_PROPERTIES'));
+  else if (event.tag === 'sync-invoices') event.waitUntil(notifyClients('SYNC_INVOICES'));
+  else if (event.tag === 'sync-all') event.waitUntil(notifyClients('SYNC_ALL'));
+});
+
 self.addEventListener('periodicsync', (event) => {
-  console.log('[ServiceWorker] Periodic sync:', event.tag);
-  
-  if (event.tag === 'sync-data') {
-    event.waitUntil(syncAll());
-  }
+  if (event.tag === 'sync-data') event.waitUntil(notifyClients('SYNC_ALL'));
 });
 
-// Push notifications (for future use)
+async function notifyClients(type) {
+  try {
+    const all = await self.clients.matchAll();
+    all.forEach((client) => client.postMessage({ type }));
+  } catch (error) {
+    console.error('[ServiceWorker] notify failed:', type, error);
+  }
+}
+
+// ───────────────────────── push notifications ─────────────────────────
+
 self.addEventListener('push', (event) => {
-  console.log('[ServiceWorker] Push notification received');
-  
   const data = event.data ? event.data.json() : {};
-  const title = data.title || 'Plot Yangu';
-  const options = {
-    body: data.body || 'You have a new notification',
-    icon: '/icons/icon-192x192.png',
-    badge: '/icons/badge-72x72.png',
-    vibrate: [200, 100, 200],
-    data: data.data || {},
-    actions: data.actions || []
-  };
-  
   event.waitUntil(
-    self.registration.showNotification(title, options)
+    self.registration.showNotification(data.title || 'Plot Yangu', {
+      body: data.body || 'You have a new notification',
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/badge-72x72.png',
+      vibrate: [200, 100, 200],
+      data: data.data || {},
+      actions: data.actions || []
+    })
   );
 });
 
-// Notification click handler
 self.addEventListener('notificationclick', (event) => {
-  console.log('[ServiceWorker] Notification clicked');
-  
   event.notification.close();
-  
-  const urlToOpen = event.notification.data?.url || '/';
-  
+  const urlToOpen = (event.notification.data && event.notification.data.url) || '/';
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true })
-      .then(clientList => {
-        // Focus existing window if available
-        for (const client of clientList) {
-          if (client.url === urlToOpen && 'focus' in client) {
-            return client.focus();
-          }
-        }
-        
-        // Open new window
-        if (clients.openWindow) {
-          return clients.openWindow(urlToOpen);
-        }
-      })
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const client of list) {
+        if (client.url === urlToOpen && 'focus' in client) return client.focus();
+      }
+      if (clients.openWindow) return clients.openWindow(urlToOpen);
+    })
   );
 });

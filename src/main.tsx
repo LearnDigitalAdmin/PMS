@@ -4,8 +4,9 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
-// Import PWA manager (auto-initializes)
-import './utils/pwa-registration'
+// Start listening for install / update events before React renders (a beforeinstallprompt fired early is otherwise lost)
+import { pwaManager } from './pwa/pwaManager'
+pwaManager.init()
 
 // Remove loading screen after React renders
 const removeLoadingScreen = () => {
