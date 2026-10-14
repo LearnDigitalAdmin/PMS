@@ -790,13 +790,15 @@ const App: React.FC = () => {
     }
   };
 
+  const appInitStartedRef = useRef(false);
+
   useEffect(() => {
     // Initialize app with PROPER SEQUENCE
     const initializeApp = async () => {
       try {
         // STEP 1: Initialize database FIRST and WAIT for completion
         console.log('📊 Step 1/3: Initializing database...');
-        //await database.initializeDatabase();
+        await database.initializeDatabase(); // shared promise: safe to call again
         console.log('✅ Database initialized');
         
         // STEP 2: Wait for database to settle
@@ -908,7 +910,11 @@ const App: React.FC = () => {
       }
     };
 
-    initializeApp();
+    // React StrictMode runs effects twice in dev; only start init once.
+    if (!appInitStartedRef.current) {
+      appInitStartedRef.current = true;
+      initializeApp();
+    }
 
     // Cleanup sync listeners on unmount
     return () => {

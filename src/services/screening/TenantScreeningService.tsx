@@ -185,6 +185,21 @@ interface ScreeningData {
   dataVersion: number;
 }
 
+/** Recursively drops `undefined` values; keeps Dates, Timestamps and FieldValues intact. */
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(stripUndefined) as unknown as T;
+  if (value && typeof value === 'object') {
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) return value; // Date, Timestamp, sentinels…
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v !== undefined) out[k] = stripUndefined(v);
+    }
+    return out as T;
+  }
+  return value;
+}
+
 export class TenantScreeningService {
   private static instance: TenantScreeningService;
   private miningInProgress = false;
@@ -1280,7 +1295,9 @@ private async calculatePortfolioBenchmarks(
         lastMiningRun: serverTimestamp()
       };
       
-      await setDoc(screeningRef, firestoreData, { merge: true });
+      // Firestore rejects `undefined` (e.g. portfolioBenchmarks when the user has
+      // fewer than 5 tenants), so strip undefined values before writing.
+      await setDoc(screeningRef, stripUndefined(firestoreData), { merge: true });
       
     } catch (error) {
       console.error(`Failed to upload screening data for tenant ${screeningData.tenantId}:`, error);

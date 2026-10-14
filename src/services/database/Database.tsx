@@ -356,13 +356,28 @@ export class DatabaseManager {
   private readonly DB_NAME = 'Plot';
   private fireDB = db;
   // 2. FIX: Add missing USER_LIMITS constant
-USER_LIMITS: any = {USER_LIMITS};
+USER_LIMITS: any = USER_LIMITS;
 
   constructor() {
     this.connectionManager = SQLiteConnectionManager.getInstance();
   }
 
-  async initializeDatabase(): Promise<void> {
+  // Shared in-flight/completed promise so every caller (AuthWrapper, App,
+  // React StrictMode's double effects) awaits the SAME initialization instead
+  // of racing it and touching `this.db` while it is still null.
+  private initPromise: Promise<void> | null = null;
+
+  initializeDatabase(): Promise<void> {
+    if (!this.initPromise) {
+      this.initPromise = this.runInitializeDatabase().catch((error) => {
+        this.initPromise = null; // allow a retry after a failure
+        throw error;
+      });
+    }
+    return this.initPromise;
+  }
+
+  private async runInitializeDatabase(): Promise<void> {
     try {
       console.log('Initializing Database...');
       

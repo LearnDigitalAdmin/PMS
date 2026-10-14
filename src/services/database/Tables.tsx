@@ -106,7 +106,7 @@ export class DatabaseMaintenance {
         { query: `DELETE FROM rent_record_sheets WHERE billing_month < ?`, params: [cutoffMonth] },
         
         // Remove orphaned transcript items
-        { query: `DELETE FROM transcript_items WHERE transcript_id NOT IN (SELECT id FROM monthly_transcripts)`, params: [] }
+        { query: `DELETE FROM transcript_items WHERE property_id NOT IN (SELECT id FROM properties)`, params: [] }
       ];
 
       let totalDeleted = 0;
@@ -588,7 +588,8 @@ export class Tables {
       'CREATE INDEX IF NOT EXISTS idx_transcripts_property_month ON monthly_transcripts(property_id, billing_month)',
       'CREATE INDEX IF NOT EXISTS idx_transcripts_status ON monthly_transcripts(status)',
       'CREATE INDEX IF NOT EXISTS idx_transcripts_generated_by ON monthly_transcripts(generated_by)',
-      'CREATE INDEX IF NOT EXISTS idx_transcript_items_transcript_id ON transcript_items(transcript_id)',
+      // transcript_items has no transcript_id column; items are keyed by property + month
+      'CREATE INDEX IF NOT EXISTS idx_transcript_items_property_month ON transcript_items(property_id, billing_month)',
       'CREATE INDEX IF NOT EXISTS idx_transcript_items_type ON transcript_items(type)',
       'CREATE INDEX IF NOT EXISTS idx_record_sheets_property_month ON rent_record_sheets(property_id, billing_month)',
       'CREATE INDEX IF NOT EXISTS idx_record_sheets_status ON rent_record_sheets(status)',
@@ -735,12 +736,26 @@ export class Tables {
         { query: `ALTER TABLE rent_record_sheets ADD COLUMN is_archived INTEGER DEFAULT 0`, column: 'is_archived' }
       ];
 
+      // Only run an ALTER when the column is really missing, so a normal start
+      // no longer logs a dozen "duplicate column name" errors.
+      const columnCache = new Map<string, Set<string>>();
+      const hasColumn = async (table: string, column: string): Promise<boolean> => {
+        let cols = columnCache.get(table);
+        if (!cols) {
+          const info = await database.db!.query(`PRAGMA table_info(${table})`);
+          cols = new Set<string>((info.values || []).map((r: any) => String(r.name)));
+          columnCache.set(table, cols);
+        }
+        return cols.has(column);
+      };
+
       for (const migration of migrations) {
         try {
+          const table = /ALTER TABLE (\w+)/i.exec(migration.query)?.[1];
+          if (table && await hasColumn(table, migration.column)) continue;
           await database.db.run(migration.query);
         } catch (error) {
-          // Column might already exist, ignore error
-          console.log(`Migration skipped (${migration.column} exists)`);
+          console.warn(`Migration skipped (${migration.column}):`, error);
         }
       }
       console.log('Database migrations completed successfully');

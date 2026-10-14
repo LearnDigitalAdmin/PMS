@@ -1287,7 +1287,10 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
     const lockKey = `download_${userId}`;
     
     if (this.isOperationLocked(lockKey)) {
-      throw new Error('Download already in progress');
+      // Not an error: another caller is already downloading (e.g. StrictMode's
+      // double mount). Let it finish instead of surfacing an unhandled rejection.
+      console.log('⏳ Download already in progress, skipping duplicate request');
+      return this.buildSyncStatus('Download already in progress');
     }
 
     console.log(`🔽 Starting download (${source})...`);
