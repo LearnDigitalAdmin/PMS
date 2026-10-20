@@ -212,9 +212,14 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
 
     const dueDate = tenant.currentInvoice.dueDate ? new Date(tenant.currentInvoice.dueDate) : null;
     const isOverdue = dueDate && dueDate < new Date();
+    const isPartial = (tenant.currentInvoice.amountPaid || 0) > 0;
 
     if (isOverdue) {
-      return <span className="px-2 py-1 bg-red-100 dark:bg-red-500/15 text-red-800 dark:text-red-300 text-xs rounded-full">Overdue</span>;
+      return <span className="px-2 py-1 bg-red-100 dark:bg-red-500/15 text-red-800 dark:text-red-300 text-xs rounded-full">{isPartial ? 'Partial · Overdue' : 'Overdue'}</span>;
+    }
+
+    if (isPartial) {
+      return <span className="px-2 py-1 bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 text-xs rounded-full">Partial</span>;
     }
 
     return <span className="px-2 py-1 bg-yellow-100 dark:bg-yellow-500/15 text-yellow-800 dark:text-yellow-300 text-xs rounded-full">Pending</span>;

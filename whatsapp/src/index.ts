@@ -409,9 +409,11 @@ function buildSmsMessage(
             break;
 
         case SMS_TEMPLATES.PAYMENT_SUCCESS:
-            // params: tenantName, amountPaid, propertyUnit
-            msg = `Dear ${params.tenantName}, ${params.agentName} has received your payment of ${params.amountPaid} for ${params.propertyUnit}. Thank you!`;
-            compact = `Dear ${params.tenantName}, payment of ${params.amountPaid} for ${params.propertyUnit} received. Thank you!`;
+            // params: tenantName, amountPaid, propertyUnit, balance (only for a part-payment)
+            msg = `Dear ${params.tenantName}, ${params.agentName} has received your payment of ${params.amountPaid} for ${params.propertyUnit}.` +
+                  (params.balance ? ` Balance due: ${params.balance}.` : '') + ` Thank you!`;
+            compact = `Dear ${params.tenantName}, payment of ${params.amountPaid} for ${params.propertyUnit} received.` +
+                  (params.balance ? ` Balance: ${params.balance}.` : '') + ` Thank you!`;
             label = "Receipt:";
             break;
 
@@ -882,12 +884,32 @@ async function sendNewInvoiceNotification(
     }
 }
 
+/**
+ * What part of `amountPaid` the tenant has already been told about. `paidNotifiedAmount` is written by whoever announced
+ * a payment (this job, or PAY's webhook for Paystack payments); older invoices only have the boolean `hasPaid`.
+ */
+function notifiedPaidAmount(invoice: any): number {
+    if (typeof invoice.paidNotifiedAmount === 'number') return invoice.paidNotifiedAmount;
+    return invoice.hasPaid === true ? Number(invoice.amountPaid) || 0 : 0;
+}
+
 async function sendPaymentSuccessNotification(
     invoice: any,
     fallbackInvoiceId: string | null = null
 ): Promise<boolean> {
     try {
         const invoiceLocalId = invoice.localId || fallbackInvoiceId || "unknown";
+        // A part-payment is announced like a full one: only the NEW money, plus the balance still due.
+        const amountPaid = Number(invoice.amountPaid) || 0;
+        const paidNow = Math.round((amountPaid - notifiedPaidAmount(invoice)) * 100) / 100;
+        if (paidNow <= 0) {
+            console.log(`Invoice ${invoiceLocalId}: payment already announced, skipping`);
+            return false;
+        }
+        const isFullyPaid = invoice.isPaid === true || invoice.pdfStatus === "paid";
+        const balanceDue = isFullyPaid ? 0 : Math.max(0, (Number(invoice.totalAmount) || 0) - amountPaid);
+        const announced = { hasPaid: isFullyPaid, paidNotifiedAmount: amountPaid };
+
         console.log(`Sending payment success notification for invoice ${invoiceLocalId}`);
         const { tenant, property, user, company } = await getInvoiceContext(invoice, fallbackInvoiceId);
 
@@ -901,7 +923,8 @@ async function sendPaymentSuccessNotification(
             const shortLink = await getInvoiceShortLink(invoice, invoiceLocalId);
             const smsMsg = buildSmsMessage(SMS_TEMPLATES.PAYMENT_SUCCESS, {
                 tenantName:  tenant.name,
-                amountPaid:  formatCurrency(invoice.amountPaid),
+                amountPaid:  formatCurrency(paidNow),
+                ...(balanceDue > 0 ? { balance: formatCurrency(balanceDue) } : {}),
                 propertyUnit: `${property.name} ${tenant.unitNumber || ""}`.trim(),
                 agentName:    company?.name  || user.name,
                 ...(shortLink ? { link: shortLink, maxExtraTokens: "0" } : {}),
@@ -910,18 +933,10 @@ async function sendPaymentSuccessNotification(
             if (!smsSent) {
                 return await sendConsentRequest(tenant, property, company, user);
             }
+            await updateInvoiceFlags(invoice.userId, invoiceLocalId, announced);
             return smsSent;
         }
 
-        const isInvoicePaid = invoice.pdfStatus === "paid" || invoice.isPaid;
-        if (!isInvoicePaid) {
-            console.log(`Invoice ${invoiceLocalId} not paid yet, skipping`);
-            return false;
-        }
-        if (invoice.hasPaid === true) {
-            console.log(`Invoice ${invoiceLocalId} payment notification already sent`);
-            return false;
-        }
         if (!tenant.phone) {
             console.error(`No phone for tenant ${tenant.name}`);
             return false;
@@ -930,7 +945,8 @@ async function sendPaymentSuccessNotification(
         const shortLink = await getInvoiceShortLink(invoice, invoiceLocalId);
         const smsMsg = buildSmsMessage(SMS_TEMPLATES.PAYMENT_SUCCESS, {
             tenantName:   tenant.name,
-            amountPaid:   formatCurrency(invoice.amountPaid),
+            amountPaid:   formatCurrency(paidNow),
+            ...(balanceDue > 0 ? { balance: formatCurrency(balanceDue) } : {}),
             propertyUnit: `${property.name} ${tenant.unitNumber || ""}`.trim(),
             agentName:    company?.name  || user.name,
             ...(shortLink ? { link: shortLink } : {}),
@@ -939,7 +955,7 @@ async function sendPaymentSuccessNotification(
         const processedUrl  = processFirebaseUrlForWhatsApp(invoice.pdfUrl);
         const templateParams = [
             tenant.name,
-            formatCurrency(invoice.amountPaid),
+            formatCurrency(paidNow),
             `${property.name} ${tenant.unitNumber || ""}`.trim(),
         ];
 
@@ -952,7 +968,7 @@ async function sendPaymentSuccessNotification(
         });
 
         if (success) {
-            await updateInvoiceFlags(invoice.userId, invoiceLocalId, { hasPaid: true });
+            await updateInvoiceFlags(invoice.userId, invoiceLocalId, announced);
         }
         return success;
     } catch (error) {
@@ -2617,7 +2633,7 @@ async function updateInvoiceFlags(userId: string, invoiceLocalId: string, flags:
 // self-triggered re-runs that can re-send notifications against a stale
 // snapshot (the re-run's `before`/`after` predates the OTHER flag write that
 // was still in flight) before the flags settle.
-const NOTIFICATION_FLAG_KEYS = ['isNew', 'hasPaid', 'isDue'];
+const NOTIFICATION_FLAG_KEYS = ['isNew', 'hasPaid', 'isDue', 'paidNotifiedAmount'];
 
 // Returns true if `after` differs from `before` only in the notification
 // flag fields above - i.e. this write was caused by our own updateInvoiceFlags()
@@ -2920,8 +2936,8 @@ export const processInvoiceNotifications = onDocumentWritten({
         }
 
         // 2. Payment Success Notification
-        // Send if: invoice is paid AND (isPaid flag missing OR isPaid=false)
-        const shouldSendPaymentNotification = isInvoicePaid && (!invoice.hasOwnProperty('hasPaid') || invoice.hasPaid === false);
+        // Send when money has been received that the tenant has not been told about yet — a part-payment or the final one.
+        const shouldSendPaymentNotification = (Number(invoice.amountPaid) || 0) > notifiedPaidAmount(invoice);
         
         if (shouldSendPaymentNotification) {
             console.log(`Attempting payment success notification for invoice ${invoiceId}`);

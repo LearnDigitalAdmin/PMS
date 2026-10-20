@@ -680,9 +680,9 @@ async getMonthlyStats(propertyId: number, year: number): Promise<MonthlyStats[]>
     const query = `
       SELECT 
         i.billing_month as month,
-        SUM(CASE WHEN i.is_paid = 1 THEN i.total_amount ELSE 0 END) as revenue,
+        SUM(CASE WHEN i.is_paid = 1 THEN i.total_amount WHEN i.amount_paid > 0 THEN i.amount_paid ELSE 0 END) as revenue,
         0 as expenses,
-        SUM(CASE WHEN i.is_paid = 1 THEN i.total_amount ELSE 0 END) as profit,
+        SUM(CASE WHEN i.is_paid = 1 THEN i.total_amount WHEN i.amount_paid > 0 THEN i.amount_paid ELSE 0 END) as profit,
         COUNT(CASE WHEN i.is_paid = 1 THEN 1 END) as paid_count,
         COUNT(CASE WHEN i.is_paid = 0 THEN 1 END) as unpaid_count
       FROM invoices i
@@ -874,26 +874,65 @@ async updateUser(id: number, user: Partial<{
 
 
 // 14. FIX: Secure payment operations with validation
-async markInvoicePaid(id: number, paidAmount: number, arrears: number = 0): Promise<void> {
-  const invoice = await this.getInvoiceById(id);
-  if (!invoice) {
-    throw new Error('Invoice not found');
-  }
+/**
+ * Record a payment received outside Paystack (cash, bank, M-Pesa to the landlord). The payment row is the ledger entry;
+ * the invoice is then re-derived from the ledger: a part-payment leaves the invoice "partial" (is_paid stays 0, the balance
+ * is its arrears and it is reminded when overdue); only a payment that covers the total marks it paid and clears arrears.
+ */
+async recordInvoicePayment(invoiceId: number, payment: {
+  amount: number;
+  paymentDate: string;
+  paymentMethod?: string;
+  notes?: string;
+}): Promise<Payment> {
+  const invoice = await this.getInvoiceById(invoiceId);
+  if (!invoice) throw new Error('Invoice not found');
+  if (!(payment.amount > 0)) throw new Error('Payment amount must be greater than zero');
 
-  // Validate access through tenant and property
   const tenant = await this.getTenantById(invoice.tenantId);
   const property = await this.getPropertyById(invoice.propertyId);
-  
   if (!tenant || !property || tenant.isRestricted || property.isRestricted) {
     throw new Error('Cannot update invoice for restricted tenant/property. Upgrade your plan to access.');
   }
 
-  const query = `
-    UPDATE invoices 
-    SET is_paid = 1, amount_paid = ?, arrears = ?, paid_date = CURRENT_DATE, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `;
-  await this.db!.run(query, [paidAmount, arrears, id]);
+  // What was already collected through Paystack = amount_paid less the manual ledger (kept while offline, re-derived on sync).
+  const manualBefore = await this.sumInvoicePayments(invoiceId);
+  const paystackPart = Math.max(0, invoice.amountPaid - manualBefore);
+  const created = await this.createPayment({ invoiceId, ...payment });
+  await this.applyInvoiceTotals(invoiceId, paystackPart + manualBefore + payment.amount);
+  return created;
+}
+
+/**
+ * Re-derive an invoice from everything collected through Paystack (summed from the server's successful transactions)
+ * plus the manual payment ledger. Idempotent: running it again changes nothing.
+ */
+async applyInvoiceCollection(invoiceId: number, paystackCollected: number, paidDate?: string | null): Promise<void> {
+  const manual = await this.sumInvoicePayments(invoiceId);
+  await this.applyInvoiceTotals(invoiceId, paystackCollected + manual, paidDate);
+}
+
+private async sumInvoicePayments(invoiceId: number): Promise<number> {
+  const result = await this.db!.query('SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE invoice_id = ?', [invoiceId]);
+  return Number(result.values?.[0]?.total) || 0;
+}
+
+/** The single place invoice payment state is written: amount_paid, arrears, is_paid and paid_date always move together. */
+private async applyInvoiceTotals(invoiceId: number, collected: number, paidDate?: string | null): Promise<void> {
+  const invoice = await this.getInvoiceById(invoiceId);
+  if (!invoice) throw new Error('Invoice not found');
+  const total = invoice.totalAmount || 0;
+  const paid = Math.min(Math.max(0, Math.round(collected * 100) / 100), total);
+  const arrears = Math.max(0, Math.round((total - paid) * 100) / 100);
+  const full = paid >= total - 0.005 && paid > 0;
+  await this.db!.run(
+    `UPDATE invoices
+     SET amount_paid = ?, arrears = ?, is_paid = ?,
+         paid_date = CASE WHEN ? = 1 THEN COALESCE(paid_date, ?, CURRENT_DATE) ELSE NULL END,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [paid, arrears, full ? 1 : 0, full ? 1 : 0, paidDate ?? null, invoiceId]
+  );
 }
 
 // 15. FIX: Enhanced offline data export (for user data portability)
@@ -1358,7 +1397,7 @@ async getDashboardData(userId: number, propertyId?: number, month?: string): Pro
       SELECT 
         COUNT(DISTINCT p.id) as total_properties,
         COUNT(DISTINCT CASE WHEN t.is_restricted = 0 THEN t.id END) as total_tenants,
-        SUM(CASE WHEN i.is_paid = 1 AND t.is_restricted = 0 THEN i.total_amount ELSE 0 END) as monthly_revenue,
+        SUM(CASE WHEN (i.is_paid = 1 OR i.amount_paid > 0) AND t.is_restricted = 0 THEN i.total_amount ELSE 0 END) as monthly_revenue,
         SUM(CASE WHEN t.is_restricted = 0 THEN i.arrears ELSE 0 END) as total_arrears,
         COUNT(CASE WHEN i.is_paid = 1 AND t.is_restricted = 0 THEN 1 END) as paid_invoices,
         COUNT(CASE WHEN t.is_restricted = 0 THEN 1 END) as unpaid_invoices,
@@ -1451,7 +1490,7 @@ async getTrialStats(userId: number): Promise<{ totalInvoices: number; totalTenan
       SELECT
         COUNT(DISTINCT CASE WHEN t.is_restricted = 0 THEN i.id END) as total_invoices,
         COUNT(DISTINCT CASE WHEN t.is_restricted = 0 THEN t.id END) as total_tenants,
-        SUM(CASE WHEN i.is_paid = 1 AND t.is_restricted = 0 THEN i.total_amount ELSE 0 END) as amount_collected
+        SUM(CASE WHEN t.is_restricted = 0 THEN (CASE WHEN i.is_paid = 1 THEN i.total_amount WHEN i.amount_paid > 0 THEN i.amount_paid ELSE 0 END) ELSE 0 END) as amount_collected
       FROM properties p
       LEFT JOIN tenants t ON p.id = t.property_id
       LEFT JOIN invoices i ON t.id = i.tenant_id
@@ -2845,16 +2884,23 @@ async createPayment(payment: {
     }
   }
 
+  /**
+   * Undo the manually recorded payments on an invoice with an offsetting ledger entry (kept for the audit trail and so it syncs
+   * to every device). Money collected through Paystack cannot be undone here.
+   */
   async markInvoiceUnpaid(id: number): Promise<void> {
-    const query = `
-      UPDATE invoices 
-      SET is_paid = 0, paid_date = NULL, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `;
-    await this.db!.run(query, [id]);
+    const invoice = await this.getInvoiceById(id);
+    if (!invoice) throw new Error('Invoice not found');
+    const manual = await this.sumInvoicePayments(id);
+    if (manual <= 0) throw new Error('Nothing to undo: this invoice was paid through Paystack, not recorded manually.');
+    const paystackPart = Math.max(0, invoice.amountPaid - manual);
+    await this.createPayment({
+      invoiceId: id, amount: -manual,
+      paymentDate: new Date().toISOString().split('T')[0],
+      paymentMethod: 'Reversal', notes: 'Manual payments reversed'
+    });
+    await this.applyInvoiceTotals(id, paystackPart);
   }
-
-  
 
   async getPaymentsByInvoice(invoiceId: number): Promise<Payment[]> {
     try {

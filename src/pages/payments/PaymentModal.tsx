@@ -13,7 +13,8 @@ interface PaymentModalProps {
 const PaymentModal: React.FC<PaymentModalProps> = ({ 
   invoice, 
   onClose, 
-  onSuccess
+  onSuccess,
+  initiatorRole
 }) => {
   const [phone, setPhone] = useState('');
   const [tenantName, setTenantName] = useState(invoice.tenantName || 'Tenant');
@@ -359,8 +360,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                         <span className="font-semibold">{formatCurrency(amount)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Platform Fee (1.5%):</span>
-                        <span className="font-semibold">{formatCurrency(fees.platformFee)}</span>
+                        <span>Transaction fee:</span>
+                        <span className="font-semibold">{formatCurrency(fees.tenantFee)}</span>
                       </div>
                       <div className="flex justify-between border-t border-line-strong pt-2 text-ink font-bold">
                         <span>Total to Pay:</span>
@@ -368,7 +369,15 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                       </div>
                     </div>
                     <div className="mt-3 pt-3 border-t border-line-strong text-xs text-ink-subtle">
-                      <p>💡 Landlord receives full payment amount. Transaction fees handled by platform.</p>
+                      {initiatorRole === 'agent' ? (
+                      <div className="space-y-1">
+  <div className="flex justify-between"><span>Rent collected:</span><span className="font-semibold">{formatCurrency(amount)}</span></div>
+  <div className="flex justify-between"><span>Transaction &amp; convenience fees:</span><span className="font-semibold">- {formatCurrency(fees.deductions)}</span></div>
+  <div className="flex justify-between font-bold"><span>Net payout to landlord:</span><span>{formatCurrency(fees.netPayout)}</span></div>
+</div>
+                      ) : (
+                      <p>💡 The full {formatCurrency(amount)} is credited to the invoice. The transaction fee helps cover payment processing.</p>
+                      )}
                     </div>
                   </div>
                 </div>

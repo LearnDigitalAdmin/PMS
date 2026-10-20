@@ -22,6 +22,7 @@ import { shareInvoiceSummary, shareViaWhatsApp, shareViaEmail } from '../../serv
 import AddInvoice from './AddInvoice';
 import AnInvoice from './AnInvoice';
 import TrialStatsBanner from '../../components/ui/TrialStatsBanner';
+import { invoiceStatus, invoiceBalance, isInvoiceOverdue } from '../../utils/InvoiceStatus';
 
 interface InvoicesProps {
   onNavigate?: (page: string, params?: any) => void;
@@ -422,12 +423,9 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
 
   const getStatusText = (invoice: InvoiceWithDetails) => {
     if (invoice.isPaid) return 'Paid';
-    
-    const dueDate = new Date(invoice.dueDate || invoice.createdAt);
-    const today = new Date();
-    
-    if (dueDate < today) return 'Overdue';
-    return 'Pending';
+    const partial = invoiceStatus(invoice) === 'partial';
+    if (isInvoiceOverdue(invoice)) return partial ? 'Partial · Overdue' : 'Overdue';
+    return partial ? 'Partial' : 'Pending';
   };
 
   const formatCurrency = (amount: number) => {
@@ -448,13 +446,10 @@ const handleShareOption = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary
 
   const summary = useMemo(() => {
     const total = invoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
-    const paid = invoices.filter(inv => inv.isPaid).reduce((sum, inv) => sum + inv.totalAmount, 0);
+    // Collected counts what was actually received (a part-paid invoice contributes its amount paid); overdue is the balance still owed
+    const paid = invoices.reduce((sum, inv) => sum + (inv.isPaid ? inv.totalAmount : inv.amountPaid || 0), 0);
     const pending = total - paid;
-    const overdue = invoices.filter(inv => {
-      if (inv.isPaid) return false;
-      const dueDate = new Date(inv.dueDate || inv.createdAt);
-      return dueDate < new Date();
-    }).reduce((sum, inv) => sum + inv.totalAmount, 0);
+    const overdue = invoices.filter(inv => isInvoiceOverdue(inv)).reduce((sum, inv) => sum + invoiceBalance(inv), 0);
 
     return { total, paid, pending, overdue };
   }, [invoices]);

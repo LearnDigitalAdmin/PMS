@@ -395,7 +395,8 @@ const AgentView: React.FC = () => {
 
   const paymentStatusData = [
     { name: 'Paid', value: invoices.filter(inv => inv.isPaid).length, color: '#10b981' },
-    { name: 'Unpaid', value: invoices.filter(inv => !inv.isPaid).length, color: '#ef4444' }
+    { name: 'Partial', value: invoices.filter(inv => !inv.isPaid && inv.amountPaid > 0).length, color: '#f59e0b' },
+    { name: 'Unpaid', value: invoices.filter(inv => !inv.isPaid && !(inv.amountPaid > 0)).length, color: '#ef4444' }
   ];
 
   const monthlyData = payments

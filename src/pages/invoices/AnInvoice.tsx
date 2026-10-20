@@ -17,6 +17,7 @@ import {
 import { database, type InvoiceWithDetails, type Payment, type Property } from '../../services/database/Database';
 import { generateInvoicePDF, sharePDF, generatePDFFilename } from '../../services/pdf/PDFService';
 import { shareInvoiceSummary, shareViaWhatsApp, shareViaEmail } from '../../services/sharing/ShareService';
+import { invoiceStatus, invoiceBalance, INVOICE_STATUS_LABEL } from '../../utils/InvoiceStatus';
 
 interface AnInvoiceProps {
   invoiceId: any;
@@ -37,7 +38,6 @@ const AnInvoice: React.FC<AnInvoiceProps> = ({ invoiceId, onBack, isModal = fals
   
   // Payment modal state
   const [paymentAmount, setPaymentAmount] = useState('');
-  const [arrears, setArrears] = useState('0');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [paymentMethod, setPaymentMethod] = useState('');
   const [notes, setNotes] = useState('');
@@ -76,7 +76,8 @@ const AnInvoice: React.FC<AnInvoiceProps> = ({ invoiceId, onBack, isModal = fals
         setProperty(propertyData || null);
         
         if (!invoiceData.isPaid) {
-          setPaymentAmount(invoiceData.totalAmount.toString());
+          // Offer the balance still owed (the full total for an unpaid invoice)
+          setPaymentAmount(invoiceBalance(invoiceData).toString());
         }
       }
     } catch (error) {
@@ -223,17 +224,14 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
     try {
       setProcessingPayment(true);
       const amount = parseFloat(paymentAmount);
-      const arrearsAmount = parseFloat(arrears);
-      
-      await database.markInvoicePaid(invoice.id, amount, arrearsAmount);
-      
-      // Create payment record
-      await database.createPayment({
-        invoiceId: invoice.id,
-        amount: amount,
-        paymentDate: paymentDate,
-        paymentMethod: paymentMethod,
-        notes: notes
+      if (!(amount > 0)) return;
+
+      // Records the payment and re-derives the invoice: part-payment => partial (balance stays due), full => paid.
+      await database.recordInvoicePayment(invoice.id, {
+        amount,
+        paymentDate,
+        paymentMethod,
+        notes
       });
       
       await loadInvoiceData();
@@ -254,6 +252,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
       await loadInvoiceData();
     } catch (error) {
       console.error('Error marking invoice as unpaid:', error);
+      alert(error instanceof Error ? error.message : 'Could not undo the payment.');
     }
   };
 
@@ -271,7 +270,6 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
 
   const resetPaymentForm = () => {
     setPaymentAmount('');
-    setArrears('0');
     setPaymentDate(new Date().toISOString().split('T')[0]);
     setPaymentMethod('');
     setNotes('');
@@ -363,7 +361,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
                 </h1>
                 <div className={`inline-flex items-center space-x-2 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor()}`}>
                   {getStatusIcon()}
-                  <span>{invoice.isPaid ? 'Paid' : 'Unpaid'}</span>
+                  <span>{INVOICE_STATUS_LABEL[invoiceStatus(invoice)]}</span>
                 </div>
               </div>
             </div>
@@ -529,6 +527,18 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
                 </div>
                 
                 {/* Payment Status */}
+                {invoiceStatus(invoice) === 'partial' && (
+                  <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/25 rounded-lg p-4">
+                    <div className="flex items-center space-x-2 text-amber-700 dark:text-amber-300">
+                      <Clock className="w-5 h-5" />
+                      <span className="font-medium">Partially Paid</span>
+                    </div>
+                    <div className="mt-2 space-y-1 text-sm">
+                      <p>Amount Paid: {formatCurrency(invoice.amountPaid)}</p>
+                      <p>Balance Due: {formatCurrency(invoiceBalance(invoice))}</p>
+                    </div>
+                  </div>
+                )}
                 {invoice.isPaid && (
                   <div className="bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/25 rounded-lg p-4">
                     <div className="flex items-center space-x-2 text-green-700 dark:text-green-300">
@@ -585,7 +595,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
                 className="bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center justify-center space-x-2 w-full"
               >
                 <Check className="w-5 h-5" />
-                <span>Mark as Paid</span>
+                <span>{invoiceStatus(invoice) === 'partial' ? 'Record Payment' : 'Mark as Paid'}</span>
               </button>
             ) : (
               <button
@@ -628,19 +638,14 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
                   />
                 </div>
                 
-                <div>
-                  <label className="block text-sm font-medium text-ink-soft mb-2">
-                    Arrears (if any)
-                  </label>
-                  <input
-                    type="number"
-                    value={arrears}
-                    onChange={(e) => setArrears(e.target.value)}
-                    placeholder="Enter arrears amount"
-                    className="w-full p-3 border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                
+                {invoice && parseFloat(paymentAmount) > 0 && (
+                  <p className="text-sm text-ink-muted">
+                    {parseFloat(paymentAmount) >= invoiceBalance(invoice)
+                      ? 'This settles the invoice in full.'
+                      : `Balance after this payment: ${formatCurrency(invoiceBalance(invoice) - parseFloat(paymentAmount))} (the invoice stays partially paid and is reminded when overdue).`}
+                  </p>
+                )}
+
                 <div>
                   <label className="block text-sm font-medium text-ink-soft mb-2">
                     Payment Date *

@@ -178,7 +178,7 @@ const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
       });
 
       const totalWaterCharges = invoices
-        .filter(inv => inv.isPaid)
+        .filter(inv => inv.isPaid || inv.amountPaid > 0)
         .reduce((sum, inv) => {
           const waterAmount = (inv.waterCurrentReading - inv.waterPreviousReading) * 
             inv.waterUnitPrice + inv.waterStandingFee;
@@ -186,7 +186,7 @@ const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
         }, 0);
 
       const totalPowerCharges = invoices
-        .filter(inv => inv.isPaid)
+        .filter(inv => inv.isPaid || inv.amountPaid > 0)
         .reduce((sum, inv) => {
           const powerAmount = (inv.powerCurrentReading - inv.powerPreviousReading) * 
             inv.powerUnitPrice;

@@ -194,6 +194,28 @@ setupTransactionListener(userId: number): void {
 }
 
 /**
+ * Rent collected through Paystack per invoice, summed over ALL successful transactions (a tenant may pay in parts).
+ * Transaction `amount` is the rent only — the tenant's transaction fee is never part of it.
+ */
+private async collectedByInvoice(userId: number): Promise<Map<number, number>> {
+  const snapshot = await getDocs(
+    query(
+      collection(db, 'transactions'),
+      where('agentId', '==', userId.toString()),
+      where('status', '==', 'success'),
+      orderBy('completedAt', 'desc')
+    )
+  );
+  const sums = new Map<number, number>();
+  for (const d of snapshot.docs) {
+    const t = d.data();
+    const id = parseInt(t.invoiceId);
+    if (!isNaN(id) && typeof t.amount === 'number') sums.set(id, Math.round(((sums.get(id) || 0) + t.amount) * 100) / 100);
+  }
+  return sums;
+}
+
+/**
  * Processes a successful transaction and updates the corresponding invoice
  */
 private async processSuccessfulTransaction(userId: number, data: any): Promise<void> {
@@ -217,36 +239,23 @@ private async processSuccessfulTransaction(userId: number, data: any): Promise<v
       return;
     }
 
-    const amount = typeof data.amount === 'number' ? data.amount : 0;
-    const arrears = typeof data.arrears === 'number' ? data.arrears : 0;
-    
     // Convert completedAt timestamp
-    let paidDate = null;
+    let paidDate: string | null = null;
     if (data.completedAt) {
       if (typeof data.completedAt === 'number') {
-        // Firestore timestamp in milliseconds
         paidDate = new Date(data.completedAt).toISOString().split('T')[0];
       } else if (data.completedAt.seconds) {
-        // Firestore Timestamp object
         paidDate = new Date(data.completedAt.seconds * 1000).toISOString().split('T')[0];
       } else if (typeof data.completedAt === 'string') {
         paidDate = new Date(data.completedAt).toISOString().split('T')[0];
       }
     }
 
-    // Calculate if invoice is fully paid
-    const totalAmount = invoice.totalAmount || 0;
-    const isPaid = (amount >= (totalAmount * 0.40)) ? 1 : 0;
-
-    // Update invoice in SQLite
-    await database.db!.run(
-      `UPDATE invoices 
-       SET amount_paid = ?, arrears = ?, paid_date = ?, is_paid = ? 
-       WHERE id = ?`,
-      [amount, arrears, paidDate, isPaid, invoiceId]
-    );
-
-    console.log(`✅ Invoice ${invoiceId} updated from transaction (Amount: ${amount}, Arrears: ${arrears}, Paid: ${isPaid === 1})`);
+    // Re-derive the invoice from everything collected (all Paystack payments + manual ledger): idempotent, so
+    // a repeated or out-of-order event never double-counts; a part-payment leaves it "partial", a full one clears arrears.
+    const collected = (await this.collectedByInvoice(userId)).get(invoiceId) || 0;
+    await database.applyInvoiceCollection(invoiceId, collected, paidDate);
+    console.log(`✅ Invoice ${invoiceId} re-derived from transactions (Paystack collected: ${collected})`);
 
   } catch (error) {
     console.error('❌ Transaction processing failed:', error);
@@ -277,29 +286,19 @@ private async syncPendingTransactions(userId: number): Promise<number> {
     }
 
     let processedCount = 0;
+    const collected = await this.collectedByInvoice(userId);
 
-    for (const doc of snapshot.docs) {
-      const data = doc.data();
-      
-      if (!data.invoiceId) continue;
-
+    for (const [invoiceId, paystackCollected] of collected) {
       try {
-        // Check if invoice needs update
-        const invoiceId = parseInt(data.invoiceId);
-        const invoice = await database.getInvoiceById(invoiceId);
-        
-        if (invoice) {
-          const currentPaid = invoice.amountPaid || 0;
-          const transactionAmount = typeof data.amount === 'number' ? data.amount : 0;
-          
-          // Only update if transaction amount is different (avoid duplicate processing)
-          if (currentPaid !== transactionAmount) {
-            await this.processSuccessfulTransaction(userId, data);
-            processedCount++;
-          }
+        const before = await database.getInvoiceById(invoiceId);
+        if (!before) continue;
+        await database.applyInvoiceCollection(invoiceId, paystackCollected);
+        const after = await database.getInvoiceById(invoiceId);
+        if (after && (after.amountPaid !== before.amountPaid || after.isPaid !== before.isPaid || after.arrears !== before.arrears)) {
+          processedCount++;
         }
       } catch (error) {
-        console.error(`❌ Failed to sync transaction ${doc.id}:`, error);
+        console.error(`❌ Failed to sync payments for invoice ${invoiceId}:`, error);
       }
     }
 
@@ -1013,6 +1012,7 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
               localId: invoice.id,
               pdfUrl,
               pdfStatus: statusSuffix,
+              status: invoice.isPaid ? 'paid' : invoice.amountPaid > 0 ? 'partial' : 'unpaid',
               lastSyncTime: serverTimestamp(),
               lastModified: new Date().toISOString()
             }, { merge: true });

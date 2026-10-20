@@ -751,11 +751,11 @@ export class ReportsDatabase {
     });
 
     const grossRentCollected = invoices
-      .filter(inv => inv.isPaid)
+      .filter(inv => inv.isPaid || inv.amountPaid > 0)
       .reduce((sum, inv) => sum + inv.rentAmount, 0);
 
     const invoiceWaterCharges = invoices
-      .filter(inv => inv.isPaid)
+      .filter(inv => inv.isPaid || inv.amountPaid > 0)
       .reduce((sum, inv) => {
         const waterAmount = (inv.waterCurrentReading - inv.waterPreviousReading) * 
           inv.waterUnitPrice + inv.waterStandingFee;
@@ -763,7 +763,7 @@ export class ReportsDatabase {
       }, 0);
 
     const invoicePowerCharges = invoices
-      .filter(inv => inv.isPaid)
+      .filter(inv => inv.isPaid || inv.amountPaid > 0)
       .reduce((sum, inv) => {
         const powerAmount = (inv.powerCurrentReading - inv.powerPreviousReading) * 
           inv.powerUnitPrice;
@@ -771,7 +771,7 @@ export class ReportsDatabase {
       }, 0);
 
     const totalOtherCharges = invoices
-      .filter(inv => inv.isPaid)
+      .filter(inv => inv.isPaid || inv.amountPaid > 0)
       .reduce((sum, inv) => sum + inv.otherCharges, 0);
 
     // Calculate total arrears from all invoices (paid and unpaid)

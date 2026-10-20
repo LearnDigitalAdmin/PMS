@@ -121,6 +121,11 @@ export interface Payment {
   completedAt?: any;
   paidAmount?: number;
   fees?: number;
+  // rent fee split: `amount` is the rent collected; the tenant also paid `tenantFee`; the landlord is deducted `totalDeductions`
+  tenantFee?: number;
+  chargedAmount?: number;
+  totalDeductions?: number;
+  netPayout?: number;
   subaccountCode: string;
   commissionRate: number;
 }
@@ -329,7 +334,11 @@ export class TenantService {
             initiatedAt: data.createdAt,
             completedAt: data.completedAt,
             subaccountCode: '',
-            commissionRate: 0
+            commissionRate: 0,
+            tenantFee: typeof data.tenantFeeMinor === 'number' ? data.tenantFeeMinor / 100 : undefined,
+            chargedAmount: typeof data.chargeMinor === 'number' ? data.chargeMinor / 100 : undefined,
+            totalDeductions: typeof data.deductionsMinor === 'number' ? data.deductionsMinor / 100 : undefined,
+            netPayout: typeof data.netPayoutMinor === 'number' ? data.netPayoutMinor / 100 : undefined
           });
         }
       }
@@ -461,7 +470,11 @@ export class AgentService {
           initiatedAt: data.createdAt,
           completedAt: data.completedAt,
           subaccountCode: '',
-          commissionRate: 0
+          commissionRate: 0,
+          tenantFee: typeof data.tenantFeeMinor === 'number' ? data.tenantFeeMinor / 100 : undefined,
+          chargedAmount: typeof data.chargeMinor === 'number' ? data.chargeMinor / 100 : undefined,
+          totalDeductions: typeof data.deductionsMinor === 'number' ? data.deductionsMinor / 100 : undefined,
+          netPayout: typeof data.netPayoutMinor === 'number' ? data.netPayoutMinor / 100 : undefined
         });
       }
 
@@ -495,26 +508,35 @@ export class AgentService {
 
 // Payment Service
 export class PaymentService {
-  private static readonly PLATFORM_FEE_PERCENTAGE = 0.8;
-
+  // Rent fee split (mirrors functions/src/desk/rentFees.ts — the server is authoritative). Integer minor units.
+  //   tenant pays rent + min(KES 150, 0.5%); landlord covers the rest of Paystack's ~1.5% plus a 0.2% convenience fee.
   static calculateFees(amount: number, invoiceBalance: number): {
-    platformFee: number;
-    paystackFee: number;
+    tenantFee: number;
     total: number;
     netAmount: number;
+    landlordPaystackFee: number;
+    convenienceFee: number;
+    deductions: number;
+    netPayout: number;
     arrears: number;
   } {
-    const platformFee = amount * (this.PLATFORM_FEE_PERCENTAGE / 100);
-    const total = amount + platformFee;
-    const paystackFee = 0; // Calculated by Paystack backend
-    const netAmount = amount;
+    const pct = (minor: number, p: number) => Math.floor((minor * Math.round(p * 100) + 5000) / 10000);
+    const rent = Math.round(amount * 100);
+    const tenantFee = Math.min(pct(rent, 0.5), 15000);
+    const paystackEstimate = Math.min(pct(rent, 1.5), 300000);
+    const landlordPaystackFee = Math.max(0, paystackEstimate - tenantFee);
+    const convenienceFee = pct(rent, 0.2);
+    const deductions = landlordPaystackFee + convenienceFee;
     const arrears = amount < invoiceBalance ? invoiceBalance - amount : 0;
 
     return {
-      platformFee: Math.round(platformFee * 100) / 100,
-      paystackFee: Math.round(paystackFee * 100) / 100,
-      total: Math.round(total * 100) / 100,
-      netAmount: Math.round(netAmount * 100) / 100,
+      tenantFee: tenantFee / 100,
+      total: (rent + tenantFee) / 100,
+      netAmount: rent / 100,
+      landlordPaystackFee: landlordPaystackFee / 100,
+      convenienceFee: convenienceFee / 100,
+      deductions: deductions / 100,
+      netPayout: (rent - deductions) / 100,
       arrears: Math.round(arrears * 100) / 100
     };
   }
