@@ -17,7 +17,7 @@ import {
 import { database, type PropertyWithUnits, type PropertyInput, type User } from '../../services/database/Database';
 import Property from './Properties';
 import PropertyModal from './PropertyModal';
-import { USER_LIMITS } from '../../services/database/FirebaseSync';
+import { USER_LIMITS, firebaseSyncService } from '../../services/database/FirebaseSync';
 import PricingModal from '../../components/ui/PricingPage';
 import SummariesModal from './Summaries';
 import TrialStatsBanner from '../../components/ui/TrialStatsBanner';
@@ -264,6 +264,8 @@ const Properties: React.FC<PropertyListProps> = ({
         billingMode: formData.billingMode
       };
 
+      // Pull any properties created elsewhere (e.g. Samuhia Desk) first, so the next local ID can't collide with one
+      await firebaseSyncService.pullBeforeCreate(currentUserId, 'properties');
       await database.createProperty(propertyInput);
       await loadProperties();
       setShowAddModal(false);

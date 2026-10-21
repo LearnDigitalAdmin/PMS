@@ -899,7 +899,8 @@ async recordInvoicePayment(invoiceId: number, payment: {
   const manualBefore = await this.sumInvoicePayments(invoiceId);
   const paystackPart = Math.max(0, invoice.amountPaid - manualBefore);
   const created = await this.createPayment({ invoiceId, ...payment });
-  await this.applyInvoiceTotals(invoiceId, paystackPart + manualBefore + payment.amount);
+  // The date the tenant actually paid (may be back-dated) is what the invoice records once it is settled
+  await this.applyInvoiceTotals(invoiceId, paystackPart + manualBefore + payment.amount, payment.paymentDate);
   return created;
 }
 
@@ -1756,7 +1757,9 @@ async createBulkRentInvoices(options: {
 }
 
 private async generateInvoiceId(): Promise<number> {
-  const query = `SELECT MAX(id) as max_id FROM invoices WHERE id >= 1111111`;
+  // Upper bound: early Samuhia Desk invoices used Date.now() (~1.7e12) as their localId. Ignore those so they
+  // can't drag the app's sequence (and every future invoice ID) into that range.
+  const query = `SELECT MAX(id) as max_id FROM invoices WHERE id >= 1111111 AND id < 1000000000`;
   const result = await this.db!.query(query);
   const maxId = result.values?.[0]?.max_id || 1111110;
   

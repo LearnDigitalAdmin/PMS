@@ -792,7 +792,9 @@ async function sendNewInvoiceNotification(
     fallbackInvoiceId: string | null = null
 ): Promise<boolean> {
     try {
-        const invoiceLocalId = invoice.localId || fallbackInvoiceId || "unknown";
+        // The Firestore DOCUMENT ID is the authority for every write-back and link. `invoice.localId` is only
+        // equal to it for invoices created in the app; other platforms may store a different localId.
+        const invoiceLocalId = fallbackInvoiceId || invoice.localId || "unknown";
         console.log(`Sending new invoice notification for invoice ${invoiceLocalId}`);
         const { tenant, property, user, company } = await getInvoiceContext(invoice, fallbackInvoiceId);
 
@@ -824,6 +826,9 @@ async function sendNewInvoiceNotification(
                 console.log(`No consent for ${tenant.phone} and SMS failed — sending consent request`);
                 return await sendConsentRequest(tenant, property, company, user);
             }
+            // The tenant has now been told about this invoice. Without clearing isNew, every later write to the
+            // invoice (an app re-upload, a payment edit...) would send the same SMS again.
+            await updateInvoiceFlags(invoice.userId, invoiceLocalId, { isNew: false });
             return smsSent;
         }
 
@@ -898,7 +903,9 @@ async function sendPaymentSuccessNotification(
     fallbackInvoiceId: string | null = null
 ): Promise<boolean> {
     try {
-        const invoiceLocalId = invoice.localId || fallbackInvoiceId || "unknown";
+        // The Firestore DOCUMENT ID is the authority for every write-back and link. `invoice.localId` is only
+        // equal to it for invoices created in the app; other platforms may store a different localId.
+        const invoiceLocalId = fallbackInvoiceId || invoice.localId || "unknown";
         // A part-payment is announced like a full one: only the NEW money, plus the balance still due.
         const amountPaid = Number(invoice.amountPaid) || 0;
         const paidNow = Math.round((amountPaid - notifiedPaidAmount(invoice)) * 100) / 100;
@@ -982,7 +989,9 @@ async function sendOverdueNotification(
     fallbackInvoiceId: string | null = null
 ): Promise<boolean> {
     try {
-        const invoiceLocalId = invoice.localId || fallbackInvoiceId || "unknown";
+        // The Firestore DOCUMENT ID is the authority for every write-back and link. `invoice.localId` is only
+        // equal to it for invoices created in the app; other platforms may store a different localId.
+        const invoiceLocalId = fallbackInvoiceId || invoice.localId || "unknown";
         console.log(`Checking overdue notification for invoice ${invoiceLocalId}`);
         const { tenant, user, property, company } = await getInvoiceContext(invoice, fallbackInvoiceId);
 
@@ -2488,7 +2497,7 @@ function shouldSendOverdueMessage(invoice: any, user: any): boolean {
 // Helper function to get property and tenant data - FLATTENED STRUCTURE
 async function getInvoiceContext(invoice: any, fallbackInvoiceId: string | null = null): Promise<any> {
     const userId = invoice.userId.toString();
-    const invoiceLocalId = invoice.localId || fallbackInvoiceId || 'unknown';
+    const invoiceLocalId = fallbackInvoiceId || invoice.localId || 'unknown';
     
     console.log(`Getting invoice context for invoice ${invoiceLocalId}, user ${userId}`);
 
@@ -2633,7 +2642,8 @@ async function updateInvoiceFlags(userId: string, invoiceLocalId: string, flags:
 // self-triggered re-runs that can re-send notifications against a stale
 // snapshot (the re-run's `before`/`after` predates the OTHER flag write that
 // was still in flight) before the flags settle.
-const NOTIFICATION_FLAG_KEYS = ['isNew', 'hasPaid', 'isDue', 'paidNotifiedAmount'];
+// appClaimedAt is written by the app when it adopts a Desk-created invoice; it is not a real change to the invoice.
+const NOTIFICATION_FLAG_KEYS = ['isNew', 'hasPaid', 'isDue', 'paidNotifiedAmount', 'appClaimedAt'];
 
 // Returns true if `after` differs from `before` only in the notification
 // flag fields above - i.e. this write was caused by our own updateInvoiceFlags()

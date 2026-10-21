@@ -72,13 +72,6 @@
     <!-- Manifest -->
     <link rel="manifest" href="/manifest.json" />
     
-    <!-- Preconnect to CDN for faster WASM loading -->
-    <link rel="preconnect" href="https://sql.js.org" crossorigin />
-    <link rel="dns-prefetch" href="https://sql.js.org" />
-    
-    <!-- Preload sql.js WASM file -->
-    <link rel="preload" href="https://sql.js.org/dist/sql-wasm.wasm" as="fetch" crossorigin="anonymous" />
-    
     <!-- Security Headers -->
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
     <!-- X-Frame-Options is ignored in <meta>; it is sent as an HTTP header (see firebase.json) -->
@@ -320,19 +313,6 @@
     
     <!-- App Root -->
     <div id="root"></div>
-    
-    <!-- Preload sql.js WASM -->
-    <script>
-      // Preload sql.js WASM for faster startup
-      if (typeof window !== 'undefined' && !window.location.protocol.startsWith('capacitor')) {
-        fetch('https://sql.js.org/dist/sql-wasm.wasm', { 
-          mode: 'cors',
-          cache: 'force-cache'
-        }).catch(err => {
-          console.warn('sql.js WASM preload failed:', err);
-        });
-      }
-    </script>
     
     <!-- Storage Persistence Detection -->
     <script>

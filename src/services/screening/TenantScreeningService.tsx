@@ -34,8 +34,11 @@ interface MonthlyRecord {
   arrears: number;
   dueDate: Date | null;
   paidDate: Date | null;
-  paymentStatus: 'early' | 'on_time' | 'late' | 'unpaid';
+  // partial = due date passed with only part of the bill paid; pending = not yet due (kept for display, never scored)
+  paymentStatus: 'early' | 'on_time' | 'late' | 'partial' | 'unpaid' | 'pending';
   daysLate: number;
+  paidRatio: number;     // amountPaid / totalBilled, 0..1
+  outstanding: number;   // balance still owed for the month
   invoiceCount: number;
   hadMultipleInvoices: boolean;
 }
@@ -126,6 +129,13 @@ interface CalculatedMetrics {
   cashFlowStressIndicators?: string[];
   hasSeasonalPaymentPatterns?: boolean;
   worstPerformingMonths?: string[];
+
+  // NEW v3 - partial payments and current standing
+  partialPaymentRate?: number;      // share of due months paid only in part
+  averagePaidRatio?: number;        // average share of each due bill that was paid (0..1)
+  overdueBalance?: number;          // owed on bills already past due
+  outstandingBalance?: number;      // owed on all bills, including those not yet due
+  currentDaysOverdue?: number;      // days since the oldest unsettled bill fell due
 }
 
 // ADD these new fields to existing ScreeningData interface
@@ -284,10 +294,12 @@ export class TenantScreeningService {
       }
       
       // Mine monthly payment patterns
-      const monthlyRecords = this.generateMonthlyRecords(invoices);
+      const allRecords = this.generateMonthlyRecords(invoices);
+      // Bills not yet due ('pending') are shown but never scored: only months that have fallen due are assessed
+      const monthlyRecords = allRecords.filter(r => r.paymentStatus !== 'pending');
       
       // Calculate screening metrics
-      const calculatedMetrics = this.calculateScreeningMetrics(monthlyRecords, invoices);
+      const calculatedMetrics = this.calculateScreeningMetrics(monthlyRecords, invoices, allRecords);
 
       // NEW v1.2: Enhanced data quality assessment
       const dataQuality = this.enhancedDataQualityAssessment(monthlyRecords, invoices, tenant);
@@ -314,7 +326,7 @@ export class TenantScreeningService {
         currentRentAmount: tenant.rentAmount || 0,
         paymentHistory: {
           totalMonthsTracked: monthlyRecords.length,
-          monthlyRecords
+          monthlyRecords: allRecords
         },
         calculatedMetrics,
         dataQuality,
@@ -323,7 +335,7 @@ export class TenantScreeningService {
         lastUpdated: new Date(),
         lastMiningRun: new Date(),
         sourceUserId: userId,
-        dataVersion: 2 // UPDATED version
+        dataVersion: 3 // v3: partial payments, pending bills, current standing
       };
 
       // Upload to Firestore
@@ -439,13 +451,15 @@ export class TenantScreeningService {
     const amountPaid = invoices.reduce((sum, inv) => sum + (inv.amountPaid || 0), 0);
     const arrears = invoices.reduce((sum, inv) => sum + (inv.arrears || 0), 0);
     const rentAmount = invoices[0]?.rentAmount || 0;
-    
+
     // Find earliest due date and latest paid date for the month
     const dueDate = this.findEarliestDueDate(invoices);
     const paidDate = this.findLatestPaidDate(invoices);
-    
+
     // Calculate payment timing
     const { paymentStatus, daysLate } = this.calculatePaymentTiming(dueDate, paidDate, amountPaid, totalBilled);
+    const paidRatio = totalBilled > 0 ? Math.min(1, amountPaid / totalBilled) : 0;
+    const outstanding = Math.max(0, Math.round((totalBilled - amountPaid) * 100) / 100);
 
     return {
       billingMonth: month,
@@ -457,40 +471,48 @@ export class TenantScreeningService {
       paidDate,
       paymentStatus,
       daysLate,
+      paidRatio,
+      outstanding,
       invoiceCount: invoices.length,
       hadMultipleInvoices: invoices.length > 1
     };
   }
 
+  /**
+   * How a month's bill was handled. A bill counts as on-time/early/late ONLY once it is fully paid (timed by the date it was
+   * settled). Part-paid after the due date is 'partial' — never credited as on time; nothing paid after the due date is
+   * 'unpaid'; a bill not yet due is 'pending' and is left out of every rate.
+   */
   private calculatePaymentTiming(
-    dueDate: Date | null, 
-    paidDate: Date | null, 
-    amountPaid: number, 
-    _totalBilled: number
-  ): { paymentStatus: 'early' | 'on_time' | 'late' | 'unpaid'; daysLate: number } {
-    
-    if (amountPaid === 0) {
-      return { paymentStatus: 'unpaid', daysLate: 0 };
+    dueDate: Date | null,
+    paidDate: Date | null,
+    amountPaid: number,
+    totalBilled: number,
+    now: Date = new Date()
+  ): { paymentStatus: MonthlyRecord['paymentStatus']; daysLate: number } {
+    const DAY = 1000 * 60 * 60 * 24;
+    const settled = totalBilled > 0 ? amountPaid >= totalBilled - 0.005 : amountPaid > 0;
+
+    if (!settled) {
+      if (dueDate && dueDate.getTime() > now.getTime()) return { paymentStatus: 'pending', daysLate: 0 };
+      const daysPastDue = dueDate ? Math.max(0, Math.floor((now.getTime() - dueDate.getTime()) / DAY)) : 0;
+      return amountPaid > 0
+        ? { paymentStatus: 'partial', daysLate: daysPastDue }
+        : { paymentStatus: 'unpaid', daysLate: 0 };
     }
 
-    if (!dueDate || !paidDate) {
-      return { paymentStatus: 'unpaid', daysLate: 0 };
-    }
+    // Fully paid. Without both dates the timing is unknown: neutral, not a penalty.
+    if (!dueDate || !paidDate) return { paymentStatus: 'on_time', daysLate: 0 };
 
-    const daysDiff = Math.floor((paidDate.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
-
-    if (daysDiff < 0) {
-      return { paymentStatus: 'early', daysLate: 0 };
-    } else if (daysDiff === 0) {
-      return { paymentStatus: 'on_time', daysLate: 0 };
-    } else {
-      return { paymentStatus: 'late', daysLate: daysDiff };
-    }
+    const daysDiff = Math.floor((paidDate.getTime() - dueDate.getTime()) / DAY);
+    if (daysDiff < 0) return { paymentStatus: 'early', daysLate: 0 };
+    if (daysDiff === 0) return { paymentStatus: 'on_time', daysLate: 0 };
+    return { paymentStatus: 'late', daysLate: daysDiff };
   }
 
   // ==================== METRICS CALCULATION ====================
 
-  private calculateScreeningMetrics(monthlyRecords: MonthlyRecord[], invoices: Invoice[]): CalculatedMetrics {
+  private calculateScreeningMetrics(monthlyRecords: MonthlyRecord[], invoices: Invoice[], allRecords?: MonthlyRecord[]): CalculatedMetrics {
     if (monthlyRecords.length === 0) {
       return this.getDefaultMetrics();
     }
@@ -535,6 +557,20 @@ export class TenantScreeningService {
     const paymentVariability = this.calculateStandardDeviation(paymentAmounts);
     
     // Risk indicators
+    // Partial payments and current standing (v3)
+    const partialMonths = monthlyRecords.filter(r => r.paymentStatus === 'partial').length;
+    const partialPaymentRate = totalMonths > 0 ? partialMonths / totalMonths : 0;
+    const billedMonths = monthlyRecords.filter(r => r.totalBilled > 0);
+    const averagePaidRatio = billedMonths.length > 0 ? billedMonths.reduce((sum, r) => sum + r.paidRatio, 0) / billedMonths.length : 0;
+    const standingRecords = allRecords ?? monthlyRecords;
+    const overdueRecords = standingRecords.filter(r => r.paymentStatus === 'partial' || r.paymentStatus === 'unpaid');
+    const overdueBalance = overdueRecords.reduce((sum, r) => sum + r.outstanding, 0);
+    const outstandingBalance = standingRecords.reduce((sum, r) => sum + r.outstanding, 0);
+    const currentDaysOverdue = overdueRecords.reduce((max, r) => {
+      const days = r.dueDate ? Math.floor((Date.now() - r.dueDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+      return Math.max(max, days);
+    }, 0);
+
     const hasUnpaidInvoices = invoices.some(inv => (inv.amountPaid || 0) < (inv.totalAmount || 0));
     const unpaidInvoiceCount = invoices.filter(inv => (inv.amountPaid || 0) === 0).length;
     const longestNonPaymentStreak = this.calculateLongestNonPaymentStreak(monthlyRecords);
@@ -547,7 +583,10 @@ export class TenantScreeningService {
       paymentCompletionRate,
       averageMonthlyArrears,
       longestNonPaymentStreak,
-      improvingTrend
+      improvingTrend,
+      partialPaymentRate,
+      overdueBalance,
+      averageMonthlyBilled
     });
     
     const riskLevel = this.determineRiskLevel(screeningScore);
@@ -588,7 +627,14 @@ export class TenantScreeningService {
       paymentReliabilityTrend: patternAnalysis.reliabilityTrend,
       cashFlowStressIndicators: cashFlowStress,
       hasSeasonalPaymentPatterns: seasonalAnalysis.hasSeasonalPatterns,
-      worstPerformingMonths: seasonalAnalysis.worstPerformingMonths
+      worstPerformingMonths: seasonalAnalysis.worstPerformingMonths,
+
+      // NEW v3 fields
+      partialPaymentRate,
+      averagePaidRatio,
+      overdueBalance,
+      outstandingBalance,
+      currentDaysOverdue
     };
 
     // return {
@@ -769,7 +815,7 @@ private detectSeasonalPatterns(monthlyRecords: MonthlyRecord[]): {
     
     const stats = monthPerformance.get(monthName)!;
     stats.total++;
-    if (record.paymentStatus === 'late' || record.paymentStatus === 'unpaid') {
+    if (record.paymentStatus === 'late' || record.paymentStatus === 'partial' || record.paymentStatus === 'unpaid') {
       stats.late++;
     }
   });
@@ -801,7 +847,7 @@ private enhancedDataQualityAssessment(
   const completenessFactors = {
     hasPhone: !!tenant.phone,
     hasEmail: !!tenant.email,
-    hasCompletePaymentDates: monthlyRecords.every(r => r.paidDate || r.paymentStatus === 'unpaid'),
+    hasCompletePaymentDates: monthlyRecords.every(r => r.paidDate || r.paymentStatus === 'unpaid' || r.paymentStatus === 'partial'),
     hasConsistentInvoicing: this.checkInvoicingConsistency(monthlyRecords),
     hasRecentData: basic.hasRecentData,
     hasMinimumHistory: monthlyRecords.length >= 3
@@ -915,6 +961,14 @@ private detectEarlyWarnings(monthlyRecords: MonthlyRecord[]): ScreeningData['ear
   // Check last payment
   if (recent3[recent3.length - 1].paymentStatus === 'unpaid') {
     flags.push('missed_last_payment');
+  } else if (recent3[recent3.length - 1].paymentStatus === 'partial') {
+    flags.push('last_payment_incomplete');
+  }
+
+  // Money owed on bills already past due
+  const overdueNow = monthlyRecords.filter(r => r.paymentStatus === 'partial' || r.paymentStatus === 'unpaid');
+  if (overdueNow.length >= 2) {
+    flags.push('multiple_overdue_months');
   }
   
   // Check arrears trend
@@ -948,7 +1002,7 @@ private detectEarlyWarnings(monthlyRecords: MonthlyRecord[]): ScreeningData['ear
   
   // Check for consecutive late payments
   const consecutiveLate = recent3.filter(r => 
-    r.paymentStatus === 'late' || r.paymentStatus === 'unpaid'
+    r.paymentStatus === 'late' || r.paymentStatus === 'partial' || r.paymentStatus === 'unpaid'
   ).length;
   
   if (consecutiveLate === 3) {
@@ -1094,6 +1148,10 @@ private async calculatePortfolioBenchmarks(
   }
 }
 
+  /**
+   * 0-100. Weights: on-time 35 | completion 25 | lateness 12 | arrears 10 | non-payment streak 5 | improving trend 5 |
+   * part-payment behaviour 4 | current overdue standing 4. Only months already due are scored.
+   */
   private calculateScreeningScore(factors: {
     onTimePaymentRate: number;
     averageDaysLate: number;
@@ -1101,32 +1159,32 @@ private async calculatePortfolioBenchmarks(
     averageMonthlyArrears: number;
     longestNonPaymentStreak: number;
     improvingTrend: boolean;
+    partialPaymentRate: number;
+    overdueBalance: number;
+    averageMonthlyBilled: number;
   }): number {
     let score = 0;
-    
-    // On-time payment rate (40% weight)
-    score += factors.onTimePaymentRate * 40;
-    
-    // Payment completion rate (25% weight)
-    score += factors.paymentCompletionRate * 25;
-    
-    // Late payment penalty (15% weight)
+
+    score += factors.onTimePaymentRate * 35;
+    score += Math.min(1, factors.paymentCompletionRate) * 25;
+
     const latePenalty = Math.min(factors.averageDaysLate / 30, 1); // Cap at 30 days
-    score += (1 - latePenalty) * 15;
-    
-    // Arrears penalty (10% weight)
+    score += (1 - latePenalty) * 12;
+
     const arrearsPenalty = Math.min(factors.averageMonthlyArrears / 10000, 1); // Cap at 10k KES
     score += (1 - arrearsPenalty) * 10;
-    
-    // Non-payment streak penalty (5% weight)
+
     const streakPenalty = Math.min(factors.longestNonPaymentStreak / 3, 1); // Cap at 3 months
     score += (1 - streakPenalty) * 5;
-    
-    // Improving trend bonus (5% weight)
-    if (factors.improvingTrend) {
-      score += 5;
-    }
-    
+
+    if (factors.improvingTrend) score += 5;
+
+    score += (1 - Math.min(1, factors.partialPaymentRate)) * 4;
+
+    // Owing a full month's bill (or more) right now forfeits all of this component
+    const standingPenalty = factors.averageMonthlyBilled > 0 ? Math.min(1, factors.overdueBalance / factors.averageMonthlyBilled) : 0;
+    score += (1 - standingPenalty) * 4;
+
     return Math.max(0, Math.min(100, Math.round(score * 100) / 100));
   }
 
@@ -1316,13 +1374,11 @@ private async updateQuickViewCache(screeningData: ScreeningData): Promise<void> 
       return;
     }
     
-    const lastPaymentStatus = screeningData.paymentHistory.monthlyRecords.length > 0
-      ? screeningData.paymentHistory.monthlyRecords[screeningData.paymentHistory.monthlyRecords.length - 1].paymentStatus
-      : 'unpaid';
+    const dueRecords = screeningData.paymentHistory.monthlyRecords.filter(r => r.paymentStatus !== 'pending');
+    const lastDue = dueRecords.length > 0 ? dueRecords[dueRecords.length - 1] : null;
+    const lastPaymentStatus = lastDue ? lastDue.paymentStatus : 'unpaid';
     
-    const lastPaymentDate = screeningData.paymentHistory.monthlyRecords.length > 0
-      ? screeningData.paymentHistory.monthlyRecords[screeningData.paymentHistory.monthlyRecords.length - 1].paidDate
-      : null;
+    const lastPaymentDate = lastDue ? lastDue.paidDate : null;
     
     const daysSinceLastPayment = lastPaymentDate
       ? Math.floor((Date.now() - lastPaymentDate.getTime()) / (1000 * 60 * 60 * 24))

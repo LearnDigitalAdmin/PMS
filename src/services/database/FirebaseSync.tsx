@@ -11,6 +11,7 @@ import {
   writeBatch,
   serverTimestamp,
   orderBy,
+  limit,
   onSnapshot,
   type Unsubscribe,
   Timestamp,
@@ -433,22 +434,20 @@ cleanup(userId?: number): void {
     }
   }
 
+  // NOTE: these queries deliberately have NO orderBy. Firestore silently drops every document that
+  // lacks the ordered field, so ordering by 'lastSyncTime' made any document written by another
+  // client (Desk) invisible to the app. We fetch everything and order by ID locally instead.
+  private sortByLocalId(docs: any[]): any[] {
+    return [...docs].sort((a, b) => Number(a.data()?.localId ?? a.data()?.id ?? 0) - Number(b.data()?.localId ?? b.data()?.id ?? 0));
+  }
+
   private async downloadProperties(userId: number): Promise<number> {
     try {
-      const snapshot = await getDocs(
-        query(collection(db, 'users', userId.toString(), 'properties'), orderBy('lastSyncTime', 'desc'))
-      );
+      const snapshot = await getDocs(collection(db, 'users', userId.toString(), 'properties'));
       
       let count = 0;
-      for (const doc of snapshot.docs) {
-        const data = doc.data();
-        if (!data?.localId) continue;
-        
-        await this.upsertProperty(userId, data);
-        
-        // Download units for this property
-        //await this.downloadUnits(userId, doc.id, data.localId);
-        count++;
+      for (const docSnap of this.sortByLocalId(snapshot.docs)) {
+        if (await this.syncPropertyDoc(userId, docSnap)) count++;
       }
       
       return count;
@@ -477,17 +476,11 @@ cleanup(userId?: number): void {
 
   private async downloadTenants(userId: number): Promise<number> {
     try {
-      const snapshot = await getDocs(
-        query(collection(db, 'users', userId.toString(), 'tenants'), orderBy('lastSyncTime', 'desc'))
-      );
+      const snapshot = await getDocs(collection(db, 'users', userId.toString(), 'tenants'));
       
       let count = 0;
-      for (const doc of snapshot.docs) {
-        const data = doc.data();
-        if (!data?.localId || !data?.propertyId) continue;
-        
-        await this.upsertTenant(data);
-        count++;
+      for (const docSnap of this.sortByLocalId(snapshot.docs)) {
+        if (await this.syncTenantDoc(docSnap)) count++;
       }
       
       return count;
@@ -499,26 +492,151 @@ cleanup(userId?: number): void {
 
   private async downloadInvoices(userId: number): Promise<number> {
     try {
-      const snapshot = await getDocs(
-        query(collection(db, 'users', userId.toString(), 'invoices'), orderBy('lastSyncTime', 'desc'))
-      );
+      const snapshot = await getDocs(collection(db, 'users', userId.toString(), 'invoices'));
       
       let count = 0;
-      for (const doc of snapshot.docs) {
-        const data = doc.data();
-        if (!data?.localId || !data?.tenantId || !data?.propertyId) continue;
-        
-        await this.upsertInvoice(data);
-        
-        // Download payments for this invoice
-        await this.downloadPayments(userId, doc.id, data.localId);
-        count++;
+      for (const docSnap of this.sortByLocalId(snapshot.docs)) {
+        if (await this.syncInvoiceDoc(userId, docSnap)) count++;
       }
       
       return count;
     } catch (error) {
       console.error('❌ Invoices download failed:', error);
       return 0;
+    }
+  }
+
+  // ==================== DESK-ORIGIN DOCUMENT HANDLING ====================
+  // Documents created by Samuhia Desk carry origin: 'desk'. The app "claims" one (appClaimedAt) once it
+  // has stored it locally. An UNCLAIMED desk document must never be overwritten by an unrelated local
+  // record that happened to reuse its ID (the app picks IDs from its local MAX+1 while offline).
+
+  private isUnclaimedDeskDoc(data: any): boolean {
+    return data?.origin === 'desk' && !data?.appClaimedAt;
+  }
+
+  private async claimDeskDoc(ref: any): Promise<void> {
+    try {
+      await setDoc(ref, { appClaimedAt: serverTimestamp() }, { merge: true });
+    } catch (error) {
+      // Not fatal: the next download retries (the fingerprint check below lets it self-heal)
+      console.warn('⚠️ Could not claim desk document:', error);
+    }
+  }
+
+  private async safeLocal<T>(fn: () => Promise<T>): Promise<T | null> {
+    try { return (await fn()) ?? null; } catch { return null; }
+  }
+
+  private sameText(a: any, b: any): boolean {
+    return String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
+  }
+
+  private async syncPropertyDoc(userId: number, docSnap: any): Promise<boolean> {
+    const data = docSnap.data();
+    if (!data?.localId) return false;
+
+    const unclaimed = this.isUnclaimedDeskDoc(data);
+    if (unclaimed) {
+      const local: any = await this.safeLocal(() => database.getPropertyById(data.localId));
+      if (local && !this.sameText(local.name, data.name)) {
+        console.warn(`⚠️ ID conflict: desk property ${data.localId} ("${data.name}") vs local property ${data.localId} ("${local.name}"). Skipping; local record kept.`);
+        return false;
+      }
+    }
+
+    const ok = await this.upsertProperty(userId, data);
+    if (ok && unclaimed) await this.claimDeskDoc(docSnap.ref);
+    return ok;
+  }
+
+  private async syncTenantDoc(docSnap: any): Promise<boolean> {
+    const data = docSnap.data();
+    if (!data?.localId || !data?.propertyId) return false;
+
+    const unclaimed = this.isUnclaimedDeskDoc(data);
+    if (unclaimed) {
+      const local: any = await this.safeLocal(() => database.getTenantById(data.localId));
+      if (local && !this.sameText(local.name, data.name)) {
+        console.warn(`⚠️ ID conflict: desk tenant ${data.localId} ("${data.name}") vs local tenant ("${local.name}"). Skipping; local record kept.`);
+        return false;
+      }
+    }
+
+    const ok = await this.upsertTenant(data);
+    if (ok && unclaimed) await this.claimDeskDoc(docSnap.ref);
+    return ok;
+  }
+
+  private async syncInvoiceDoc(userId: number, docSnap: any): Promise<boolean> {
+    const data = docSnap.data();
+    if (!data?.localId || !data?.tenantId || !data?.propertyId) return false;
+
+    const unclaimed = this.isUnclaimedDeskDoc(data);
+    if (unclaimed) {
+      const local: any = await this.safeLocal(() => database.getInvoiceById(data.localId));
+      if (local && !(Number(local.tenantId) === Number(data.tenantId) && this.sameText(local.billingMonth, data.billingMonth))) {
+        console.warn(`⚠️ ID conflict: desk invoice ${data.localId} vs a different local invoice with the same ID. Skipping; local record kept.`);
+        return false;
+      }
+    }
+
+    const ok = await this.upsertInvoice(data);
+    if (!ok) return false;
+
+    // Download payments for this invoice
+    await this.downloadPayments(userId, docSnap.id, data.localId);
+    if (unclaimed) await this.claimDeskDoc(docSnap.ref);
+    return true;
+  }
+
+  /**
+   * Best-effort refresh of the newest cloud records of one kind, run right before the app picks a new
+   * ID locally, so records created by Desk (or another device) are already in the local table and
+   * MAX(id)+1 cannot land on an ID that exists in the cloud. Never blocks creation: offline, no sync
+   * permission, a lock, an error or a timeout all just return.
+   */
+  async pullBeforeCreate(userId: number, kind: 'properties' | 'invoices', windowSize: number = 25): Promise<void> {
+    try {
+      if (!navigator.onLine) return;
+      const user = await database.getUserById(userId);
+      if (!user || !this.canUserSync(user)) return;
+
+      const lockKey = `download_${userId}`;
+      if (this.isOperationLocked(lockKey)) return;
+
+      const work = async () => {
+        const col = collection(db, 'users', userId.toString(), kind);
+        const snapshot = await getDocs(query(col, orderBy('id', 'desc'), limit(windowSize)));
+        for (const docSnap of this.sortByLocalId(snapshot.docs)) {
+          if (kind === 'properties') {
+            await this.syncPropertyDoc(userId, docSnap);
+          } else {
+            await this.ensureInvoiceParents(userId, docSnap.data());
+            await this.syncInvoiceDoc(userId, docSnap);
+          }
+        }
+      };
+
+      await Promise.race([
+        work(),
+        new Promise<void>(resolve => setTimeout(resolve, 8000))
+      ]);
+    } catch (error) {
+      console.warn('⚠️ pullBeforeCreate skipped:', error);
+    }
+  }
+
+  // An invoice cannot be stored without its tenant and property, so fetch those individually if missing
+  private async ensureInvoiceParents(userId: number, invoiceData: any): Promise<void> {
+    const base = ['users', userId.toString()] as const;
+    if (invoiceData?.propertyId && !(await this.safeLocal(() => database.getPropertyById(invoiceData.propertyId)))) {
+      const snap = await getDoc(doc(db, base[0], base[1], 'properties', String(invoiceData.propertyId)));
+      if (snap.exists()) await this.syncPropertyDoc(userId, snap);
+    }
+    if (invoiceData?.tenantId && !(await this.safeLocal(() => database.getTenantById(invoiceData.tenantId)))) {
+      const snap = await getDoc(doc(db, base[0], base[1], 'tenants', String(invoiceData.tenantId)));
+      if (snap.exists()) await this.syncTenantDoc(snap);
     }
   }
 
@@ -544,7 +662,7 @@ cleanup(userId?: number): void {
 
   // ==================== SIMPLE UPSERT OPERATIONS - FIXED ====================
 
-private async upsertProperty(userId: number, data: any): Promise<void> {
+private async upsertProperty(userId: number, data: any): Promise<boolean> {
   try {
     let local = null;
     try {
@@ -552,8 +670,12 @@ private async upsertProperty(userId: number, data: any): Promise<void> {
     } catch {}
     
     if (!local) {
+      // Over the plan's property limit: still store it (restricted) instead of dropping it. Dropping it
+      // would leave its ID free for the app to reuse, which then overwrote the cloud copy.
+      // enforceTierLimits() decides which properties stay unlocked.
       const canCreate = await database.canCreateProperty?.(userId);
-      if (canCreate?.allowed !== false) {
+      const restrictedFlag = canCreate?.allowed === false ? 1 : 0;
+      {
         // CRITICAL: Use raw SQL to insert with exact ID from Firebase
         await database.db!.run(`
           INSERT INTO properties (
@@ -561,7 +683,7 @@ private async upsertProperty(userId: number, data: any): Promise<void> {
             agent_commission_rate, max_units, billing_mode, is_restricted,
             created_at, updated_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         `, [
           data.localId,  // Use exact ID from Firebase
           data.userId || userId,
@@ -572,12 +694,13 @@ private async upsertProperty(userId: number, data: any): Promise<void> {
           data.image || null,
           data.agentCommissionRate || 0,
           data.maxUnits || 50,
-          data.billingMode === 'rent_only' ? 'rent_only' : 'full'
+          data.billingMode === 'rent_only' ? 'rent_only' : 'full',
+          restrictedFlag
         ]);
         
         console.log(`✅ Created property ${data.localId} for user ${userId}`);
       }
-    } else if (!local.isRestricted && this.isNewer(data.lastModified, local.updatedAt)) {
+    } else if (!local.isRestricted && this.isNewer(this.cloudModified(data), local.updatedAt)) {
       await database.updateProperty(data.localId, {
         name: data.name || local.name,
         address: data.address || local.address,
@@ -590,12 +713,14 @@ private async upsertProperty(userId: number, data: any): Promise<void> {
       
       console.log(`✅ Updated property ${data.localId}`);
     }
+    return true;
   } catch (error) {
     console.error(`❌ Upsert property ${data.localId} failed:`, error);
+    return false;
   }
 }
 
-private async upsertTenant(data: any): Promise<void> {
+private async upsertTenant(data: any): Promise<boolean> {
   try {
     let local = null;
     try {
@@ -627,7 +752,7 @@ private async upsertTenant(data: any): Promise<void> {
       
       console.log(`✅ Created tenant ${data.localId} for property ${data.propertyId}`);
       
-    } else if (!local.isRestricted && this.isNewer(data.lastModified, local.updatedAt)) {
+    } else if (!local.isRestricted && this.isNewer(this.cloudModified(data), local.updatedAt)) {
       await database.updateTenant(data.localId, {
         name: data.name || local.name,
         phone: data.phone || local.phone,
@@ -642,12 +767,14 @@ private async upsertTenant(data: any): Promise<void> {
       
       console.log(`✅ Updated tenant ${data.localId}`);
     }
+    return true;
   } catch (error) {
     console.error(`❌ Upsert tenant ${data.localId} failed:`, error);
+    return false;
   }
 }
 
-private async upsertInvoice(data: any): Promise<void> {
+private async upsertInvoice(data: any): Promise<boolean> {
   try {
     let local = null;
     try {
@@ -697,7 +824,7 @@ private async upsertInvoice(data: any): Promise<void> {
       
       console.log(`✅ Created invoice ${data.localId} for tenant ${data.tenantId}`);
       
-    } else if (this.isNewer(data.lastModified, local.updatedAt)) {
+    } else if (this.isNewer(this.cloudModified(data), local.updatedAt)) {
       // Update existing invoice
       await database.updateInvoice(data.localId, {
         billingMonth: data.billingMonth || local.billingMonth,
@@ -729,8 +856,10 @@ private async upsertInvoice(data: any): Promise<void> {
       
       console.log(`✅ Updated invoice ${data.localId} for tenant ${data.tenantId}`);
     }
+    return true;
   } catch (error) {
     console.error(`❌ Upsert invoice ${data.localId} failed:`, error);
+    return false;
   }
 }
 
@@ -778,6 +907,16 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
 
   // ==================== ORPHAN CLEANUP ====================
 
+  private async isDeskOriginInCloud(userId: number, collectionName: 'tenants' | 'invoices', id: number): Promise<boolean> {
+    try {
+      const snap = await getDoc(doc(db, 'users', userId.toString(), collectionName, String(id)));
+      return snap.exists() && snap.data()?.origin === 'desk';
+    } catch {
+      // If we cannot tell, do not delete anything from the cloud
+      return true;
+    }
+  }
+
   private async purgeOrphans(userId: number): Promise<void> {
   console.log('🧹 Purging orphaned records...');
   
@@ -792,6 +931,12 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
     if (orphanedTenants?.values && orphanedTenants.values.length > 0) {
       console.log(`🗑️ Deleting ${orphanedTenants.values.length} orphaned tenants`);
       for (const row of orphanedTenants.values) {
+        if (await this.isDeskOriginInCloud(userId, 'tenants', row[0])) {
+          // Local-only cleanup: never delete a Desk-created document from the cloud
+          await database.db!.run('DELETE FROM tenants WHERE id = ?', [row[0]]);
+          console.warn(`⚠️ Removed local orphan tenant ${row[0]} (kept the Desk copy in the cloud)`);
+          continue;
+        }
         await database.deleteTenant(row[0], userId);
       }
     }
@@ -807,6 +952,11 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
     if (orphanedInvoices?.values && orphanedInvoices.values.length > 0) {
       console.log(`🗑️ Deleting ${orphanedInvoices.values.length} orphaned invoices`);
       for (const row of orphanedInvoices.values) {
+        if (await this.isDeskOriginInCloud(userId, 'invoices', row[0])) {
+          await database.db!.run('DELETE FROM invoices WHERE id = ?', [row[0]]);
+          console.warn(`⚠️ Removed local orphan invoice ${row[0]} (kept the Desk copy in the cloud)`);
+          continue;
+        }
         await database.deleteInvoice(row[0], userId);
       }
     }
@@ -919,6 +1069,11 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
     for (const property of properties) {
       const ref = doc(db, 'users', userId.toString(), 'properties', property.id.toString());
       const existing = await getDoc(ref);
+
+      if (existing.exists() && this.isUnclaimedDeskDoc(existing.data())) {
+        console.warn(`⚠️ Not uploading property ${property.id}: that ID already belongs to a different, unsynced record created in Desk.`);
+        continue;
+      }
       
       batchManager.addOperation((batch) => {
         batch.set(ref, {
@@ -962,6 +1117,11 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
       for (const tenant of tenants) {
         const ref = doc(db, 'users', userId.toString(), 'tenants', tenant.id.toString());
         const existing = await getDoc(ref);
+
+        if (existing.exists() && this.isUnclaimedDeskDoc(existing.data())) {
+          console.warn(`⚠️ Not uploading tenant ${tenant.id}: that ID already belongs to a different, unsynced record created in Desk.`);
+          continue;
+        }
         
         batchManager.addOperation((batch) => {
           batch.set(ref, {
@@ -991,6 +1151,11 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
         for (const invoice of invoices) {
           const ref = doc(db, 'users', userId.toString(), 'invoices', invoice.id.toString());
           const existing = await getDoc(ref);
+
+          if (existing.exists() && this.isUnclaimedDeskDoc(existing.data())) {
+            console.warn(`⚠️ Not uploading invoice ${invoice.id}: that ID already belongs to a different, unsynced invoice created in Desk.`);
+            continue;
+          }
           
           const statusSuffix = invoice.totalAmount <= invoice.amountPaid ? 'paid' : 'pending';
           let pdfUrl = existing.exists() ? existing.data()?.pdfUrl : null;
@@ -1240,6 +1405,11 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
     
     const result = await database.db!.query(query, [propertyId]);
     return database.mapToTenants(result.values || []);
+  }
+
+  // Documents written by Desk may not carry lastModified; fall back to the other change markers
+  private cloudModified(data: any): any {
+    return data?.lastModified ?? data?.lastSyncTime ?? data?.updatedAt ?? null;
   }
 
   private isNewer(serverTimestamp: any, localTimestamp: string): boolean {

@@ -10,8 +10,8 @@ const BUILD_ID = /*__BUILD_ID__*/ 'dev';
 const PRECACHE_ASSETS = /*__PRECACHE_ASSETS__*/ [];
 
 const STATIC_CACHE = `plotyangu-static-${BUILD_ID}`; // app shell + hashed build files, replaced per build
-const RUNTIME_CACHE = 'plotyangu-runtime-v3';          // icons, sql.js WASM, other runtime fetches
-const LEGACY_CACHES = ['plot-yangu-v2', 'plot-yangu-runtime-v2'];
+const RUNTIME_CACHE = 'plotyangu-runtime-v4';          // icons and other runtime fetches (v4 purges the old cached CDN sql.js WASM)
+const LEGACY_CACHES = ['plot-yangu-v2', 'plot-yangu-runtime-v2', 'plotyangu-runtime-v3']; // v3 held the stale CDN sql.js WASM
 
 const APP_SHELL = [
   '/',
@@ -22,9 +22,7 @@ const APP_SHELL = [
   '/icons/apple-icon-180.png'
 ];
 
-// sql.js loads its WASM from this CDN (UniversalSQLiteAdapter.locateFile)
-const SQLJS_HOST = 'sql.js.org';
-const SQLJS_WASM = 'https://sql.js.org/dist/sql-wasm.wasm';
+// sql.js WASM is now bundled by Vite (/assets/<hash>.wasm) and precached via PRECACHE_ASSETS — no CDN involved.
 
 // ───────────────────────────── lifecycle ─────────────────────────────
 
@@ -36,21 +34,9 @@ self.addEventListener('install', (event) => {
       [...APP_SHELL, ...PRECACHE_ASSETS].map((url) => cache.add(new Request(url, { cache: 'reload' })))
     );
 
-    // Warm the offline database engine in the background. Deliberately NOT awaited: a slow or blocked
-    // CDN must never hold up installing (and therefore updating) the app itself.
-    warmSqlWasm();
     // No skipWaiting() here on purpose — see the update policy above.
   })());
 });
-
-async function warmSqlWasm() {
-  try {
-    const runtime = await caches.open(RUNTIME_CACHE);
-    if (await runtime.match(SQLJS_WASM)) return;
-    const res = await fetch(SQLJS_WASM, { mode: 'cors' });
-    if (res.ok) await runtime.put(SQLJS_WASM, res);
-  } catch (_) { /* best effort; the first real request is cached by the fetch handler */ }
-}
 
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
@@ -101,10 +87,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // sql.js WASM — large, versioned by URL, needed for the offline database
-  if (url.hostname === SQLJS_HOST && url.pathname.startsWith('/dist/')) {
-    event.respondWith(cacheFirst(req, RUNTIME_CACHE));
-  }
   // Everything else cross-origin (Firebase, Paystack, APIs, storage) goes straight to the network.
 });
 

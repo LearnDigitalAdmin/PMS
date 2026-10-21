@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { firebaseSyncService } from '../../services/database/FirebaseSync';
 import { ChevronLeft, ChevronRight, Check, Calculator, Calendar, Zap, Droplets, FileText, Save, AlertCircle, Info, CreditCard, Users, Settings } from 'lucide-react';
 import { database, type Property, type Tenant, type Invoice, type InvoiceInput } from '../../services/database/Database';
 import {
@@ -256,6 +257,12 @@ const handleSave = async () => {
 
   setLoading(true);
   try {
+    // New invoices only: pull recent cloud invoices first (e.g. ones created in Samuhia Desk) so the next
+    // local ID can't collide with one, and the bulk de-dup sees them.
+    if (!invoiceId) {
+      await firebaseSyncService.pullBeforeCreate(userId, 'invoices');
+    }
+
     // Bulk path: "All Tenants" was selected — generate one invoice per active
     // tenant, forking each tenant's own rentAmount (never a shared amount),
     // with no water/power metering. otherCharges (if any) applies flatly to

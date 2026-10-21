@@ -2,6 +2,8 @@
 import { SQLiteDBConnection, type capSQLiteChanges } from '@capacitor-community/sqlite';
 import { Capacitor } from '@capacitor/core';
 import type { Database, SqlJsStatic } from 'sql.js';
+// Bundle the WASM from the SAME installed sql.js package as the JS glue, so they can never get out of sync.
+import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 
 // Unified interface matching Capacitor's API
 export interface UniversalSQLiteConnection {
@@ -299,9 +301,9 @@ export class UniversalConnectionManager {
       // Import sql.js
       const initSqlJs = (await import('sql.js')).default;
       
-      // Initialize with CDN WASM file
+      // Load the WASM that ships with the installed sql.js (version-matched, works offline).
       this.SQL = await initSqlJs({
-        locateFile: (file) => `https://sql.js.org/dist/${file}`
+        locateFile: () => sqlWasmUrl
       });
       
       console.log('✅ sql.js initialized successfully');
