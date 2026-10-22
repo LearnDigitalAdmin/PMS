@@ -4,6 +4,7 @@ import { database } from '../../services/database/Database';
 import { useAuth, createUserWithFirebaseAuth } from './AuthWrapper';
 import PricingModal from '../ui/PricingPage';
 import LegalLink from '../../pages/legal/LegalLink';
+import { checkSafaricomPhone } from '../../utils/safaricom';
 
 interface SignUpScreenProps {
   onSwitchToSignIn: () => void;
@@ -81,10 +82,10 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
       return false;
     }
     
-    // Check if phone number is reasonable length
-    const phoneStr = formData.phone.toString();
-    if (phoneStr.length < 9 || phoneStr.length > 15) {
-      setError('Phone number must be between 9 and 15 digits');
+    // Safaricom only. The field is a number, so a typed 0701234567 arrives as 701234567 — the checker accepts both.
+    const phoneCheck = checkSafaricomPhone(formData.phone);
+    if (!phoneCheck.ok) {
+      setError(phoneCheck.message);
       return false;
     }
     
@@ -324,11 +325,12 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
                         setFormData({ ...formData, phone: value ? parseInt(value, 10) : 0 });
                       }}
                       className="w-full pl-11 pr-4 py-3 bg-white text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
-                      placeholder="Enter your phone number"
+                      placeholder="Safaricom number, e.g. 0712345678"
                       minLength={9}
                       maxLength={13}
                     />
                   </div>
+                  <p className="mt-1 text-xs text-gray-500">Safaricom numbers only (07xx or 01xx).</p>
                 </div>
 
                 <div >

@@ -1053,8 +1053,9 @@ export const createUserWithFirebaseAuth = async (
     
     // Handle Firebase Functions errors
     if (error.code === 'functions/already-exists') {
-      errorMessage = 'This email or phone number is already registered. Please sign in instead.';
-      alert('⚠️ This email is already registered. Please sign in instead.');
+      // The server says which of ID / phone / email already has an account (and a masked email to sign in with)
+      errorMessage = error.message || 'This email, ID number or phone number is already registered. Please sign in instead.';
+      alert('⚠️ ' + errorMessage);
     } else if (error.code === 'functions/invalid-argument') {
       errorMessage = error.message || 'Invalid input. Please check your information.';
       alert('⚠️ ' + errorMessage);

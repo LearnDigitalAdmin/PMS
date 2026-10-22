@@ -7,6 +7,7 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import * as admin from 'firebase-admin';
 import axios from 'axios';
 import crypto from 'crypto';
+import { checkSafaricomPhone, toMsisdn } from './phone/safaricom';
 import { defineSecret } from 'firebase-functions/params';
 import {
   attachShortLink, buildShortUrl, isAllowedRedirectTarget, newShortCode, parseShortCode,
@@ -80,8 +81,10 @@ interface ProcessWebSubscriptionRequest {
   planId: string;
   planName: string;
   billingCycle: 'monthly' | 'annual';
-  amount: number;
-  daysToAdd: number;
+  /** Ignored for charging — the price is looked up server-side (plans/{planId}_{billingCycle}). Rejected if it disagrees. */
+  amount?: number;
+  /** Ignored — 30 (monthly) or 365 (annual), decided server-side. */
+  daysToAdd?: number;
   // NOTE: no client-supplied agent. Commission attribution is resolved on the server (see ./desk/attribution.ts).
 }
 
@@ -153,12 +156,9 @@ function sanitizeSmsText(text: string): string {
  * Normalise a Kenyan phone number to 254XXXXXXXXX (no +, no spaces).
  * Identical logic to what you already use for WhatsApp.
  */
-function normalizeSmsPhone(raw: string): string {
-    const clean = raw.replace(/[\s\-\+]/g, "");
-    if (clean.startsWith("254"))  return clean;
-    if (clean.startsWith("0"))    return "254" + clean.substring(1);
-    if (clean.startsWith("7") || clean.startsWith("1")) return "254" + clean;
-    return clean;
+function normalizeSmsPhone(raw: string | number): string {
+    // Accepts numbers too: a phone stored as a number (701234567, leading 0 lost) used to throw here.
+    return toMsisdn(raw);
 }
 
 
@@ -1242,7 +1242,7 @@ export const sendSMS = onCall({
 
 async function sendWhatsAppReminder(phone: string, daysLeft: number, planName: string) {
   try {
-    const formattedPhone = phone.startsWith('254') ? phone : '254' + phone.replace(/^0/, '');
+    const formattedPhone = normalizeSmsPhone(phone);
     
     const url = `${WHATSAPP_CONFIG.BASE_URL}/${WHATSAPP_CONFIG.VERSION}/${WHATSAPP_CONFIG.PHONE_NUMBER_ID}/messages`;
     
@@ -1372,6 +1372,25 @@ async function legacyAgentSplitCode(agentId: string): Promise<string | undefined
   return getOrCreateSplitCode(subaccountCode, 55, agentId);
 }
 
+/** Plans that can be bought on the web, and the days each billing cycle buys. The PRICE is never taken from the request. */
+const PURCHASABLE_PLANS: Record<string, string> = { starter: 'Starter', solo: 'Solo', business: 'Business', pro: 'Professional', enterprise: 'Enterprise' };
+const DAYS_BY_CYCLE: Record<'monthly' | 'annual', number> = { monthly: 30, annual: 365 };
+
+/** The official price, in minor units, from plans/{planId}_{billingCycle} (the same documents the pricing page shows). */
+async function lookupPlanPriceMinor(planId: string, billingCycle: string): Promise<number> {
+  if (!Object.prototype.hasOwnProperty.call(PURCHASABLE_PLANS, planId) || !(billingCycle in DAYS_BY_CYCLE)) {
+    throw new HttpsError('invalid-argument', 'Unknown plan or billing cycle');
+  }
+  const snap = await db.collection('plans').doc(`${planId}_${billingCycle}`).get();
+  const price = Number(snap.data()?.price);
+  if (!snap.exists || !Number.isFinite(price) || price <= 0) {
+    throw new HttpsError('failed-precondition', 'This plan is not available right now. Please try again later.');
+  }
+  const minor = Math.round(price * 100);
+  if (!Number.isSafeInteger(minor) || minor <= 0) throw new HttpsError('failed-precondition', 'This plan is not available right now.');
+  return minor;
+}
+
 export const processWebSubscription = onCall({
   timeoutSeconds: 60,
   memory: "512MiB",
@@ -1381,13 +1400,28 @@ export const processWebSubscription = onCall({
   secrets: [PAYSTACK_SECRET_KEY]
 }, async (request: CallableRequest<ProcessWebSubscriptionRequest>) => {
   try {
-    const { userId, userName, email, phone, planId, planName, billingCycle, amount, daysToAdd } = request.data;
+    const { userId, userName, email, phone, planId, billingCycle } = request.data;
 
-    if (!userId || !userName || !email || !phone || !planId || !planName || !amount) {
+    if (!userId || !userName || !email || !phone || !planId || !billingCycle) {
       throw new HttpsError(
         "invalid-argument",
         "All fields are required"
       );
+    }
+
+    // The caller must be signed in and must be paying for their own account.
+    if (!request.auth) throw new HttpsError("unauthenticated", "Please sign in to buy a plan");
+    const ownerSnap = await db.collection("users").doc(String(userId)).get();
+    if (request.auth.uid !== String(userId) && ownerSnap.data()?.firebaseAuthUid !== request.auth.uid) {
+      throw new HttpsError("permission-denied", "You can only buy a plan for your own account");
+    }
+
+    // The price and the length come from the server, never from the request. A client that sends a different amount is refused.
+    const expectedAmountMinor = await lookupPlanPriceMinor(String(planId), String(billingCycle));
+    const amount = expectedAmountMinor / 100;
+    const daysToAdd = DAYS_BY_CYCLE[billingCycle as 'monthly' | 'annual'];
+    if (request.data.amount !== undefined && Math.round(Number(request.data.amount) * 100) !== expectedAmountMinor) {
+      throw new HttpsError("failed-precondition", "The plan price has changed. Please reload the page and try again.");
     }
 
     // Who earns commission on this subscription is decided HERE, from our own records, never from the request:
@@ -1403,21 +1437,14 @@ console.log(`Processing web subscription for user ${userId}, plan ${planId}, amo
 
     console.log(`Processing web subscription for user ${userId}, plan ${planId}, amount ${amount}`);
 
-    let formattedPhone = phone.replace(/[\s-]/g, '');
-    
-    if (formattedPhone.startsWith('+254')) {
-      formattedPhone = formattedPhone;
-    } else if (formattedPhone.startsWith('254')) {
-      formattedPhone = '+' + formattedPhone;
-    } else if (formattedPhone.startsWith('0')) {
-      formattedPhone = '+254' + formattedPhone.substring(1);
-    } else if (formattedPhone.startsWith('7') || formattedPhone.startsWith('1')) {
-      formattedPhone = '+254' + formattedPhone;
-    }
+    // M-Pesa = Safaricom only. Accepts 0701234567, 701234567, 254..., +254..., or a number.
+    const phoneCheck = checkSafaricomPhone(phone);
+    if (!phoneCheck.ok) throw new HttpsError("invalid-argument", phoneCheck.message);
+    const formattedPhone = phoneCheck.e164;
     
     console.log(`Formatted phone for M-Pesa: ${phone} -> ${formattedPhone}`);
 
-    const amountInCents = Math.round(amount * 100);
+    const amountInCents = expectedAmountMinor;
 
     // Build charge payload
     const chargePayload: any = {
@@ -1433,7 +1460,7 @@ console.log(`Processing web subscription for user ${userId}, plan ${planId}, amo
         userId: userId,
         userName: userName,
         planId: planId,
-        planName: planName,
+        planName: PURCHASABLE_PLANS[String(planId)],
         billingCycle: billingCycle,
         daysToAdd: daysToAdd,
         originalAmount: amount,
@@ -1486,9 +1513,10 @@ console.log(`Processing web subscription for user ${userId}, plan ${planId}, amo
       email: email,
       phone: formattedPhone,
       planId: planId,
-      planName: planName,
+      planName: PURCHASABLE_PLANS[String(planId)],
       billingCycle: billingCycle,
       amount: amount,
+      expectedAmountMinor: expectedAmountMinor,   // what the webhook must see paid before it activates anything
       daysToAdd: daysToAdd,
       reference: transactionData.reference,
       status: "pending",
@@ -1600,10 +1628,39 @@ export const paystackWebhook = onCall({
       }
 
       const subscriptionData = subscriptionDoc.data();
-      const userId = metadata.userId || subscriptionData?.userId;
-      const planId = metadata.planId || subscriptionData?.planId;
-      const planName = metadata.planName || subscriptionData?.planName;
-      const daysToAdd = metadata.daysToAdd || subscriptionData?.daysToAdd || 30;
+
+      // A repeated webhook must not grant the plan (and its days) twice.
+      if (subscriptionData?.status === "success") {
+        console.log(`Subscription ${reference} already activated — ignoring repeat webhook`);
+        return { received: true, processed: false, eventType: event.event, reason: "already_processed" };
+      }
+
+      // The amount actually paid must equal the plan's price, fixed server-side when the charge started. Legacy pending
+      // records (made before expectedAmountMinor existed) are checked against the plan document instead.
+      const storedPlanId = String(subscriptionData?.planId ?? "");
+      const storedCycle = String(subscriptionData?.billingCycle ?? "");
+      let expectedMinor = Number(subscriptionData?.expectedAmountMinor);
+      if (!Number.isSafeInteger(expectedMinor) || expectedMinor <= 0) {
+        try { expectedMinor = await lookupPlanPriceMinor(storedPlanId, storedCycle); } catch { expectedMinor = NaN; }
+      }
+      const paidMinor = Number(data.amount);
+      if (!Number.isSafeInteger(expectedMinor) || paidMinor !== expectedMinor || (data.currency && data.currency !== "KES")) {
+        console.error(`Subscription ${reference}: paid ${paidMinor} ${data.currency ?? ""}, expected ${expectedMinor} KES — NOT activating`);
+        await subscriptionRef.update({
+          status: "amount_mismatch",
+          mismatchAt: admin.firestore.FieldValue.serverTimestamp(),
+          paidAmountMinor: Number.isFinite(paidMinor) ? paidMinor : null,
+          expectedAmountMinor: Number.isFinite(expectedMinor) ? expectedMinor : null,
+          paystackResponse: data,
+        });
+        return { received: true, processed: false, eventType: event.event, reason: "amount_mismatch" };
+      }
+
+      // Everything that is granted comes from our own record, not from the webhook body.
+      const userId = subscriptionData?.userId || metadata.userId;
+      const planId = storedPlanId;
+      const planName = subscriptionData?.planName || PURCHASABLE_PLANS[storedPlanId];
+      const daysToAdd = DAYS_BY_CYCLE[storedCycle as 'monthly' | 'annual'] ?? (Number(subscriptionData?.daysToAdd) || 30);
 
       const expiryDate = new Date();
       expiryDate.setDate(expiryDate.getDate() + daysToAdd);

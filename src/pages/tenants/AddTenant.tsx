@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, User, Phone, Mail, MapPin, DollarSign, Calendar, Save, AlertCircle } from 'lucide-react';
 import { database } from '../../services/database/Database';
 import type { TenantInput, TenantWithInvoices } from '../../services/database/Database';
+import { checkSafaricomPhone } from '../../utils/safaricom';
 
 interface AddTenantProps {
   propertyId: number;
@@ -88,15 +89,12 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
       newErrors.id = 'Name must be between 7 and 10 characters';
     }
 
+    // Safaricom only (M-Pesa rent collection and SMS). An existing tenant's untouched number is left alone.
     if (!formData.phone.trim()) {
       newErrors.phone = 'Phone number is required';
-    } else if (formData.phone.trim().length < 10 || formData.phone.trim().length > 12) {
-      newErrors.phone = 'Phone number must be between 10 and 12 characters';
-    } else {
-      const phoneRegex = parseFloat(formData.phone);
-      if (isNaN(phoneRegex)) {
-        newErrors.phone = 'Please enter a valid phone number';
-      }
+    } else if (!(tenant && formData.phone.trim() === String(tenant.phone || '').trim())) {
+      const phoneCheck = checkSafaricomPhone(formData.phone);
+      if (!phoneCheck.ok) newErrors.phone = phoneCheck.message;
     }
 
     if (!formData.unitNumber.trim()) {
@@ -115,10 +113,6 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
     }
 
     // Optional field validations
-    if (formData.phone.trim() && !/^[\+]?[\d\s\-\(\)]{7,15}$/.test(formData.phone.trim())) {
-      newErrors.phone = 'Please enter a valid phone number';
-    }
-
     if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
       newErrors.email = 'Please enter a valid email address';
     }
@@ -162,7 +156,7 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
         propertyId,
         name: formData.name.trim(),
         id: parseFloat(formData.id) || undefined,
-        phone: formData.phone.trim() || undefined,
+        phone: (() => { const c = checkSafaricomPhone(formData.phone); return c.ok ? c.local : (formData.phone.trim() || undefined); })(),
         email: formData.email.trim() || undefined,
         unitNumber: formData.unitNumber.trim() || undefined,
         rentAmount: parseFloat(formData.rentAmount),
@@ -290,7 +284,7 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
                       type="tel"
                       value={formData.phone}
                       onChange={(e) => handleInputChange('phone', e.target.value)}
-                      placeholder="e.g., +254 700 123 456"
+                      placeholder="e.g., 0712 345 678"
                       className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                         errors.phone ? 'border-red-300 dark:border-red-500/40' : 'border-line-strong'
                       }`}
@@ -302,6 +296,7 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
                       {errors.phone}
                     </p>
                   )}
+                  <p className="mt-1 text-xs text-ink-faint">Safaricom numbers only (07xx or 01xx) — rent is collected by M-Pesa.</p>
                 </div>
 
                 {/* Email */}

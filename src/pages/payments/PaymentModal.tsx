@@ -27,7 +27,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const [phoneError, setPhoneError] = useState('');
 
   const invoiceBalance = invoice.totalAmount - invoice.amountPaid;
-  const fees = PaymentService.calculateFees(amount, invoiceBalance);
+  const landlordTier = (() => { try { return JSON.parse(localStorage.getItem('currentUser') || '{}').tier as string | undefined; } catch { return undefined; } })();
+  const fees = PaymentService.calculateFees(amount, invoiceBalance, landlordTier);
 
   useEffect(() => {
     if (phoneError && phone) {

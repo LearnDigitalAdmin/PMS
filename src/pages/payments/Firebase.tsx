@@ -510,7 +510,13 @@ export class AgentService {
 export class PaymentService {
   // Rent fee split (mirrors functions/src/desk/rentFees.ts — the server is authoritative). Integer minor units.
   //   tenant pays rent + min(KES 150, 0.5%); landlord covers the rest of Paystack's ~1.5% plus a 0.2% convenience fee.
-  static calculateFees(amount: number, invoiceBalance: number): {
+    // Platform cut by the landlord's plan (mirrors functions/src/desk/rentFees.ts): enterprise 0.2, pro 0.4, business 0.65, else 0.95
+  static conveniencePctForTier(tier?: string): number {
+    const t = String(tier ?? '').trim().toLowerCase();
+    return t === 'enterprise' ? 0.2 : (t === 'pro' || t === 'professional') ? 0.4 : t === 'business' ? 0.65 : 0.95;
+  }
+
+  static calculateFees(amount: number, invoiceBalance: number, tier?: string): {
     tenantFee: number;
     total: number;
     netAmount: number;
@@ -525,7 +531,7 @@ export class PaymentService {
     const tenantFee = Math.min(pct(rent, 0.5), 15000);
     const paystackEstimate = Math.min(pct(rent, 1.5), 300000);
     const landlordPaystackFee = Math.max(0, paystackEstimate - tenantFee);
-    const convenienceFee = pct(rent, 0.2);
+    const convenienceFee = pct(rent, PaymentService.conveniencePctForTier(tier));
     const deductions = landlordPaystackFee + convenienceFee;
     const arrears = amount < invoiceBalance ? invoiceBalance - amount : 0;
 

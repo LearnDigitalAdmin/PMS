@@ -1,0 +1,497 @@
+diff --git a/src/components/auh/AuthWrapper.tsx b/src/components/auh/AuthWrapper.tsx
+index 834c264..c86fb00 100644
+--- a/src/components/auh/AuthWrapper.tsx
++++ b/src/components/auh/AuthWrapper.tsx
+@@ -1053,8 +1053,9 @@ export const createUserWithFirebaseAuth = async (
+     
+     // Handle Firebase Functions errors
+     if (error.code === 'functions/already-exists') {
+-      errorMessage = 'This email or phone number is already registered. Please sign in instead.';
+-      alert('⚠️ This email is already registered. Please sign in instead.');
++      // The server says which of ID / phone / email already has an account (and a masked email to sign in with)
++      errorMessage = error.message || 'This email, ID number or phone number is already registered. Please sign in instead.';
++      alert('⚠️ ' + errorMessage);
+     } else if (error.code === 'functions/invalid-argument') {
+       errorMessage = error.message || 'Invalid input. Please check your information.';
+       alert('⚠️ ' + errorMessage);
+diff --git a/src/components/auh/SignUpScreen.tsx b/src/components/auh/SignUpScreen.tsx
+index d252154..ba31e7b 100644
+--- a/src/components/auh/SignUpScreen.tsx
++++ b/src/components/auh/SignUpScreen.tsx
+@@ -4,6 +4,7 @@ import { database } from '../../services/database/Database';
+ import { useAuth, createUserWithFirebaseAuth } from './AuthWrapper';
+ import PricingModal from '../ui/PricingPage';
+ import LegalLink from '../../pages/legal/LegalLink';
++import { checkSafaricomPhone } from '../../utils/safaricom';
+ 
+ interface SignUpScreenProps {
+   onSwitchToSignIn: () => void;
+@@ -81,10 +82,10 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
+       return false;
+     }
+     
+-    // Check if phone number is reasonable length
+-    const phoneStr = formData.phone.toString();
+-    if (phoneStr.length < 9 || phoneStr.length > 15) {
+-      setError('Phone number must be between 9 and 15 digits');
++    // Safaricom only. The field is a number, so a typed 0701234567 arrives as 701234567 — the checker accepts both.
++    const phoneCheck = checkSafaricomPhone(formData.phone);
++    if (!phoneCheck.ok) {
++      setError(phoneCheck.message);
+       return false;
+     }
+     
+@@ -324,11 +325,12 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ onSwitchToSignIn }) => {
+                         setFormData({ ...formData, phone: value ? parseInt(value, 10) : 0 });
+                       }}
+                       className="w-full pl-11 pr-4 py-3 bg-white text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+-                      placeholder="Enter your phone number"
++                      placeholder="Safaricom number, e.g. 0712345678"
+                       minLength={9}
+                       maxLength={13}
+                     />
+                   </div>
++                  <p className="mt-1 text-xs text-gray-500">Safaricom numbers only (07xx or 01xx).</p>
+                 </div>
+ 
+                 <div >
+diff --git a/src/pages/payments/Firebase.tsx b/src/pages/payments/Firebase.tsx
+index 405f567..64dc8b7 100644
+--- a/src/pages/payments/Firebase.tsx
++++ b/src/pages/payments/Firebase.tsx
+@@ -510,7 +510,13 @@ export class AgentService {
+ export class PaymentService {
+   // Rent fee split (mirrors functions/src/desk/rentFees.ts — the server is authoritative). Integer minor units.
+   //   tenant pays rent + min(KES 150, 0.5%); landlord covers the rest of Paystack's ~1.5% plus a 0.2% convenience fee.
+-  static calculateFees(amount: number, invoiceBalance: number): {
++    // Platform cut by the landlord's plan (mirrors functions/src/desk/rentFees.ts): enterprise 0.2, pro 0.4, business 0.65, else 0.95
++  static conveniencePctForTier(tier?: string): number {
++    const t = String(tier ?? '').trim().toLowerCase();
++    return t === 'enterprise' ? 0.2 : (t === 'pro' || t === 'professional') ? 0.4 : t === 'business' ? 0.65 : 0.95;
++  }
++
++  static calculateFees(amount: number, invoiceBalance: number, tier?: string): {
+     tenantFee: number;
+     total: number;
+     netAmount: number;
+@@ -525,7 +531,7 @@ export class PaymentService {
+     const tenantFee = Math.min(pct(rent, 0.5), 15000);
+     const paystackEstimate = Math.min(pct(rent, 1.5), 300000);
+     const landlordPaystackFee = Math.max(0, paystackEstimate - tenantFee);
+-    const convenienceFee = pct(rent, 0.2);
++    const convenienceFee = pct(rent, PaymentService.conveniencePctForTier(tier));
+     const deductions = landlordPaystackFee + convenienceFee;
+     const arrears = amount < invoiceBalance ? invoiceBalance - amount : 0;
+ 
+diff --git a/src/pages/payments/PaymentModal.tsx b/src/pages/payments/PaymentModal.tsx
+index 51ae26e..151f76d 100644
+--- a/src/pages/payments/PaymentModal.tsx
++++ b/src/pages/payments/PaymentModal.tsx
+@@ -27,7 +27,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
+   const [phoneError, setPhoneError] = useState('');
+ 
+   const invoiceBalance = invoice.totalAmount - invoice.amountPaid;
+-  const fees = PaymentService.calculateFees(amount, invoiceBalance);
++  const landlordTier = (() => { try { return JSON.parse(localStorage.getItem('currentUser') || '{}').tier as string | undefined; } catch { return undefined; } })();
++  const fees = PaymentService.calculateFees(amount, invoiceBalance, landlordTier);
+ 
+   useEffect(() => {
+     if (phoneError && phone) {
+diff --git a/src/pages/tenants/AddTenant.tsx b/src/pages/tenants/AddTenant.tsx
+index 164025a..94c5124 100644
+--- a/src/pages/tenants/AddTenant.tsx
++++ b/src/pages/tenants/AddTenant.tsx
+@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
+ import { X, User, Phone, Mail, MapPin, DollarSign, Calendar, Save, AlertCircle } from 'lucide-react';
+ import { database } from '../../services/database/Database';
+ import type { TenantInput, TenantWithInvoices } from '../../services/database/Database';
++import { checkSafaricomPhone } from '../../utils/safaricom';
+ 
+ interface AddTenantProps {
+   propertyId: number;
+@@ -88,15 +89,12 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
+       newErrors.id = 'Name must be between 7 and 10 characters';
+     }
+ 
++    // Safaricom only (M-Pesa rent collection and SMS). An existing tenant's untouched number is left alone.
+     if (!formData.phone.trim()) {
+       newErrors.phone = 'Phone number is required';
+-    } else if (formData.phone.trim().length < 10 || formData.phone.trim().length > 12) {
+-      newErrors.phone = 'Phone number must be between 10 and 12 characters';
+-    } else {
+-      const phoneRegex = parseFloat(formData.phone);
+-      if (isNaN(phoneRegex)) {
+-        newErrors.phone = 'Please enter a valid phone number';
+-      }
++    } else if (!(tenant && formData.phone.trim() === String(tenant.phone || '').trim())) {
++      const phoneCheck = checkSafaricomPhone(formData.phone);
++      if (!phoneCheck.ok) newErrors.phone = phoneCheck.message;
+     }
+ 
+     if (!formData.unitNumber.trim()) {
+@@ -115,10 +113,6 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
+     }
+ 
+     // Optional field validations
+-    if (formData.phone.trim() && !/^[\+]?[\d\s\-\(\)]{7,15}$/.test(formData.phone.trim())) {
+-      newErrors.phone = 'Please enter a valid phone number';
+-    }
+-
+     if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+       newErrors.email = 'Please enter a valid email address';
+     }
+@@ -162,7 +156,7 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
+         propertyId,
+         name: formData.name.trim(),
+         id: parseFloat(formData.id) || undefined,
+-        phone: formData.phone.trim() || undefined,
++        phone: (() => { const c = checkSafaricomPhone(formData.phone); return c.ok ? c.local : (formData.phone.trim() || undefined); })(),
+         email: formData.email.trim() || undefined,
+         unitNumber: formData.unitNumber.trim() || undefined,
+         rentAmount: parseFloat(formData.rentAmount),
+@@ -290,7 +284,7 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
+                       type="tel"
+                       value={formData.phone}
+                       onChange={(e) => handleInputChange('phone', e.target.value)}
+-                      placeholder="e.g., +254 700 123 456"
++                      placeholder="e.g., 0712 345 678"
+                       className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                         errors.phone ? 'border-red-300 dark:border-red-500/40' : 'border-line-strong'
+                       }`}
+@@ -302,6 +296,7 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
+                       {errors.phone}
+                     </p>
+                   )}
++                  <p className="mt-1 text-xs text-ink-faint">Safaricom numbers only (07xx or 01xx) — rent is collected by M-Pesa.</p>
+                 </div>
+ 
+                 {/* Email */}
+diff --git a/src/utils/safaricom.ts b/src/utils/safaricom.ts
+new file mode 100644
+index 0000000..13baff6
+--- /dev/null
++++ b/src/utils/safaricom.ts
+@@ -0,0 +1,58 @@
++/**
++ * Kenyan phone handling — ONE place. Pure, no imports. Identical copy lives in PMS/whatsapp/src/phone/safaricom.ts.
++ *
++ * Accepts a string OR a number (an app that stores the phone as a number turns 0701234567 into 701234567, which used to
++ * fail every formatter that expected a string). Understands 0701234567, 701234567, 254701234567, +254701234567,
++ * "+254 701-234-567" and the same with a stray "(0)".
++ */
++
++/** Every current Safaricom prefix, as the 4-digit national prefix (0xxx). Inclusive ranges. */
++export const SAFARICOM_PREFIX_RANGES: ReadonlyArray<readonly [number, number]> = [
++  [700, 729], [740, 743], [745, 746], [757, 759], [768, 769], [790, 799],
++  [110, 115], [118, 119], [140, 143], [180, 182],
++];
++
++export const SAFARICOM_ONLY_MESSAGE =
++  "Only Safaricom numbers are supported (for example 0712 345 678 or 0110 123 456). Please use a Safaricom number.";
++export const INVALID_PHONE_MESSAGE = "Enter a valid Kenyan phone number, for example 0712345678.";
++
++/** The 9 national digits (7XXXXXXXX / 1XXXXXXXX), or "" when the input is not a Kenyan mobile number. */
++export function nationalDigits(raw: unknown): string {
++  if (raw === null || raw === undefined) return "";
++  let d = String(raw).replace(/\D/g, "");
++  if (d.startsWith("254")) d = d.slice(3);
++  else if (d.startsWith("0")) d = d.slice(1);
++  if (d.startsWith("0")) d = d.slice(1);           // "+254 (0)701..." style
++  return /^[17]\d{8}$/.test(d) ? d : "";
++}
++
++export function isSafaricomNational(national: string): boolean {
++  if (!/^[17]\d{8}$/.test(national)) return false;
++  const prefix = Number(national.slice(0, 3));      // 701 -> 0701, 110 -> 0110
++  return SAFARICOM_PREFIX_RANGES.some(([lo, hi]) => prefix >= lo && prefix <= hi);
++}
++
++export type PhoneCheck =
++  | { ok: true; national: string; e164: string; msisdn: string; local: string }
++  | { ok: false; reason: "invalid" | "not_safaricom"; message: string };
++
++/** Format + Safaricom check. e164 = +2547XXXXXXXX, msisdn = 2547XXXXXXXX (HostPinnacle), local = 07XXXXXXXX. */
++export function checkSafaricomPhone(raw: unknown): PhoneCheck {
++  const national = nationalDigits(raw);
++  if (!national) return { ok: false, reason: "invalid", message: INVALID_PHONE_MESSAGE };
++  if (!isSafaricomNational(national)) return { ok: false, reason: "not_safaricom", message: SAFARICOM_ONLY_MESSAGE };
++  return { ok: true, national, e164: `+254${national}`, msisdn: `254${national}`, local: `0${national}` };
++}
++
++/** Format only (no Safaricom rule) — for notifying accounts that already exist. Falls back to the digits when unrecognised. */
++export function toMsisdn(raw: unknown): string {
++  const n = nationalDigits(raw);
++  return n ? `254${n}` : String(raw ?? "").replace(/\D/g, "");
++}
++
++/** Every way an existing document might have stored this number (string and numeric), for a Firestore `in` query. */
++export function phoneStorageVariants(raw: unknown): Array<string | number> {
++  const n = nationalDigits(raw);
++  if (!n) return [];
++  return [`+254${n}`, `254${n}`, `0${n}`, n, Number(n), Number(`254${n}`)];
++}
+diff --git a/whatsapp/src/index.ts b/whatsapp/src/index.ts
+index 19d93d3..aa13b3e 100644
+--- a/whatsapp/src/index.ts
++++ b/whatsapp/src/index.ts
+@@ -7,6 +7,7 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+ import * as admin from 'firebase-admin';
+ import axios from 'axios';
+ import crypto from 'crypto';
++import { checkSafaricomPhone, toMsisdn } from './phone/safaricom';
+ import { defineSecret } from 'firebase-functions/params';
+ import {
+   attachShortLink, buildShortUrl, isAllowedRedirectTarget, newShortCode, parseShortCode,
+@@ -80,8 +81,10 @@ interface ProcessWebSubscriptionRequest {
+   planId: string;
+   planName: string;
+   billingCycle: 'monthly' | 'annual';
+-  amount: number;
+-  daysToAdd: number;
++  /** Ignored for charging — the price is looked up server-side (plans/{planId}_{billingCycle}). Rejected if it disagrees. */
++  amount?: number;
++  /** Ignored — 30 (monthly) or 365 (annual), decided server-side. */
++  daysToAdd?: number;
+   // NOTE: no client-supplied agent. Commission attribution is resolved on the server (see ./desk/attribution.ts).
+ }
+ 
+@@ -153,12 +156,9 @@ function sanitizeSmsText(text: string): string {
+  * Normalise a Kenyan phone number to 254XXXXXXXXX (no +, no spaces).
+  * Identical logic to what you already use for WhatsApp.
+  */
+-function normalizeSmsPhone(raw: string): string {
+-    const clean = raw.replace(/[\s\-\+]/g, "");
+-    if (clean.startsWith("254"))  return clean;
+-    if (clean.startsWith("0"))    return "254" + clean.substring(1);
+-    if (clean.startsWith("7") || clean.startsWith("1")) return "254" + clean;
+-    return clean;
++function normalizeSmsPhone(raw: string | number): string {
++    // Accepts numbers too: a phone stored as a number (701234567, leading 0 lost) used to throw here.
++    return toMsisdn(raw);
+ }
+ 
+ 
+@@ -1242,7 +1242,7 @@ export const sendSMS = onCall({
+ 
+ async function sendWhatsAppReminder(phone: string, daysLeft: number, planName: string) {
+   try {
+-    const formattedPhone = phone.startsWith('254') ? phone : '254' + phone.replace(/^0/, '');
++    const formattedPhone = normalizeSmsPhone(phone);
+     
+     const url = `${WHATSAPP_CONFIG.BASE_URL}/${WHATSAPP_CONFIG.VERSION}/${WHATSAPP_CONFIG.PHONE_NUMBER_ID}/messages`;
+     
+@@ -1372,6 +1372,25 @@ async function legacyAgentSplitCode(agentId: string): Promise<string | undefined
+   return getOrCreateSplitCode(subaccountCode, 55, agentId);
+ }
+ 
++/** Plans that can be bought on the web, and the days each billing cycle buys. The PRICE is never taken from the request. */
++const PURCHASABLE_PLANS: Record<string, string> = { starter: 'Starter', solo: 'Solo', business: 'Business', pro: 'Professional', enterprise: 'Enterprise' };
++const DAYS_BY_CYCLE: Record<'monthly' | 'annual', number> = { monthly: 30, annual: 365 };
++
++/** The official price, in minor units, from plans/{planId}_{billingCycle} (the same documents the pricing page shows). */
++async function lookupPlanPriceMinor(planId: string, billingCycle: string): Promise<number> {
++  if (!Object.prototype.hasOwnProperty.call(PURCHASABLE_PLANS, planId) || !(billingCycle in DAYS_BY_CYCLE)) {
++    throw new HttpsError('invalid-argument', 'Unknown plan or billing cycle');
++  }
++  const snap = await db.collection('plans').doc(`${planId}_${billingCycle}`).get();
++  const price = Number(snap.data()?.price);
++  if (!snap.exists || !Number.isFinite(price) || price <= 0) {
++    throw new HttpsError('failed-precondition', 'This plan is not available right now. Please try again later.');
++  }
++  const minor = Math.round(price * 100);
++  if (!Number.isSafeInteger(minor) || minor <= 0) throw new HttpsError('failed-precondition', 'This plan is not available right now.');
++  return minor;
++}
++
+ export const processWebSubscription = onCall({
+   timeoutSeconds: 60,
+   memory: "512MiB",
+@@ -1381,15 +1400,30 @@ export const processWebSubscription = onCall({
+   secrets: [PAYSTACK_SECRET_KEY]
+ }, async (request: CallableRequest<ProcessWebSubscriptionRequest>) => {
+   try {
+-    const { userId, userName, email, phone, planId, planName, billingCycle, amount, daysToAdd } = request.data;
++    const { userId, userName, email, phone, planId, billingCycle } = request.data;
+ 
+-    if (!userId || !userName || !email || !phone || !planId || !planName || !amount) {
++    if (!userId || !userName || !email || !phone || !planId || !billingCycle) {
+       throw new HttpsError(
+         "invalid-argument",
+         "All fields are required"
+       );
+     }
+ 
++    // The caller must be signed in and must be paying for their own account.
++    if (!request.auth) throw new HttpsError("unauthenticated", "Please sign in to buy a plan");
++    const ownerSnap = await db.collection("users").doc(String(userId)).get();
++    if (request.auth.uid !== String(userId) && ownerSnap.data()?.firebaseAuthUid !== request.auth.uid) {
++      throw new HttpsError("permission-denied", "You can only buy a plan for your own account");
++    }
++
++    // The price and the length come from the server, never from the request. A client that sends a different amount is refused.
++    const expectedAmountMinor = await lookupPlanPriceMinor(String(planId), String(billingCycle));
++    const amount = expectedAmountMinor / 100;
++    const daysToAdd = DAYS_BY_CYCLE[billingCycle as 'monthly' | 'annual'];
++    if (request.data.amount !== undefined && Math.round(Number(request.data.amount) * 100) !== expectedAmountMinor) {
++      throw new HttpsError("failed-precondition", "The plan price has changed. Please reload the page and try again.");
++    }
++
+     // Who earns commission on this subscription is decided HERE, from our own records, never from the request:
+     // (a) the desk that owns this landlord, (b) the legacy agent on the landlord (users/{uid}.cyberId, unchanged 45% split),
+     // (c) nobody. A desk lookup failure never blocks the subscription.
+@@ -1403,21 +1437,14 @@ console.log(`Processing web subscription for user ${userId}, plan ${planId}, amo
+ 
+     console.log(`Processing web subscription for user ${userId}, plan ${planId}, amount ${amount}`);
+ 
+-    let formattedPhone = phone.replace(/[\s-]/g, '');
+-    
+-    if (formattedPhone.startsWith('+254')) {
+-      formattedPhone = formattedPhone;
+-    } else if (formattedPhone.startsWith('254')) {
+-      formattedPhone = '+' + formattedPhone;
+-    } else if (formattedPhone.startsWith('0')) {
+-      formattedPhone = '+254' + formattedPhone.substring(1);
+-    } else if (formattedPhone.startsWith('7') || formattedPhone.startsWith('1')) {
+-      formattedPhone = '+254' + formattedPhone;
+-    }
++    // M-Pesa = Safaricom only. Accepts 0701234567, 701234567, 254..., +254..., or a number.
++    const phoneCheck = checkSafaricomPhone(phone);
++    if (!phoneCheck.ok) throw new HttpsError("invalid-argument", phoneCheck.message);
++    const formattedPhone = phoneCheck.e164;
+     
+     console.log(`Formatted phone for M-Pesa: ${phone} -> ${formattedPhone}`);
+ 
+-    const amountInCents = Math.round(amount * 100);
++    const amountInCents = expectedAmountMinor;
+ 
+     // Build charge payload
+     const chargePayload: any = {
+@@ -1433,7 +1460,7 @@ console.log(`Processing web subscription for user ${userId}, plan ${planId}, amo
+         userId: userId,
+         userName: userName,
+         planId: planId,
+-        planName: planName,
++        planName: PURCHASABLE_PLANS[String(planId)],
+         billingCycle: billingCycle,
+         daysToAdd: daysToAdd,
+         originalAmount: amount,
+@@ -1486,9 +1513,10 @@ console.log(`Processing web subscription for user ${userId}, plan ${planId}, amo
+       email: email,
+       phone: formattedPhone,
+       planId: planId,
+-      planName: planName,
++      planName: PURCHASABLE_PLANS[String(planId)],
+       billingCycle: billingCycle,
+       amount: amount,
++      expectedAmountMinor: expectedAmountMinor,   // what the webhook must see paid before it activates anything
+       daysToAdd: daysToAdd,
+       reference: transactionData.reference,
+       status: "pending",
+@@ -1600,10 +1628,39 @@ export const paystackWebhook = onCall({
+       }
+ 
+       const subscriptionData = subscriptionDoc.data();
+-      const userId = metadata.userId || subscriptionData?.userId;
+-      const planId = metadata.planId || subscriptionData?.planId;
+-      const planName = metadata.planName || subscriptionData?.planName;
+-      const daysToAdd = metadata.daysToAdd || subscriptionData?.daysToAdd || 30;
++
++      // A repeated webhook must not grant the plan (and its days) twice.
++      if (subscriptionData?.status === "success") {
++        console.log(`Subscription ${reference} already activated — ignoring repeat webhook`);
++        return { received: true, processed: false, eventType: event.event, reason: "already_processed" };
++      }
++
++      // The amount actually paid must equal the plan's price, fixed server-side when the charge started. Legacy pending
++      // records (made before expectedAmountMinor existed) are checked against the plan document instead.
++      const storedPlanId = String(subscriptionData?.planId ?? "");
++      const storedCycle = String(subscriptionData?.billingCycle ?? "");
++      let expectedMinor = Number(subscriptionData?.expectedAmountMinor);
++      if (!Number.isSafeInteger(expectedMinor) || expectedMinor <= 0) {
++        try { expectedMinor = await lookupPlanPriceMinor(storedPlanId, storedCycle); } catch { expectedMinor = NaN; }
++      }
++      const paidMinor = Number(data.amount);
++      if (!Number.isSafeInteger(expectedMinor) || paidMinor !== expectedMinor || (data.currency && data.currency !== "KES")) {
++        console.error(`Subscription ${reference}: paid ${paidMinor} ${data.currency ?? ""}, expected ${expectedMinor} KES — NOT activating`);
++        await subscriptionRef.update({
++          status: "amount_mismatch",
++          mismatchAt: admin.firestore.FieldValue.serverTimestamp(),
++          paidAmountMinor: Number.isFinite(paidMinor) ? paidMinor : null,
++          expectedAmountMinor: Number.isFinite(expectedMinor) ? expectedMinor : null,
++          paystackResponse: data,
++        });
++        return { received: true, processed: false, eventType: event.event, reason: "amount_mismatch" };
++      }
++
++      // Everything that is granted comes from our own record, not from the webhook body.
++      const userId = subscriptionData?.userId || metadata.userId;
++      const planId = storedPlanId;
++      const planName = subscriptionData?.planName || PURCHASABLE_PLANS[storedPlanId];
++      const daysToAdd = DAYS_BY_CYCLE[storedCycle as 'monthly' | 'annual'] ?? (Number(subscriptionData?.daysToAdd) || 30);
+ 
+       const expiryDate = new Date();
+       expiryDate.setDate(expiryDate.getDate() + daysToAdd);
+diff --git a/whatsapp/src/phone/safaricom.ts b/whatsapp/src/phone/safaricom.ts
+new file mode 100644
+index 0000000..13baff6
+--- /dev/null
++++ b/whatsapp/src/phone/safaricom.ts
+@@ -0,0 +1,58 @@
++/**
++ * Kenyan phone handling — ONE place. Pure, no imports. Identical copy lives in PMS/whatsapp/src/phone/safaricom.ts.
++ *
++ * Accepts a string OR a number (an app that stores the phone as a number turns 0701234567 into 701234567, which used to
++ * fail every formatter that expected a string). Understands 0701234567, 701234567, 254701234567, +254701234567,
++ * "+254 701-234-567" and the same with a stray "(0)".
++ */
++
++/** Every current Safaricom prefix, as the 4-digit national prefix (0xxx). Inclusive ranges. */
++export const SAFARICOM_PREFIX_RANGES: ReadonlyArray<readonly [number, number]> = [
++  [700, 729], [740, 743], [745, 746], [757, 759], [768, 769], [790, 799],
++  [110, 115], [118, 119], [140, 143], [180, 182],
++];
++
++export const SAFARICOM_ONLY_MESSAGE =
++  "Only Safaricom numbers are supported (for example 0712 345 678 or 0110 123 456). Please use a Safaricom number.";
++export const INVALID_PHONE_MESSAGE = "Enter a valid Kenyan phone number, for example 0712345678.";
++
++/** The 9 national digits (7XXXXXXXX / 1XXXXXXXX), or "" when the input is not a Kenyan mobile number. */
++export function nationalDigits(raw: unknown): string {
++  if (raw === null || raw === undefined) return "";
++  let d = String(raw).replace(/\D/g, "");
++  if (d.startsWith("254")) d = d.slice(3);
++  else if (d.startsWith("0")) d = d.slice(1);
++  if (d.startsWith("0")) d = d.slice(1);           // "+254 (0)701..." style
++  return /^[17]\d{8}$/.test(d) ? d : "";
++}
++
++export function isSafaricomNational(national: string): boolean {
++  if (!/^[17]\d{8}$/.test(national)) return false;
++  const prefix = Number(national.slice(0, 3));      // 701 -> 0701, 110 -> 0110
++  return SAFARICOM_PREFIX_RANGES.some(([lo, hi]) => prefix >= lo && prefix <= hi);
++}
++
++export type PhoneCheck =
++  | { ok: true; national: string; e164: string; msisdn: string; local: string }
++  | { ok: false; reason: "invalid" | "not_safaricom"; message: string };
++
++/** Format + Safaricom check. e164 = +2547XXXXXXXX, msisdn = 2547XXXXXXXX (HostPinnacle), local = 07XXXXXXXX. */
++export function checkSafaricomPhone(raw: unknown): PhoneCheck {
++  const national = nationalDigits(raw);
++  if (!national) return { ok: false, reason: "invalid", message: INVALID_PHONE_MESSAGE };
++  if (!isSafaricomNational(national)) return { ok: false, reason: "not_safaricom", message: SAFARICOM_ONLY_MESSAGE };
++  return { ok: true, national, e164: `+254${national}`, msisdn: `254${national}`, local: `0${national}` };
++}
++
++/** Format only (no Safaricom rule) — for notifying accounts that already exist. Falls back to the digits when unrecognised. */
++export function toMsisdn(raw: unknown): string {
++  const n = nationalDigits(raw);
++  return n ? `254${n}` : String(raw ?? "").replace(/\D/g, "");
++}
++
++/** Every way an existing document might have stored this number (string and numeric), for a Firestore `in` query. */
++export function phoneStorageVariants(raw: unknown): Array<string | number> {
++  const n = nationalDigits(raw);
++  if (!n) return [];
++  return [`+254${n}`, `254${n}`, `0${n}`, n, Number(n), Number(`254${n}`)];
++}
