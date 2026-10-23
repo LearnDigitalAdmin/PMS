@@ -208,3 +208,12 @@ test('allocator collections are server-only', async () => {
   await assertFails(getDoc(doc(as('111'), 'counters/propertyOwnerId')));
   await assertFails(setDoc(doc(as('111'), 'propertyOwnerIds/PYP-0001'), { userId: '111' }));
 });
+
+// ---------------------------------------------------------------- transcripts
+test('transcripts: landlord can write and read their own transcript mirror', async () => {
+  await assertSucceeds(setDoc(doc(as('111'), 'users/111/transcripts/p1_2026-10'), { billingMonth: '2026-10', netAmountToLandlord: 1000 }));
+  await assertSucceeds(getDoc(doc(as('111'), 'users/111/transcripts/p1_2026-10')));
+});
+test('transcripts: another landlord cannot write them', async () => {
+  await assertFails(setDoc(doc(as('222'), 'users/111/transcripts/p1_2026-10'), { billingMonth: '2026-10' }));
+});

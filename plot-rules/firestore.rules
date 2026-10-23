@@ -178,6 +178,13 @@ service cloud.firestore {
         }
       }
 
+      // ---- users/{userId}/transcripts/{propertyId}_{YYYY-MM} ----------------
+      // Mirror of the agent's landlord transcript (written by PMS sync). Landlord Watch (Cloud Functions) reads it.
+      match /transcripts/{transcriptId} {
+        allow read: if isLandlord(userId) || isAgent();
+        allow create, update, delete: if isLandlord(userId) || managesAsset(userId);
+      }
+
       // ---- server-written, owner may read ----------------------------------
       match /topup-history/{ref} {
         allow read: if isLandlord(userId);

@@ -102,7 +102,8 @@ const Property: React.FC<PropertyProps> = ({
 
       const tenants = await database.getTenantsByProperty(propertyId);
       const monthlyRevenue = tenants.reduce((sum: number, tenant: { rentAmount: number }) => sum + tenant.rentAmount, 0);
-      const agentIncome = (tenants.reduce((sum: number, tenant: { rentAmount: number }) => sum + tenant.rentAmount, 0)) * ((propertyData.agentCommissionRate / 100) || 1 );
+      // Commission is a percentage of BASE RENT only. A rate of 0 means no commission (it used to fall back to 100%).
+      const agentIncome = monthlyRevenue * (propertyData.agentCommissionRate / 100);
       
       // Fix occupancy calculation: (occupied units / max units) * 100
       const occupiedUnits = tenants.filter((t: { isActive: boolean }) => t.isActive).length;
@@ -264,8 +265,9 @@ const Property: React.FC<PropertyProps> = ({
     );
   }
 
+  // Commission applies to the base rent that was collected, not to water, power or other bills on the invoice.
   const commissionAmount = dashboardData ? 
-    (dashboardData.monthlyRevenue * property.agentCommissionRate / 100) : 0;
+    (dashboardData.rentCollected * property.agentCommissionRate / 100) : 0;
   const netRevenue = dashboardData ? 
     (dashboardData.monthlyRevenue - commissionAmount) : 0;
 
@@ -519,7 +521,7 @@ return (
                       <div className="flex items-center justify-between p-3 sm:p-4 bg-orange-50 dark:bg-orange-500/10 rounded-lg sm:rounded-xl">
                         <div className="flex items-center">
                           <Percent className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600 dark:text-orange-400 mr-2 sm:mr-3" />
-                          <span className="font-medium text-ink-soft text-sm sm:text-base">Commission ({property.agentCommissionRate}%)</span>
+                          <span className="font-medium text-ink-soft text-sm sm:text-base">Commission ({property.agentCommissionRate}% of base rent)</span>
                         </div>
                         <span className="text-lg sm:text-xl font-bold text-orange-600 dark:text-orange-400">
                           -{formatKES(commissionAmount)}

@@ -1041,6 +1041,12 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
     await this.uploadProperties(userId, batchManager);
     await this.uploadTenants(userId, batchManager);
     await this.uploadInvoices(userId, batchManager);
+    try {
+      await this.uploadTranscripts(userId, batchManager);
+    } catch (error) {
+      // Transcripts are an extra copy for Landlord Watch; they must never block syncing rent data.
+      console.warn('Transcript sync skipped:', error);
+    }
 
     await batchManager.commitAll();
     console.log('✅ Upload complete');
@@ -1172,6 +1178,87 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
             lastModified: new Date().toISOString()
           }, { merge: true });
         }, `Tenant ${tenant.id}`, existing.exists() ? 'UPDATE' : 'CREATE');
+      }
+    }
+  }
+
+  /**
+   * Landlord transcripts (the agent's monthly statement to the landlord: collected rent, utilities, commission, arrears and
+   * any custom deductions) live in SQLite. Landlord Watch has to show the landlord the SAME statement, so every
+   * property-month that has transcript lines is mirrored to users/{userId}/transcripts/{propertyId}_{YYYY-MM}.
+   * Totals use the PMS rule: net = income lines - deduction lines. A doc is rewritten only when its content changed.
+   */
+  private async uploadTranscripts(userId: number, batchManager: SafeBatchManager): Promise<void> {
+    const properties = await this.getFilteredPropertiesForSync(userId);
+
+    for (const property of properties) {
+      const monthsResult = await database.db!.query(
+        `SELECT DISTINCT billing_month FROM transcript_items WHERE property_id = ? ORDER BY billing_month`,
+        [property.id]
+      );
+      for (const monthRow of monthsResult.values || []) {
+        const month = String(monthRow.billing_month);
+        if (!/^\d{4}-\d{2}$/.test(month)) continue;
+
+        const itemsResult = await database.db!.query(
+          `SELECT description, amount, type, category, is_deductible, sort_order
+             FROM transcript_items WHERE property_id = ? AND billing_month = ? ORDER BY sort_order, id`,
+          [property.id, month]
+        );
+        const items = (itemsResult.values || []).map((r: any) => ({
+          description: String(r.description ?? ''),
+          amount: Number(r.amount) || 0,
+          type: String(r.type ?? 'custom'),
+          category: String(r.category ?? ''),
+          isDeductible: Boolean(r.is_deductible),
+          sortOrder: Number(r.sort_order) || 0
+        }));
+
+        const sum = (pick: (i: (typeof items)[number]) => boolean) =>
+          Math.round(items.filter(pick).reduce((s, i) => s + i.amount, 0) * 100) / 100;
+        const totalIncome = sum(i => !i.isDeductible);
+        const totalDeductibles = sum(i => i.isDeductible);
+        const totals = {
+          grossRentCollected: sum(i => i.type === 'rent' && !i.isDeductible),
+          totalWaterCharges: sum(i => i.type === 'water'),
+          totalPowerCharges: sum(i => i.type === 'power'),
+          totalIncome,
+          totalDeductibles,
+          agentCommission: sum(i => i.isDeductible && i.description.toLowerCase().includes('commission')),
+          netAmountToLandlord: Math.round((totalIncome - totalDeductibles) * 100) / 100
+        };
+
+        const summaryResult = await database.db!.query(
+          `SELECT status, landlord_name, notes FROM monthly_transcripts WHERE property_id = ? AND billing_month = ?`,
+          [property.id, month]
+        );
+        const summary: any = summaryResult.values?.[0] || {};
+        const content = {
+          status: String(summary.status ?? 'draft'),
+          landlordName: summary.landlord_name ? String(summary.landlord_name) : null,
+          notes: summary.notes ? String(summary.notes) : null,
+          agentCommissionRate: property.agentCommissionRate,
+          items,
+          ...totals
+        };
+        const contentKey = JSON.stringify(content);
+
+        const ref = doc(db, 'users', userId.toString(), 'transcripts', `${property.id}_${month}`);
+        const existing = await getDoc(ref);
+        if (existing.exists() && existing.data()?.contentKey === contentKey) continue;
+
+        batchManager.addOperation((batch) => {
+          batch.set(ref, {
+            ...content,
+            ...(property.ownerId ? { ownerId: property.ownerId } : {}),
+            userId,
+            propertyId: property.id,
+            billingMonth: month,
+            contentKey,
+            lastSyncTime: serverTimestamp(),
+            lastModified: new Date().toISOString()
+          });
+        }, `Transcript ${property.id}/${month}`, existing.exists() ? 'UPDATE' : 'CREATE');
       }
     }
   }

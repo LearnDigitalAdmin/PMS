@@ -279,6 +279,11 @@ export interface DashboardData {
   paidInvoices: number;
   unpaidInvoices: number;
   occupancyRate: number;
+  /**
+   * Base rent of the invoices that have been paid or part-paid (the same rule the landlord transcript uses).
+   * Agent commission is charged on THIS, never on water/power/other charges.
+   */
+  rentCollected: number;
   /** Total unit capacity (sum of max_units) across the properties in scope. */
   totalUnits: number;
   /** Units currently occupied: distinct active, unrestricted tenants across the properties in scope. */
@@ -1436,6 +1441,7 @@ async getDashboardData(userId: number, propertyId?: number, month?: string): Pro
       `SELECT
          SUM(CASE WHEN i.is_paid = 1 OR i.amount_paid > 0 THEN i.total_amount ELSE 0 END) AS monthly_revenue,
          SUM(i.arrears) AS total_arrears,
+         SUM(CASE WHEN i.is_paid = 1 OR i.amount_paid > 0 THEN i.rent_amount ELSE 0 END) AS rent_collected,
          COUNT(CASE WHEN i.is_paid = 1 THEN 1 END) AS paid_invoices,
          COUNT(CASE WHEN i.is_paid = 0 THEN 1 END) AS unpaid_invoices
        FROM invoices i
@@ -1460,6 +1466,7 @@ async getDashboardData(userId: number, propertyId?: number, month?: string): Pro
       totalProperties: propRow.total_properties || 0,
       totalTenants: tenantRow.total_tenants || 0,
       monthlyRevenue: netMonthlyRevenue, // net of arrears
+      rentCollected: invRow.rent_collected || 0,
       totalArrears: totalArrears,
       paidInvoices: invRow.paid_invoices || 0,
       unpaidInvoices: invRow.unpaid_invoices || 0,
@@ -1473,6 +1480,7 @@ async getDashboardData(userId: number, propertyId?: number, month?: string): Pro
       totalProperties: 0,
       totalTenants: 0,
       monthlyRevenue: 0,
+      rentCollected: 0,
       totalArrears: 0,
       paidInvoices: 0,
       unpaidInvoices: 0,

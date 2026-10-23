@@ -209,12 +209,16 @@ export class ReportsDatabase {
 
     // Calculate totals from items
     let totalDeductibles = 0;
+    let totalIncome = 0;
     let totalWaterCharges = 0;
     let totalPowerCharges = 0;
 
     for (const item of items) {
       if (item.isDeductible) {
         totalDeductibles += item.amount;
+      } else {
+        // Every income line counts: rent, other charges, utilities remitted to the landlord, custom income.
+        totalIncome += item.amount;
       }
       if (item.type === 'water') {
         totalWaterCharges += item.amount;
@@ -223,8 +227,8 @@ export class ReportsDatabase {
       }
     }
 
-    // Calculate net amount
-    const totalIncome = grossRentCollected + totalOtherCharges;
+    // Net = income lines minus deduction lines. This is the same rule updateSummaryTranscriptTotals applies after an edit,
+    // so the number never changes just because a transcript was opened and saved again (and Landlord Watch reads the same one).
     const netAmountToLandlord = totalIncome - totalDeductibles;
 
     // Create dynamic transcript

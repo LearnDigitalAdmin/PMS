@@ -1,0 +1,246 @@
+diff --git a/plot-rules/firestore.rules b/plot-rules/firestore.rules
+index d4cb81e..574d52f 100644
+--- a/plot-rules/firestore.rules
++++ b/plot-rules/firestore.rules
+@@ -178,6 +178,13 @@ service cloud.firestore {
+         }
+       }
+ 
++      // ---- users/{userId}/transcripts/{propertyId}_{YYYY-MM} ----------------
++      // Mirror of the agent's landlord transcript (written by PMS sync). Landlord Watch (Cloud Functions) reads it.
++      match /transcripts/{transcriptId} {
++        allow read: if isLandlord(userId) || isAgent();
++        allow create, update, delete: if isLandlord(userId) || managesAsset(userId);
++      }
++
+       // ---- server-written, owner may read ----------------------------------
+       match /topup-history/{ref} {
+         allow read: if isLandlord(userId);
+diff --git a/plot-rules/rules-tests/firestore.rules.test.mjs b/plot-rules/rules-tests/firestore.rules.test.mjs
+index 6d71cf6..341da32 100644
+--- a/plot-rules/rules-tests/firestore.rules.test.mjs
++++ b/plot-rules/rules-tests/firestore.rules.test.mjs
+@@ -208,3 +208,12 @@ test('allocator collections are server-only', async () => {
+   await assertFails(getDoc(doc(as('111'), 'counters/propertyOwnerId')));
+   await assertFails(setDoc(doc(as('111'), 'propertyOwnerIds/PYP-0001'), { userId: '111' }));
+ });
++
++// ---------------------------------------------------------------- transcripts
++test('transcripts: landlord can write and read their own transcript mirror', async () => {
++  await assertSucceeds(setDoc(doc(as('111'), 'users/111/transcripts/p1_2026-10'), { billingMonth: '2026-10', netAmountToLandlord: 1000 }));
++  await assertSucceeds(getDoc(doc(as('111'), 'users/111/transcripts/p1_2026-10')));
++});
++test('transcripts: another landlord cannot write them', async () => {
++  await assertFails(setDoc(doc(as('222'), 'users/111/transcripts/p1_2026-10'), { billingMonth: '2026-10' }));
++});
+diff --git a/src/pages/properties/Properties.tsx b/src/pages/properties/Properties.tsx
+index 73df4bc..cf527b8 100644
+--- a/src/pages/properties/Properties.tsx
++++ b/src/pages/properties/Properties.tsx
+@@ -102,7 +102,8 @@ const Property: React.FC<PropertyProps> = ({
+ 
+       const tenants = await database.getTenantsByProperty(propertyId);
+       const monthlyRevenue = tenants.reduce((sum: number, tenant: { rentAmount: number }) => sum + tenant.rentAmount, 0);
+-      const agentIncome = (tenants.reduce((sum: number, tenant: { rentAmount: number }) => sum + tenant.rentAmount, 0)) * ((propertyData.agentCommissionRate / 100) || 1 );
++      // Commission is a percentage of BASE RENT only. A rate of 0 means no commission (it used to fall back to 100%).
++      const agentIncome = monthlyRevenue * (propertyData.agentCommissionRate / 100);
+       
+       // Fix occupancy calculation: (occupied units / max units) * 100
+       const occupiedUnits = tenants.filter((t: { isActive: boolean }) => t.isActive).length;
+@@ -264,8 +265,9 @@ const Property: React.FC<PropertyProps> = ({
+     );
+   }
+ 
++  // Commission applies to the base rent that was collected, not to water, power or other bills on the invoice.
+   const commissionAmount = dashboardData ? 
+-    (dashboardData.monthlyRevenue * property.agentCommissionRate / 100) : 0;
++    (dashboardData.rentCollected * property.agentCommissionRate / 100) : 0;
+   const netRevenue = dashboardData ? 
+     (dashboardData.monthlyRevenue - commissionAmount) : 0;
+ 
+@@ -519,7 +521,7 @@ return (
+                       <div className="flex items-center justify-between p-3 sm:p-4 bg-orange-50 dark:bg-orange-500/10 rounded-lg sm:rounded-xl">
+                         <div className="flex items-center">
+                           <Percent className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600 dark:text-orange-400 mr-2 sm:mr-3" />
+-                          <span className="font-medium text-ink-soft text-sm sm:text-base">Commission ({property.agentCommissionRate}%)</span>
++                          <span className="font-medium text-ink-soft text-sm sm:text-base">Commission ({property.agentCommissionRate}% of base rent)</span>
+                         </div>
+                         <span className="text-lg sm:text-xl font-bold text-orange-600 dark:text-orange-400">
+                           -{formatKES(commissionAmount)}
+diff --git a/src/services/database/Database.tsx b/src/services/database/Database.tsx
+index 2ef6d58..97546b4 100644
+--- a/src/services/database/Database.tsx
++++ b/src/services/database/Database.tsx
+@@ -279,6 +279,11 @@ export interface DashboardData {
+   paidInvoices: number;
+   unpaidInvoices: number;
+   occupancyRate: number;
++  /**
++   * Base rent of the invoices that have been paid or part-paid (the same rule the landlord transcript uses).
++   * Agent commission is charged on THIS, never on water/power/other charges.
++   */
++  rentCollected: number;
+   /** Total unit capacity (sum of max_units) across the properties in scope. */
+   totalUnits: number;
+   /** Units currently occupied: distinct active, unrestricted tenants across the properties in scope. */
+@@ -1436,6 +1441,7 @@ async getDashboardData(userId: number, propertyId?: number, month?: string): Pro
+       `SELECT
+          SUM(CASE WHEN i.is_paid = 1 OR i.amount_paid > 0 THEN i.total_amount ELSE 0 END) AS monthly_revenue,
+          SUM(i.arrears) AS total_arrears,
++         SUM(CASE WHEN i.is_paid = 1 OR i.amount_paid > 0 THEN i.rent_amount ELSE 0 END) AS rent_collected,
+          COUNT(CASE WHEN i.is_paid = 1 THEN 1 END) AS paid_invoices,
+          COUNT(CASE WHEN i.is_paid = 0 THEN 1 END) AS unpaid_invoices
+        FROM invoices i
+@@ -1460,6 +1466,7 @@ async getDashboardData(userId: number, propertyId?: number, month?: string): Pro
+       totalProperties: propRow.total_properties || 0,
+       totalTenants: tenantRow.total_tenants || 0,
+       monthlyRevenue: netMonthlyRevenue, // net of arrears
++      rentCollected: invRow.rent_collected || 0,
+       totalArrears: totalArrears,
+       paidInvoices: invRow.paid_invoices || 0,
+       unpaidInvoices: invRow.unpaid_invoices || 0,
+@@ -1473,6 +1480,7 @@ async getDashboardData(userId: number, propertyId?: number, month?: string): Pro
+       totalProperties: 0,
+       totalTenants: 0,
+       monthlyRevenue: 0,
++      rentCollected: 0,
+       totalArrears: 0,
+       paidInvoices: 0,
+       unpaidInvoices: 0,
+diff --git a/src/services/database/FirebaseSync.tsx b/src/services/database/FirebaseSync.tsx
+index 3bee385..d68b157 100644
+--- a/src/services/database/FirebaseSync.tsx
++++ b/src/services/database/FirebaseSync.tsx
+@@ -1041,6 +1041,12 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
+     await this.uploadProperties(userId, batchManager);
+     await this.uploadTenants(userId, batchManager);
+     await this.uploadInvoices(userId, batchManager);
++    try {
++      await this.uploadTranscripts(userId, batchManager);
++    } catch (error) {
++      // Transcripts are an extra copy for Landlord Watch; they must never block syncing rent data.
++      console.warn('Transcript sync skipped:', error);
++    }
+ 
+     await batchManager.commitAll();
+     console.log('✅ Upload complete');
+@@ -1176,6 +1182,87 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
+     }
+   }
+ 
++  /**
++   * Landlord transcripts (the agent's monthly statement to the landlord: collected rent, utilities, commission, arrears and
++   * any custom deductions) live in SQLite. Landlord Watch has to show the landlord the SAME statement, so every
++   * property-month that has transcript lines is mirrored to users/{userId}/transcripts/{propertyId}_{YYYY-MM}.
++   * Totals use the PMS rule: net = income lines - deduction lines. A doc is rewritten only when its content changed.
++   */
++  private async uploadTranscripts(userId: number, batchManager: SafeBatchManager): Promise<void> {
++    const properties = await this.getFilteredPropertiesForSync(userId);
++
++    for (const property of properties) {
++      const monthsResult = await database.db!.query(
++        `SELECT DISTINCT billing_month FROM transcript_items WHERE property_id = ? ORDER BY billing_month`,
++        [property.id]
++      );
++      for (const monthRow of monthsResult.values || []) {
++        const month = String(monthRow.billing_month);
++        if (!/^\d{4}-\d{2}$/.test(month)) continue;
++
++        const itemsResult = await database.db!.query(
++          `SELECT description, amount, type, category, is_deductible, sort_order
++             FROM transcript_items WHERE property_id = ? AND billing_month = ? ORDER BY sort_order, id`,
++          [property.id, month]
++        );
++        const items = (itemsResult.values || []).map((r: any) => ({
++          description: String(r.description ?? ''),
++          amount: Number(r.amount) || 0,
++          type: String(r.type ?? 'custom'),
++          category: String(r.category ?? ''),
++          isDeductible: Boolean(r.is_deductible),
++          sortOrder: Number(r.sort_order) || 0
++        }));
++
++        const sum = (pick: (i: (typeof items)[number]) => boolean) =>
++          Math.round(items.filter(pick).reduce((s, i) => s + i.amount, 0) * 100) / 100;
++        const totalIncome = sum(i => !i.isDeductible);
++        const totalDeductibles = sum(i => i.isDeductible);
++        const totals = {
++          grossRentCollected: sum(i => i.type === 'rent' && !i.isDeductible),
++          totalWaterCharges: sum(i => i.type === 'water'),
++          totalPowerCharges: sum(i => i.type === 'power'),
++          totalIncome,
++          totalDeductibles,
++          agentCommission: sum(i => i.isDeductible && i.description.toLowerCase().includes('commission')),
++          netAmountToLandlord: Math.round((totalIncome - totalDeductibles) * 100) / 100
++        };
++
++        const summaryResult = await database.db!.query(
++          `SELECT status, landlord_name, notes FROM monthly_transcripts WHERE property_id = ? AND billing_month = ?`,
++          [property.id, month]
++        );
++        const summary: any = summaryResult.values?.[0] || {};
++        const content = {
++          status: String(summary.status ?? 'draft'),
++          landlordName: summary.landlord_name ? String(summary.landlord_name) : null,
++          notes: summary.notes ? String(summary.notes) : null,
++          agentCommissionRate: property.agentCommissionRate,
++          items,
++          ...totals
++        };
++        const contentKey = JSON.stringify(content);
++
++        const ref = doc(db, 'users', userId.toString(), 'transcripts', `${property.id}_${month}`);
++        const existing = await getDoc(ref);
++        if (existing.exists() && existing.data()?.contentKey === contentKey) continue;
++
++        batchManager.addOperation((batch) => {
++          batch.set(ref, {
++            ...content,
++            ...(property.ownerId ? { ownerId: property.ownerId } : {}),
++            userId,
++            propertyId: property.id,
++            billingMonth: month,
++            contentKey,
++            lastSyncTime: serverTimestamp(),
++            lastModified: new Date().toISOString()
++          });
++        }, `Transcript ${property.id}/${month}`, existing.exists() ? 'UPDATE' : 'CREATE');
++      }
++    }
++  }
++
+   private async uploadInvoices(userId: number, batchManager: SafeBatchManager): Promise<void> {
+     const properties = await this.getFilteredPropertiesForSync(userId);
+     const user = await database.getUserById(userId);
+diff --git a/src/services/database/ReportsDatabase.tsx b/src/services/database/ReportsDatabase.tsx
+index d776291..2cda31f 100644
+--- a/src/services/database/ReportsDatabase.tsx
++++ b/src/services/database/ReportsDatabase.tsx
+@@ -209,12 +209,16 @@ export class ReportsDatabase {
+ 
+     // Calculate totals from items
+     let totalDeductibles = 0;
++    let totalIncome = 0;
+     let totalWaterCharges = 0;
+     let totalPowerCharges = 0;
+ 
+     for (const item of items) {
+       if (item.isDeductible) {
+         totalDeductibles += item.amount;
++      } else {
++        // Every income line counts: rent, other charges, utilities remitted to the landlord, custom income.
++        totalIncome += item.amount;
+       }
+       if (item.type === 'water') {
+         totalWaterCharges += item.amount;
+@@ -223,8 +227,8 @@ export class ReportsDatabase {
+       }
+     }
+ 
+-    // Calculate net amount
+-    const totalIncome = grossRentCollected + totalOtherCharges;
++    // Net = income lines minus deduction lines. This is the same rule updateSummaryTranscriptTotals applies after an edit,
++    // so the number never changes just because a transcript was opened and saved again (and Landlord Watch reads the same one).
+     const netAmountToLandlord = totalIncome - totalDeductibles;
+ 
+     // Create dynamic transcript
