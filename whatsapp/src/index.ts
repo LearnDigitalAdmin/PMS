@@ -8,6 +8,8 @@ import * as admin from 'firebase-admin';
 import axios from 'axios';
 import crypto from 'crypto';
 import { checkSafaricomPhone, toMsisdn } from './phone/safaricom';
+import { renewedExpiry } from './subscriptionExpiry';
+import { formatOwnerId, OWNER_ID_PATTERN } from './ownerId';
 import { defineSecret } from 'firebase-functions/params';
 import {
   attachShortLink, buildShortUrl, isAllowedRedirectTarget, newShortCode, parseShortCode,
@@ -1391,6 +1393,58 @@ async function lookupPlanPriceMinor(planId: string, billingCycle: string): Promi
   return minor;
 }
 
+/**
+ * Allocates the PYP-NNNN owner id for a property. Called by PMS (landlord) and CYBER (operator) when a property first
+ * reaches Firestore. A single transactional counter makes every id unique; the per-property index document makes the call
+ * idempotent, so a retry or a second device gets the same id back instead of burning a new number.
+ */
+export const allocatePropertyOwnerId = onCall({
+  timeoutSeconds: 30,
+  memory: "256MiB",
+  maxInstances: 10,
+  region: "africa-south1",
+  cors: true,
+}, async (request: CallableRequest<{ userId?: string | number; propertyId?: string | number }>) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Please sign in");
+  const userId = String(request.data?.userId ?? "").trim();
+  const propertyId = String(request.data?.propertyId ?? "").trim();
+  if (!/^\d+$/.test(userId) || !/^[\w-]+$/.test(propertyId)) {
+    throw new HttpsError("invalid-argument", "userId and propertyId are required");
+  }
+
+  // The caller must be the landlord, or the CYBER operator who manages this landlord (same rule as firestore.rules).
+  const uid = request.auth.uid;
+  const ownerSnap = await db.collection("users").doc(userId).get();
+  const owner = ownerSnap.data();
+  let allowed = uid === userId
+    || (!!owner && owner.firebaseAuthUid === uid)
+    || (request.auth.token.role === "landlord" && request.auth.token.agentId === userId);
+  if (!allowed && owner?.cyberId) {
+    const agentSnap = await db.collection("agents").doc(uid).get();
+    allowed = agentSnap.exists && agentSnap.data()?.pId === owner.cyberId;
+  }
+  if (!allowed) throw new HttpsError("permission-denied", "You cannot manage this account");
+
+  const counterRef = db.collection("counters").doc("propertyOwnerId");
+  const indexRef = db.collection("propertyOwnerIds").doc(`${userId}_${propertyId}`);
+
+  const ownerId = await db.runTransaction(async (tx) => {
+    const existing = await tx.get(indexRef);
+    const known = existing.data()?.ownerId;
+    if (typeof known === "string" && OWNER_ID_PATTERN.test(known)) return known;
+
+    const counter = await tx.get(counterRef);
+    const next = Number(counter.data()?.last ?? 0) + 1;
+    const id = formatOwnerId(next);
+    tx.set(counterRef, { last: next }, { merge: true });
+    tx.set(indexRef, { ownerId: id, userId, propertyId, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+    tx.set(db.collection("propertyOwnerIds").doc(id), { ownerId: id, userId, propertyId, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+    return id;
+  });
+
+  return { ownerId };
+});
+
 export const processWebSubscription = onCall({
   timeoutSeconds: 60,
   memory: "512MiB",
@@ -1662,27 +1716,37 @@ export const paystackWebhook = onCall({
       const planName = subscriptionData?.planName || PURCHASABLE_PLANS[storedPlanId];
       const daysToAdd = DAYS_BY_CYCLE[storedCycle as 'monthly' | 'annual'] ?? (Number(subscriptionData?.daysToAdd) || 30);
 
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + daysToAdd);
-
-      await subscriptionRef.update({
-        status: "success",
-        completedAt: admin.firestore.FieldValue.serverTimestamp(),
-        expiryDate: admin.firestore.Timestamp.fromDate(expiryDate),
-        paystackResponse: data,
-      });
-
+      // Activate in one transaction so a retried webhook can never grant the days twice, and so the new expiry is
+      // computed from the user's CURRENT expiry: paying before the plan ends adds to the days left instead of resetting them.
       const userRef = db.collection("users").doc(userId);
-      await userRef.set({
-        type: "paid",
-        tier: planId,
-        storage: true,
-        subscriptionExpiry: admin.firestore.Timestamp.fromDate(expiryDate),
-        lastPaymentDate: admin.firestore.FieldValue.serverTimestamp(),
-        lastPaymentReference: reference,
-        lastPaymentAmount: data.amount / 100,
-        planName: planName
-      }, { merge: true });
+      const expiryDate = await db.runTransaction(async (tx) => {
+        const [subSnap, userSnap] = await Promise.all([tx.get(subscriptionRef), tx.get(userRef)]);
+        if (subSnap.data()?.status === "success") return null; // already activated by a concurrent delivery
+        const newExpiry = renewedExpiry(userSnap.data(), daysToAdd);
+
+        tx.update(subscriptionRef, {
+          status: "success",
+          completedAt: admin.firestore.FieldValue.serverTimestamp(),
+          expiryDate: admin.firestore.Timestamp.fromDate(newExpiry),
+          paystackResponse: data,
+        });
+        tx.set(userRef, {
+          type: "paid",
+          tier: planId,
+          storage: true,
+          isTrial: false, // paying ends any trial
+          subscriptionExpiry: admin.firestore.Timestamp.fromDate(newExpiry),
+          lastPaymentDate: admin.firestore.FieldValue.serverTimestamp(),
+          lastPaymentReference: reference,
+          lastPaymentAmount: data.amount / 100,
+          planName: planName
+        }, { merge: true });
+        return newExpiry;
+      });
+      if (!expiryDate) {
+        console.log(`Subscription ${reference} already activated — ignoring repeat webhook`);
+        return { received: true, processed: false, eventType: event.event, reason: "already_processed" };
+      }
 
       console.log(`Successfully activated subscription for user ${userId}, expires: ${expiryDate.toISOString()}`);
     }

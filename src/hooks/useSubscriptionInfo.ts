@@ -5,10 +5,13 @@ import { db } from '../services/database/FirebaseSync';
 
 export interface SubscriptionInfo {
   tier: string;
+  type?: string; // 'paid' once a plan has been bought
   isTrial: boolean;
   subscriptionExpiry: string | null; // ISO string
   tokens: number;
   smsSentTotal: number; // lifetime count of successfully-sent SMS, incremented server-side
+  planName?: string | null; // display name of the last purchased plan
+  subscriptionExpiredAt?: string | null; // ISO string, set server-side when a paid plan lapses and the account drops to free
 }
 
 const CACHE_KEY = 'subscriptionInfo';
@@ -54,10 +57,13 @@ export function useSubscriptionInfo(userId: number | string | undefined) {
         const data = snap.data();
         const parsed: SubscriptionInfo = {
           tier: data.tier ?? 'free',
+          type: data.type ?? undefined,
           isTrial: data.isTrial ?? false,
           subscriptionExpiry: data.subscriptionExpiry?.toDate?.().toISOString() ?? null,
           tokens: data.tokens ?? 0,
           smsSentTotal: data.smsSentTotal ?? 0,
+          planName: data.planName ?? null,
+          subscriptionExpiredAt: data.subscriptionExpiredAt?.toDate?.().toISOString() ?? null,
         };
         setInfo(parsed);
         writeCache(parsed);

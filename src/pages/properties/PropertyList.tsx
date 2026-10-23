@@ -1,4 +1,6 @@
 import PageHeader, { HeaderAction } from '../../components/ui/PageHeader';
+import { formatKES } from '../../utils/FormatUtils';
+import Money from '../../components/ui/Money';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Plus, 
@@ -7,7 +9,7 @@ import {
   List, 
   Building2, 
   Users, 
-  DollarSign, 
+  Banknote, 
   TrendingUp,
   Edit3,
   Trash2,
@@ -17,6 +19,7 @@ import {
 import { database, type PropertyWithUnits, type PropertyInput, type User } from '../../services/database/Database';
 import Property from './Properties';
 import PropertyModal from './PropertyModal';
+import { checkSafaricomPhone } from '../../utils/safaricom';
 import { USER_LIMITS, firebaseSyncService } from '../../services/database/FirebaseSync';
 import PricingModal from '../../components/ui/PricingPage';
 import SummariesModal from './Summaries';
@@ -37,6 +40,7 @@ interface PropertyFormData {
   image: string;
   companyId?: number;
   billingMode: 'rent_only' | 'full';
+  ownerPhone: string;
 }
 
 interface EnhancedProperty extends PropertyWithUnits {
@@ -73,7 +77,8 @@ const Properties: React.FC<PropertyListProps> = ({
     maxUnits: 12,
     image: '',
     companyId: undefined,
-    billingMode: 'full'
+    billingMode: 'full',
+    ownerPhone: ''
   });
   const [formErrors, setFormErrors] = useState<Partial<PropertyFormData>>({});
   
@@ -187,7 +192,8 @@ const Properties: React.FC<PropertyListProps> = ({
       maxUnits: 12,
       image: '',
       companyId: undefined,
-      billingMode: 'full'
+      billingMode: 'full',
+      ownerPhone: ''
     });
     setFormErrors({});
     setImagePreview('');
@@ -201,6 +207,11 @@ const Properties: React.FC<PropertyListProps> = ({
     
     if (!formData.name.trim()) {
       errors.name = 'Property name is required';
+    }
+
+    const ownerCheck = checkSafaricomPhone(formData.ownerPhone);
+    if (!ownerCheck.ok) {
+      errors.ownerPhone = ownerCheck.message;
     }
     
     if (formData.agentCommissionRate < 0 || formData.agentCommissionRate > 50) {
@@ -261,7 +272,8 @@ const Properties: React.FC<PropertyListProps> = ({
         image: formData.image || undefined,
         agentCommissionRate: formData.agentCommissionRate,
         maxUnits: formData.maxUnits,
-        billingMode: formData.billingMode
+        billingMode: formData.billingMode,
+        ownerPhone: formData.ownerPhone
       };
 
       // Pull any properties created elsewhere (e.g. Samuhia Desk) first, so the next local ID can't collide with one
@@ -288,7 +300,8 @@ const Properties: React.FC<PropertyListProps> = ({
         image: formData.image || undefined,
         agentCommissionRate: formData.agentCommissionRate,
         maxUnits: formData.maxUnits,
-        billingMode: formData.billingMode
+        billingMode: formData.billingMode,
+        ownerPhone: formData.ownerPhone
       });
 
       await loadProperties();
@@ -323,7 +336,8 @@ const Properties: React.FC<PropertyListProps> = ({
       maxUnits: property.maxUnits,
       image: property.image || '',
       companyId: property.companyId,
-      billingMode: property.billingMode || 'full'
+      billingMode: property.billingMode || 'full',
+      ownerPhone: property.ownerPhone || ''
     });
     setImagePreview(property.image || '');
     setShowEditModal(true);
@@ -422,13 +436,13 @@ const Properties: React.FC<PropertyListProps> = ({
         </div>
 
         {/* Property Details */}
-        <div className="p-6" onClick={() => handleProperty(property.id)}>
+        <div className="p-4 sm:p-6" onClick={() => handleProperty(property.id)}>
           {/* Stats Row */}
-          <div className="grid grid-cols-3 gap-4 mb-4">
+          <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
             <div className="text-center">
-              <div className="flex items-center justify-center mb-1">
+              <div className="flex flex-wrap items-center justify-center mb-1">
                 <Users className="w-4 h-4 text-blue-600 dark:text-blue-400 mr-1" />
-                <span className="text-2xl font-bold text-ink">
+                <span className="text-lg sm:text-2xl font-bold text-ink">
                   {property.activeTenants}
                 </span>
               </div>
@@ -436,17 +450,17 @@ const Properties: React.FC<PropertyListProps> = ({
             </div>
             
             <div className="text-center border-x border-line-soft">
-              <div className="flex items-center justify-center mb-1">
-                <DollarSign className="w-4 h-4 text-green-600 dark:text-green-400 mr-1" />
-                <span className="text-2xl font-bold text-ink">
-                  ${property.monthlyRevenue.toLocaleString()}
+              <div className="flex flex-wrap items-center justify-center mb-1">
+                <Banknote className="w-4 h-4 text-green-600 dark:text-green-400 mr-1" />
+                <span className="text-lg sm:text-2xl font-bold text-ink">
+                  <Money value={property.monthlyRevenue} />
                 </span>
               </div>
               <p className="text-xs text-ink-subtle font-medium">Monthly</p>
             </div>
             
             <div className="text-center">
-              <div className="flex items-center justify-center mb-1">
+              <div className="flex flex-wrap items-center justify-center mb-1">
                 <TrendingUp className={`w-4 h-4 mr-1 ${occupancyPercentage >= 80 ? 'text-green-600 dark:text-green-400' : occupancyPercentage >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`} />
                 <span className={`text-2xl font-bold ${occupancyPercentage >= 80 ? 'text-green-600 dark:text-green-400' : occupancyPercentage >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
                   {occupancyPercentage.toFixed(0)}%
@@ -479,7 +493,7 @@ const Properties: React.FC<PropertyListProps> = ({
           {property.agentCommissionRate > 0 && (
             <div className="inline-flex items-center px-3 py-1 bg-orange-100 dark:bg-orange-500/15 text-orange-800 dark:text-orange-300 text-xs font-medium rounded-full">
               <TrendingUp className="w-3 h-3 mr-1" />
-              {property.agentCommissionRate}% Commission (${property.agentIncome.toLocaleString()}/month)
+              {property.agentCommissionRate}% Commission ({formatKES(property.agentIncome)}/month)
             </div>
           )}
         </div>
@@ -559,8 +573,8 @@ const Properties: React.FC<PropertyListProps> = ({
               </div>
               
               <div className="flex items-center text-ink-muted">
-                <DollarSign className="w-4 h-4 mr-1 flex-shrink-0" />
-                <span className="font-medium">${property.monthlyRevenue.toLocaleString()}</span>
+                <Banknote className="w-4 h-4 mr-1 flex-shrink-0" />
+                <span className="font-medium">{formatKES(property.monthlyRevenue)}</span>
                 <span className="ml-1">monthly</span>
               </div>
               
@@ -812,6 +826,7 @@ const Properties: React.FC<PropertyListProps> = ({
         handleImageUpload={handleImageUpload}
         removeImage={removeImage}
         MAX_FREE_UNITS={MAX_FREE_UNITS}
+        ownerId={selectedProperty?.ownerId}
       />
 
       {/* Pricing Modal */}

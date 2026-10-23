@@ -48,6 +48,17 @@ export function formatCurrency(
 }
 
 /**
+ * Kenyan Shillings for dashboards and tables: "KES 12,500" (cents only when present).
+ * Locale-independent on purpose — some ICU builds render the en-KE currency symbol as "Ksh".
+ */
+export function formatKES(amount: number | null | undefined): string {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return 'KES 0';
+  const sign = n < 0 ? '-' : '';
+  return `${sign}KES ${Math.abs(n).toLocaleString('en-KE', { maximumFractionDigits: 2 })}`;
+}
+
+/**
  * Formats currency for input fields (no symbol)
  */
 export function formatCurrencyInput(amount: number): string {

@@ -12,7 +12,7 @@ import {
   User, 
   AlertCircle,
   Calendar,
-  DollarSign,
+  Banknote,
   TrendingUp,
   TrendingDown,
   Shield,
@@ -608,7 +608,7 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
                         
                         <div className="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm text-ink-muted flex-wrap">
                           <span className="flex items-center gap-1 whitespace-nowrap">
-                            <DollarSign className="h-3 w-3" />
+                            <Banknote className="h-3 w-3" />
                             {formatCurrency(tenant.rentAmount)}/month
                           </span>
                           {tenant.totalArrears > 0 && (

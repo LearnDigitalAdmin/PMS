@@ -10,7 +10,7 @@ import {
   Phone,
   Building2,
   Calendar,
-  DollarSign,
+  Banknote,
   AlertCircle,
   CheckCircle,
   Edit3,
@@ -679,7 +679,7 @@ const handleSave = async () => {
           <div className="bg-surface border border-line rounded-xl p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-bold text-ink flex items-center gap-2">
-                <DollarSign className="w-5 h-5" />
+                <Banknote className="w-5 h-5" />
                 Custom Items & Deductions
               </h3>
               <button
@@ -693,7 +693,7 @@ const handleSave = async () => {
 
             {customItems.length === 0 ? (
               <div className="text-center py-12 text-ink-subtle">
-                <DollarSign className="w-16 h-16 text-ink-faint mx-auto mb-4" />
+                <Banknote className="w-16 h-16 text-ink-faint mx-auto mb-4" />
                 <p className="text-lg font-medium mb-2">No Custom Items</p>
                 <p className="text-sm">Add deductions, expenses, or other custom items to the transcript.</p>
               </div>

@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { formatKES } from '../utils/FormatUtils';
+import Money from '../components/ui/Money';
 import { 
   ChevronDown, 
   Search, 
   TrendingUp, 
   Users, 
   Building, 
-  DollarSign, 
+  Banknote, 
   AlertTriangle,
   Calendar,
   Download,
@@ -72,7 +74,9 @@ const StatsCard: React.FC<{
   loading?: boolean;
   subtitle?: string;
   percentage?: number;
-}> = ({ title, value, icon: Icon, trend, color, loading, subtitle, percentage }) => {
+  /** Render the value as Kenyan shillings. */
+  currency?: boolean;
+}> = ({ title, value, icon: Icon, trend, color, loading, subtitle, percentage, currency }) => {
   if (loading) {
     return (
       <div className="ui-card p-4">
@@ -87,10 +91,10 @@ const StatsCard: React.FC<{
   }
 
   return (
-    <div className="ui-card ui-card-hover p-4">
-      <div className="flex items-start justify-between mb-3">
-        <div className={`p-2.5 rounded-xl ${color} shadow-lg`}>
-          <Icon className="w-6 h-6 text-white" />
+    <div className="ui-card ui-card-hover p-3 sm:p-4">
+      <div className="flex items-start justify-between mb-2 sm:mb-3">
+        <div className={`p-2 sm:p-2.5 rounded-xl ${color} shadow-lg`}>
+          <Icon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
         </div>
         {trend !== undefined && (
           <div className={`flex items-center text-sm font-medium px-2 py-1 rounded-full ${
@@ -104,11 +108,11 @@ const StatsCard: React.FC<{
         )}
       </div>
       <div>
-        <p className="text-sm font-medium text-ink-muted mb-1">{title}</p>
-        <div className="flex items-baseline space-x-2">
-          <p className="text-2xl font-bold text-ink">{value}</p>
+        <p className="text-xs sm:text-sm font-medium text-ink-muted mb-1 truncate">{title}</p>
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <p className="text-xl sm:text-2xl font-bold text-ink">{currency ? <Money value={Number(value)} /> : value}</p>
           {percentage !== undefined && (
-            <span className="text-lg font-semibold text-ink-subtle">
+            <span className="text-sm sm:text-lg font-semibold text-ink-subtle">
               ({percentage.toFixed(1)}%)
             </span>
           )}
@@ -433,7 +437,7 @@ const PaymentStatusChart: React.FC<{
     );
   }
 
-  const total = unpaidCount;
+  const total = paidCount + unpaidCount;
   const paidPercentage = total > 0 ? (paidCount / total) * 100 : 0;
   
   const pieData = [
@@ -583,11 +587,11 @@ const RecentActivity: React.FC<{
               </div>
               <div className="text-right ml-3">
                 <p className="font-bold text-ink text-sm">
-                  ${invoice.totalAmount.toLocaleString()}
+                  {formatKES(invoice.totalAmount)}
                 </p>
                 {invoice.arrears > 0 && (
                   <p className="text-xs text-orange-600 dark:text-orange-400 font-medium">
-                    Arrears: ${invoice.arrears.toLocaleString()}
+                    Arrears: {formatKES(invoice.arrears)}
                   </p>
                 )}
               </div>
@@ -792,7 +796,7 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
         />
         <StatsCard
           title="Active Tenants"
-          value={dashboardData?.totalTenants || 0}
+          value={dashboardData?.occupiedUnits || 0}
           icon={Users}
           color="bg-gradient-to-r from-brand-500 to-indigo-600"
           loading={loading}
@@ -801,16 +805,18 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
         />
         <StatsCard
           title="Monthly Revenue"
-          value={`${(dashboardData?.monthlyRevenue || 0).toLocaleString()}`}
-          icon={DollarSign}
+          value={dashboardData?.monthlyRevenue || 0}
+          currency
+          icon={Banknote}
           trend={revenueTrend}
           color="bg-gradient-to-r from-emerald-500 to-teal-600"
           loading={loading}
-          subtitle={`Avg: ${averageRent.toLocaleString()}/tenant`}
+          subtitle={`Avg: ${formatKES(averageRent)}/tenant`}
         />
         <StatsCard
           title="Outstanding"
-          value={`${(dashboardData?.totalArrears || 0).toLocaleString()}`}
+          value={dashboardData?.totalArrears || 0}
+          currency
           icon={AlertTriangle}
           color="bg-gradient-to-r from-red-500 to-rose-600"
           loading={loading}
@@ -897,10 +903,10 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
           </div>
           <div className="flex justify-between items-center mt-4">
             <div className="text-sm text-ink-muted">
-              {loading ? 'Loading...' : `${dashboardData?.totalTenants || 0} of ${dashboardData?.totalProperties || 0} units occupied`}
+              {loading ? 'Loading...' : `${dashboardData?.occupiedUnits || 0} of ${dashboardData?.totalUnits || 0} units occupied`}
             </div>
             <div className="text-sm font-medium text-purple-600 dark:text-purple-400">
-              {loading ? '' : `${(dashboardData?.totalProperties || 0) - (dashboardData?.totalTenants || 0)} vacant`}
+              {loading ? '' : `${Math.max(0, (dashboardData?.totalUnits || 0) - (dashboardData?.occupiedUnits || 0))} vacant`}
             </div>
           </div>
         </div>
@@ -923,7 +929,7 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
                 <span className="text-sm font-medium text-ink-soft">Average Rent</span>
               </div>
               <span className="font-bold text-ink">
-                ${loading ? '...' : averageRent.toLocaleString()}
+                {loading ? '...' : formatKES(averageRent)}
               </span>
             </div>
             <div className="flex items-center justify-between p-3 bg-surface-muted/80 rounded-xl">

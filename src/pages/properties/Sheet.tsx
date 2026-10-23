@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatKES } from '../../utils/FormatUtils';
 import {
   X,
   ChevronLeft,
@@ -7,7 +8,7 @@ import {
   Save,
   Send,
   Building2,
-  DollarSign,
+  Banknote,
   TrendingUp,
   ClipboardList,
   AlertCircle,
@@ -451,10 +452,10 @@ const Sheet: React.FC<SheetProps> = ({
                 <div className="lg:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="bg-blue-50 dark:bg-blue-500/10 rounded-xl p-4 text-center">
                     <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center mx-auto mb-2">
-                      <DollarSign className="w-5 h-5 text-white" />
+                      <Banknote className="w-5 h-5 text-white" />
                     </div>
                     <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                      ${rentRecord.totalRentExpected.toLocaleString()}
+                      {formatKES(rentRecord.totalRentExpected)}
                     </div>
                     <div className="text-sm text-ink-muted">Expected</div>
                   </div>
@@ -464,7 +465,7 @@ const Sheet: React.FC<SheetProps> = ({
                       <CheckCircle className="w-5 h-5 text-white" />
                     </div>
                     <div className="text-lg font-bold text-green-600 dark:text-green-400">
-                      ${rentRecord.totalRentCollected.toLocaleString()}
+                      {formatKES(rentRecord.totalRentCollected)}
                     </div>
                     <div className="text-sm text-ink-muted">Collected</div>
                   </div>
@@ -474,7 +475,7 @@ const Sheet: React.FC<SheetProps> = ({
                       <AlertCircle className="w-5 h-5 text-white" />
                     </div>
                     <div className="text-lg font-bold text-red-600 dark:text-red-400">
-                      ${rentRecord.totalArrears.toLocaleString()}
+                      {formatKES(rentRecord.totalArrears)}
                     </div>
                     <div className="text-sm text-ink-muted">Arrears</div>
                   </div>
@@ -524,7 +525,7 @@ const Sheet: React.FC<SheetProps> = ({
                   <table className="w-full">
                     <thead className="bg-surface-muted border-b border-line">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-ink-soft">Tenant</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-ink-soft max-md:sticky max-md:left-0 max-md:z-[1] max-md:bg-surface-muted">Tenant</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-ink-soft">Unit</th>
                         <th className="px-4 py-3 text-right text-sm font-medium text-ink-soft">Rent</th>
                         <th className="px-4 py-3 text-right text-sm font-medium text-ink-soft">Water</th>
@@ -540,41 +541,41 @@ const Sheet: React.FC<SheetProps> = ({
                     <tbody className="divide-y divide-line-soft">
                       {rentRecord.entries.map((entry) => (
                         <tr key={entry.id} className="hover:bg-surface-muted">
-                          <td className="px-4 py-4">
+                          <td className="px-4 py-4 max-md:px-3 max-md:py-3 max-md:sticky max-md:left-0 max-md:z-[1] max-md:bg-surface max-md:shadow-[2px_0_4px_-2px_rgba(0,0,0,0.18)]">
                             <div className="flex items-center gap-2">
                               <User className="w-4 h-4 text-ink-faint" />
                               <span className="font-medium text-ink">{entry.tenantName}</span>
                             </div>
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-4 py-4 max-md:px-3 max-md:py-3">
                             <div className="flex items-center gap-2">
                               <Home className="w-4 h-4 text-ink-faint" />
                               <span className="text-ink">{entry.unitNumber || 'N/A'}</span>
                             </div>
                           </td>
-                          <td className="px-4 py-4 text-right font-mono text-sm">
-                            ${entry.rentAmount.toLocaleString()}
+                          <td className="px-4 py-4 max-md:px-3 max-md:py-3 whitespace-nowrap text-right font-mono text-sm">
+                            {formatKES(entry.rentAmount)}
                           </td>
-                          <td className="px-4 py-4 text-right font-mono text-sm">
-                            ${entry.waterCharges.toLocaleString()}
+                          <td className="px-4 py-4 max-md:px-3 max-md:py-3 whitespace-nowrap text-right font-mono text-sm">
+                            {formatKES(entry.waterCharges)}
                           </td>
-                          <td className="px-4 py-4 text-right font-mono text-sm">
-                            ${entry.powerCharges.toLocaleString()}
+                          <td className="px-4 py-4 max-md:px-3 max-md:py-3 whitespace-nowrap text-right font-mono text-sm">
+                            {formatKES(entry.powerCharges)}
                           </td>
-                          <td className="px-4 py-4 text-right font-mono text-sm">
-                            ${entry.otherCharges.toLocaleString()}
+                          <td className="px-4 py-4 max-md:px-3 max-md:py-3 whitespace-nowrap text-right font-mono text-sm">
+                            {formatKES(entry.otherCharges)}
                           </td>
-                          <td className="px-4 py-4 text-right font-mono text-sm font-semibold">
-                            ${entry.totalDue.toLocaleString()}
+                          <td className="px-4 py-4 max-md:px-3 max-md:py-3 whitespace-nowrap text-right font-mono text-sm font-semibold">
+                            {formatKES(entry.totalDue)}
                           </td>
-                          <td className="px-4 py-4 text-right font-mono text-sm">
-                            ${entry.amountPaid.toLocaleString()}
+                          <td className="px-4 py-4 max-md:px-3 max-md:py-3 whitespace-nowrap text-right font-mono text-sm">
+                            {formatKES(entry.amountPaid)}
                           </td>
-                          <td className={`px-4 py-4 text-right font-mono text-sm font-semibold ${
+                          <td className={`px-4 py-4 max-md:px-3 max-md:py-3 whitespace-nowrap text-right font-mono text-sm font-semibold ${
                             entry.balance > 0 ? 'text-red-600 dark:text-red-400' : 
                             entry.balance < 0 ? 'text-purple-600 dark:text-purple-400' : 'text-green-600 dark:text-green-400'
                           }`}>
-                            ${Math.abs(entry.balance).toLocaleString()}
+                            {formatKES(Math.abs(entry.balance))}
                           </td>
                           <td className="px-4 py-4 text-center">
                             <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
@@ -602,15 +603,15 @@ const Sheet: React.FC<SheetProps> = ({
                   <div className="grid grid-cols-3 md:grid-cols-6 gap-4 text-sm">
                     <div>
                       <span className="text-ink-faint">Total Expected:</span>
-                      <div className="font-bold">${rentRecord.totalRentExpected.toLocaleString()}</div>
+                      <div className="font-bold">{formatKES(rentRecord.totalRentExpected)}</div>
                     </div>
                     <div>
                       <span className="text-ink-faint">Total Collected:</span>
-                      <div className="font-bold text-green-400">${rentRecord.totalRentCollected.toLocaleString()}</div>
+                      <div className="font-bold text-green-400">{formatKES(rentRecord.totalRentCollected)}</div>
                     </div>
                     <div>
                       <span className="text-ink-faint">Total Arrears:</span>
-                      <div className="font-bold text-red-400">${rentRecord.totalArrears.toLocaleString()}</div>
+                      <div className="font-bold text-red-400">{formatKES(rentRecord.totalArrears)}</div>
                     </div>
                     <div>
                       <span className="text-ink-faint">Collection Rate:</span>

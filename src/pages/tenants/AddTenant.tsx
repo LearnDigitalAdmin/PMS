@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Phone, Mail, MapPin, DollarSign, Calendar, Save, AlertCircle } from 'lucide-react';
+import { X, User, Phone, Mail, MapPin, Banknote, Calendar, Save, AlertCircle } from 'lucide-react';
 import { database } from '../../services/database/Database';
 import type { TenantInput, TenantWithInvoices } from '../../services/database/Database';
 import { checkSafaricomPhone } from '../../utils/safaricom';
@@ -349,7 +349,7 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
                     Monthly Rent <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
+                    <Banknote className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
                     <input
                       type="number"
                       step="0.01"
@@ -379,7 +379,7 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
                 <div>
                   <label className="block text-sm font-medium text-ink-soft mb-2">Standing Fees</label>
                   <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
+                    <Banknote className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
                     <input
                       type="number"
                       step="0.01"
@@ -401,7 +401,7 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
                 <div>
                   <label className="block text-sm font-medium text-ink-soft mb-2">Security Deposit</label>
                   <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
+                    <Banknote className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
                     <input
                       type="number"
                       step="0.01"

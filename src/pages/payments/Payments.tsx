@@ -7,7 +7,6 @@ import {
   PieChart, Pie, Cell, Legend
 } from 'recharts';
 import {
-  DollarSign,
   Receipt,
   TrendingUp,
   Search,
@@ -912,7 +911,7 @@ const AgentView: React.FC = () => {
           <div className="bg-surface rounded-xl shadow-lg p-4 sm:p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xs sm:text-sm font-medium text-ink-muted">Total Revenue</h3>
-              <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 text-green-600 dark:text-green-400" />
+              <Banknote className="w-6 h-6 sm:w-8 sm:h-8 text-green-600 dark:text-green-400" />
             </div>
             <p className="text-xl sm:text-2xl font-bold text-ink">{formatCurrency(totalRevenue)}</p>
             <p className="text-xs text-ink-subtle mt-2">From successful payments</p>

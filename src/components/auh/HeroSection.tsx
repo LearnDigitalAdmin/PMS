@@ -1,5 +1,5 @@
 import React from 'react';
-import { Building, FileText, DollarSign, MessageSquare, ArrowDown, CheckCircle2 } from 'lucide-react';
+import { Building, FileText, Banknote, MessageSquare, ArrowDown, CheckCircle2 } from 'lucide-react';
 
 interface HeroSectionProps {
   onGetStarted: () => void;
@@ -9,7 +9,7 @@ interface HeroSectionProps {
 const features = [
   { icon: Building, text: 'Track every property and unit in one place' },
   { icon: FileText, text: 'Generate invoices and receipts instantly' },
-  { icon: DollarSign, text: 'Collect and reconcile payments automatically' },
+  { icon: Banknote, text: 'Collect and reconcile payments automatically' },
   { icon: MessageSquare, text: 'Reach tenants by SMS, right from the app' },
 ];
 

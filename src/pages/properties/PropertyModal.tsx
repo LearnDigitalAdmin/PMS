@@ -10,6 +10,7 @@ interface PropertyFormData {
   image: string;
   companyId?: number;
   billingMode: 'rent_only' | 'full';
+  ownerPhone: string;
 }
 
 interface PropertyModalProps {
@@ -26,6 +27,8 @@ interface PropertyModalProps {
   handleImageUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
   removeImage: () => void;
   MAX_FREE_UNITS: number;
+  /** PYP-NNNN, shown read-only once the property has synced. */
+  ownerId?: string | null;
 }
 
 const PropertyModal: React.FC<PropertyModalProps> = memo(({
@@ -41,7 +44,8 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
   fileInputRef,
   handleImageUpload,
   removeImage,
-  MAX_FREE_UNITS
+  MAX_FREE_UNITS,
+  ownerId
 }) => {
   if (!isOpen) return null;
 
@@ -103,6 +107,30 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
             />
             {formErrors.name && (
               <p className="text-red-500 text-sm mt-1">{formErrors.name}</p>
+            )}
+          </div>
+
+          {/* Owner phone (required) */}
+          <div>
+            <label className="block text-sm font-medium text-ink-soft mb-2">
+              Owner Phone (Safaricom) *
+            </label>
+            <input
+              type="tel"
+              inputMode="tel"
+              value={formData.ownerPhone}
+              onChange={(e) => handleInputChange('ownerPhone', e.target.value)}
+              className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                formErrors.ownerPhone ? 'border-red-500' : 'border-line'
+              }`}
+              placeholder="0712 345 678"
+              autoComplete="off"
+            />
+            {formErrors.ownerPhone && (
+              <p className="text-red-500 text-sm mt-1">{formErrors.ownerPhone}</p>
+            )}
+            {ownerId && (
+              <p className="text-ink-subtle text-xs mt-1">Owner ID: <span className="font-semibold text-ink-soft">{ownerId}</span></p>
             )}
           </div>
 

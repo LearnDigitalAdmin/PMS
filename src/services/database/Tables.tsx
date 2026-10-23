@@ -244,6 +244,8 @@ export class Tables {
         max_units INTEGER DEFAULT 1,
         billing_mode TEXT DEFAULT 'full' CHECK (billing_mode IN ('rent_only', 'full')),
         is_restricted INTEGER DEFAULT 0,
+        owner_id TEXT,
+        owner_phone TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -730,6 +732,9 @@ export class Tables {
         { query: `ALTER TABLE users ADD COLUMN restricted_access INTEGER DEFAULT 0`, column: 'restricted_access' },
         { query: `ALTER TABLE properties ADD COLUMN is_restricted INTEGER DEFAULT 0`, column: 'is_restricted' },
         { query: `ALTER TABLE properties ADD COLUMN billing_mode TEXT DEFAULT 'full'`, column: 'billing_mode' },
+        // Owner identity: PYP-NNNN id (allocated server-side when the property first syncs) and the owner's Safaricom number
+        { query: `ALTER TABLE properties ADD COLUMN owner_id TEXT`, column: 'owner_id' },
+        { query: `ALTER TABLE properties ADD COLUMN owner_phone TEXT`, column: 'owner_phone' },
         { query: `ALTER TABLE tenants ADD COLUMN is_restricted INTEGER DEFAULT 0`, column: 'is_restricted' },
         // NEW: Add archival flags
         { query: `ALTER TABLE monthly_transcripts ADD COLUMN is_archived INTEGER DEFAULT 0`, column: 'is_archived' },

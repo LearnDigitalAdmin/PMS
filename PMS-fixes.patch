@@ -1,0 +1,2239 @@
+diff --git a/plot-rules/firestore.rules b/plot-rules/firestore.rules
+index 2516d32..d4cb81e 100644
+--- a/plot-rules/firestore.rules
++++ b/plot-rules/firestore.rules
+@@ -132,7 +132,11 @@ service cloud.firestore {
+       // ---- users/{userId}/properties/{propertyId}[/units/{unitId}] ----------
+       match /properties/{propertyId} {
+         allow read: if isLandlord(userId) || isAgent();
+-        allow create, update, delete: if isLandlord(userId) || managesAsset(userId);
++        allow create, delete: if isLandlord(userId) || managesAsset(userId);
++        // The PYP-NNNN ownerId is allocated by the server (allocatePropertyOwnerId) and never changes once set.
++        allow update: if (isLandlord(userId) || managesAsset(userId))
++          && (resource.data.get('ownerId', null) == null
++              || request.resource.data.get('ownerId', null) == resource.data.ownerId);
+ 
+         match /units/{unitId} {
+           allow read: if isLandlord(userId) || isAgent();
+@@ -430,6 +434,9 @@ service cloud.firestore {
+     match /desk_audit/{id}       { allow read, write: if false; }
+     match /desk_events/{id}      { allow read, write: if false; }
+     match /desk_counters/{id}    { allow read, write: if false; }
++    // PYP-NNNN owner id allocator (allocatePropertyOwnerId, Admin SDK only)
++    match /counters/{id}           { allow read, write: if false; }
++    match /propertyOwnerIds/{id}   { allow read, write: if false; }
+     match /desk_split_codes/{id} { allow read, write: if false; }
+     match /desk_requests/{id}    { allow read, write: if false; }
+     match /desk_docs/{id}        { allow read, write: if false; }
+diff --git a/plot-rules/rules-tests/firestore.rules.test.mjs b/plot-rules/rules-tests/firestore.rules.test.mjs
+index 042bedf..6d71cf6 100644
+--- a/plot-rules/rules-tests/firestore.rules.test.mjs
++++ b/plot-rules/rules-tests/firestore.rules.test.mjs
+@@ -193,3 +193,18 @@ test('desk: own desk_agents readable, config closed', async () => {
+   await assertFails(getDoc(doc(as('agentB'), 'desk_agents/agentA')));
+   await assertFails(getDoc(doc(as('agentA'), 'desk_config/main')));
+ });
++
++// ---------------------------------------------------------------- property ownerId
++test('properties: landlord can create a property and keep updating it', async () => {
++  await assertSucceeds(setDoc(doc(as('111'), 'users/111/properties/p1'), { name: 'A', ownerPhone: '+254712345678' }));
++});
++test('properties: ownerId can be set once, then never changed', async () => {
++  await env.withSecurityRulesDisabled(async (ctx) => { await setDoc(doc(ctx.firestore(), 'users/111/properties/p2'), { name: 'B' }); });
++  await assertSucceeds(updateDoc(doc(as('111'), 'users/111/properties/p2'), { ownerId: 'PYP-0001' }));
++  await assertSucceeds(updateDoc(doc(as('111'), 'users/111/properties/p2'), { name: 'B2' }));
++  await assertFails(updateDoc(doc(as('111'), 'users/111/properties/p2'), { ownerId: 'PYP-0002' }));
++});
++test('allocator collections are server-only', async () => {
++  await assertFails(getDoc(doc(as('111'), 'counters/propertyOwnerId')));
++  await assertFails(setDoc(doc(as('111'), 'propertyOwnerIds/PYP-0001'), { userId: '111' }));
++});
+diff --git a/src/App.tsx b/src/App.tsx
+index 72fd7d4..16b5b16 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -3,7 +3,7 @@ import React, { useState, useEffect, Suspense, useCallback, useRef } from 'react
+ import { BrowserRouter as Router, Routes, Route, Navigate, NavLink } from 'react-router-dom';
+ import PWAPrompts from './pwa/PWAPrompts';
+ import InstallButton from './pwa/InstallButton';
+-import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, DollarSign, MessageSquare, Settings as SettingsIcon, LifeBuoy } from 'lucide-react';
++import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, Banknote, MessageSquare, Settings as SettingsIcon, LifeBuoy } from 'lucide-react';
+ import { database } from './services/database/Database';
+ import { firebaseSyncService } from './services/database/FirebaseSync';
+ import Dashboard from './pages/Dashboard';
+@@ -22,6 +22,7 @@ import AgentView from './pages/payments/Payments';
+ import { useSmsTokens } from './hooks/useSmsTokens';
+ import { useSubscriptionInfo } from './hooks/useSubscriptionInfo';
+ import { getDaysRemaining } from './utils/trial';
++import PlanRibbon from './components/ui/PlanRibbon';
+ 
+ // Loading component with skeleton animation
+ const LoadingSpinner = () => (
+@@ -212,7 +213,7 @@ const NAV_ITEMS = [
+   { path: '/', icon: Home, label: 'Dashboard', color: 'blue', restricted: false },
+   { path: '/properties', icon: Building, label: 'Properties', color: 'indigo', restricted: false },
+   { path: '/invoices', icon: FileText, label: 'Invoices', color: 'purple', restricted: false },
+-  { path: '/payments', icon: DollarSign, label: 'Payments', color: 'black', restricted: false },
++  { path: '/payments', icon: Banknote, label: 'Payments', color: 'black', restricted: false },
+   { path: '/profile', icon: UserIcon, label: 'Profile', color: 'green', restricted: false },
+   { path: '/settings', icon: SettingsIcon, label: 'Settings', color: 'indigo', restricted: false },
+   // Samuhia Desk requests. Sidebar/rail only: the phone bottom bar is already full (Settings also links here).
+@@ -580,6 +581,8 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+ 
+         {/* Main content: padded for the status bar on phones, for the top bar on md+ */}
+         <main className="app-main min-h-screen pt-[calc(3.5rem+env(safe-area-inset-top,0px))] pb-20 sm:pt-[calc(2rem+env(safe-area-inset-top,0px))] md:pt-[calc(var(--topbar-height)+0.5rem+env(safe-area-inset-top,0px))] md:pb-10">
++          {/* Plan-expiry and low-SMS ribbons: sticky under the status bar */}
++          <PlanRibbon />
+           <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+             {children}
+           </div>
+diff --git a/src/components/auh/HeroSection.tsx b/src/components/auh/HeroSection.tsx
+index e116650..c21ca4f 100644
+--- a/src/components/auh/HeroSection.tsx
++++ b/src/components/auh/HeroSection.tsx
+@@ -1,5 +1,5 @@
+ import React from 'react';
+-import { Building, FileText, DollarSign, MessageSquare, ArrowDown, CheckCircle2 } from 'lucide-react';
++import { Building, FileText, Banknote, MessageSquare, ArrowDown, CheckCircle2 } from 'lucide-react';
+ 
+ interface HeroSectionProps {
+   onGetStarted: () => void;
+@@ -9,7 +9,7 @@ interface HeroSectionProps {
+ const features = [
+   { icon: Building, text: 'Track every property and unit in one place' },
+   { icon: FileText, text: 'Generate invoices and receipts instantly' },
+-  { icon: DollarSign, text: 'Collect and reconcile payments automatically' },
++  { icon: Banknote, text: 'Collect and reconcile payments automatically' },
+   { icon: MessageSquare, text: 'Reach tenants by SMS, right from the app' },
+ ];
+ 
+diff --git a/src/components/ui/Money.tsx b/src/components/ui/Money.tsx
+new file mode 100644
+index 0000000..f1b9024
+--- /dev/null
++++ b/src/components/ui/Money.tsx
+@@ -0,0 +1,19 @@
++import React from 'react';
++
++/**
++ * A money figure for big-number tiles: the amount at the surrounding font size, with a small "KES" label in front.
++ * A plain "KES 125,000" at text-2xl is wider than the "$125,000" these tiles were designed for and overflows on phones.
++ */
++const Money: React.FC<{ value: number | null | undefined; className?: string }> = ({ value, className }) => {
++  const n = Number(value);
++  const safe = Number.isFinite(n) ? n : 0;
++  return (
++    <span className={`whitespace-nowrap ${className ?? ''}`}>
++      {safe < 0 ? '-' : ''}
++      <span className="mr-1 text-[0.55em] font-semibold uppercase tracking-wide opacity-70">KES</span>
++      {Math.abs(safe).toLocaleString('en-KE', { maximumFractionDigits: 2 })}
++    </span>
++  );
++};
++
++export default Money;
+diff --git a/src/components/ui/PlanRibbon.tsx b/src/components/ui/PlanRibbon.tsx
+new file mode 100644
+index 0000000..2fd75a9
+--- /dev/null
++++ b/src/components/ui/PlanRibbon.tsx
+@@ -0,0 +1,163 @@
++import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
++import { AlertTriangle, Clock, MessageSquare, X } from 'lucide-react';
++import { useAuth } from '../auh/AuthContext';
++import { useSmsTokens } from '../../hooks/useSmsTokens';
++import { useSubscriptionInfo } from '../../hooks/useSubscriptionInfo';
++import { formatDate } from '../../utils/FormatUtils';
++import RenewPlanModal, { planLabel } from './RenewPlanModal';
++import SmsPurchaseModal from '../../pages/sms/SmsPurchaseModal';
++
++/** A paid plan starts warning this many days before it ends (a trial, which is short, warns later). */
++const PLAN_WARN_DAYS = 14;
++const TRIAL_WARN_DAYS = 7;
++/** In the last days the ribbon is pinned: no close button. */
++const PINNED_DAYS = 5;
++/** The SMS ribbon appears at or below this many credits. */
++const SMS_LOW_CREDITS = 20;
++
++const DAY_MS = 86_400_000;
++const today = () => new Date().toISOString().slice(0, 10);
++
++/** "Dismissed for today" flag, per user and per reason. */
++function useDailyDismiss(key: string) {
++  const storageKey = `ribbonDismissed:${key}`;
++  const read = () => {
++    try { return localStorage.getItem(storageKey) === today(); } catch { return false; }
++  };
++  const [dismissed, setDismissed] = useState(read);
++  useEffect(() => { setDismissed(read()); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [storageKey]);
++  const dismiss = () => {
++    try { localStorage.setItem(storageKey, today()); } catch { /* storage unavailable: dismiss for this session only */ }
++    setDismissed(true);
++  };
++  return [dismissed, dismiss] as const;
++}
++
++/**
++ * Sticky ribbons under the status bar:
++ *  1. plan / trial expiry, with a one-tap renew or upgrade modal (pinned, no close button, in the last 5 days and once expired)
++ *  2. low SMS credits, with the existing top-up modal
++ * While shown, the ribbon height is published as --ribbon-height so sticky page headers sit below it.
++ */
++const PlanRibbon: React.FC = () => {
++  const { user } = useAuth();
++  const { info } = useSubscriptionInfo(user?.id);
++  const { tokens } = useSmsTokens(user?.id);
++  const [showRenew, setShowRenew] = useState(false);
++  const [showSms, setShowSms] = useState(false);
++  const rootRef = useRef<HTMLDivElement>(null);
++
++  const uid = String(user?.id ?? '');
++  const tier = String(info?.tier ?? user?.tier ?? 'free').toLowerCase();
++  // A paid account is never "on trial", even if a stale isTrial flag is still set.
++  const isTrial = !!info?.isTrial && info?.type !== 'paid';
++  const expiryMs = info?.subscriptionExpiry ? new Date(info.subscriptionExpiry).getTime() : NaN;
++  const hasExpiry = Number.isFinite(expiryMs);
++  const now = Date.now();
++  const expired = hasExpiry && expiryMs <= now;
++  const daysLeft = hasExpiry ? Math.max(0, Math.ceil((expiryMs - now) / DAY_MS)) : null;
++  // A paid plan that lapsed has already been dropped to free by the server job.
++  const lapsed = !isTrial && tier === 'free' && !!info?.subscriptionExpiredAt;
++
++  let kind: 'warn' | 'expired' | 'lapsed' | null = null;
++  if (lapsed) kind = 'lapsed';
++  else if (hasExpiry && (isTrial || tier !== 'free')) {
++    if (expired) kind = 'expired';
++    else if (daysLeft !== null && daysLeft <= (isTrial ? TRIAL_WARN_DAYS : PLAN_WARN_DAYS)) kind = 'warn';
++  }
++
++  const pinned = kind === 'expired' || (kind === 'warn' && daysLeft !== null && daysLeft <= PINNED_DAYS);
++  const [expiryDismissed, dismissExpiry] = useDailyDismiss(`${uid}:expiry:${info?.subscriptionExpiry ?? 'none'}`);
++  const [smsDismissed, dismissSms] = useDailyDismiss(`${uid}:sms`);
++
++  const showExpiry = kind !== null && (pinned || !expiryDismissed) && !(kind === 'lapsed' && expiryDismissed);
++  const showSmsRibbon = tokens !== null && tokens <= SMS_LOW_CREDITS && !smsDismissed;
++
++  // Publish the combined height for sticky headers below.
++  useLayoutEffect(() => {
++    const el = rootRef.current;
++    const root = document.documentElement;
++    if (!el || (!showExpiry && !showSmsRibbon)) {
++      root.style.removeProperty('--ribbon-height');
++      return;
++    }
++    const set = () => root.style.setProperty('--ribbon-height', `${el.offsetHeight}px`);
++    set();
++    const ro = new ResizeObserver(set);
++    ro.observe(el);
++    return () => { ro.disconnect(); root.style.removeProperty('--ribbon-height'); };
++  }, [showExpiry, showSmsRibbon]);
++
++  if (!user) return null;
++
++  const urgent = kind === 'expired' || kind === 'lapsed' || (daysLeft !== null && daysLeft <= PINNED_DAYS);
++  const what = isTrial ? 'free trial' : `${planLabel(tier)} plan`;
++  let message = '';
++  if (kind === 'warn' && daysLeft !== null) {
++    message = `Your ${what} ends ${daysLeft <= 1 ? 'within 24 hours' : `in ${daysLeft} days`} (${formatDate(new Date(expiryMs))}).`;
++  } else if (kind === 'expired') {
++    message = `Your ${what} has ended. Renew to keep your plan limits, cloud sync and SMS.`;
++  } else if (kind === 'lapsed') {
++    message = 'Your plan has ended and your account is on the free tier. Subscribe to restore your plan.';
++  }
++  const action = isTrial || kind === 'lapsed' ? 'Choose plan' : 'Renew now';
++  const modalMode: 'renew' | 'choose' = isTrial || kind === 'lapsed' ? 'choose' : 'renew';
++
++  return (
++    <>
++      <div ref={rootRef} className="plan-ribbon app-chrome">
++        {showExpiry && (
++          <div
++            role="status"
++            className={`flex items-center gap-2 px-3 py-2 text-sm text-white sm:px-6 ${urgent ? 'bg-red-600' : 'bg-amber-500'}`}
++          >
++            {urgent ? <AlertTriangle className="h-4 w-4 shrink-0" /> : <Clock className="h-4 w-4 shrink-0" />}
++            <span className="min-w-0 flex-1 leading-snug">{message}</span>
++            <button
++              onClick={() => setShowRenew(true)}
++              className="shrink-0 rounded-lg bg-white px-3 py-1 text-xs font-bold text-slate-900 shadow-sm hover:bg-white/90"
++            >
++              {action}
++            </button>
++            {!pinned && (
++              <button onClick={dismissExpiry} aria-label="Dismiss for today" className="shrink-0 rounded-full p-1 hover:bg-white/20">
++                <X className="h-4 w-4" />
++              </button>
++            )}
++          </div>
++        )}
++
++        {showSmsRibbon && (
++          <div role="status" className="flex items-center gap-2 bg-emerald-600 px-3 py-2 text-sm text-white sm:px-6">
++            <MessageSquare className="h-4 w-4 shrink-0" />
++            <span className="min-w-0 flex-1 leading-snug">
++              {tokens === 0 ? 'You are out of SMS credits. Tenant reminders will not send.' : `Only ${tokens} SMS credit${tokens === 1 ? '' : 's'} left.`}
++            </span>
++            <button
++              onClick={() => setShowSms(true)}
++              className="shrink-0 rounded-lg bg-white px-3 py-1 text-xs font-bold text-slate-900 shadow-sm hover:bg-white/90"
++            >
++              Buy credits
++            </button>
++            <button onClick={dismissSms} aria-label="Dismiss for today" className="shrink-0 rounded-full p-1 hover:bg-white/20">
++              <X className="h-4 w-4" />
++            </button>
++          </div>
++        )}
++      </div>
++
++      <RenewPlanModal
++        isOpen={showRenew}
++        onClose={() => setShowRenew(false)}
++        mode={modalMode}
++        currentTier={tier}
++        expiryIso={info?.subscriptionExpiry ?? null}
++        isTrial={isTrial}
++        user={user}
++      />
++      <SmsPurchaseModal isOpen={showSms} onClose={() => setShowSms(false)} userId={user.id} userTier={tier} />
++    </>
++  );
++};
++
++export default PlanRibbon;
+diff --git a/src/components/ui/RenewPlanModal.tsx b/src/components/ui/RenewPlanModal.tsx
+new file mode 100644
+index 0000000..ebf1894
+--- /dev/null
++++ b/src/components/ui/RenewPlanModal.tsx
+@@ -0,0 +1,291 @@
++import React, { useEffect, useMemo, useState } from 'react';
++import { collection, getDocs } from 'firebase/firestore';
++import { httpsCallable } from 'firebase/functions';
++import { Capacitor } from '@capacitor/core';
++import { CalendarClock, CheckCircle2, Crown, Loader2, Phone, RefreshCw, X } from 'lucide-react';
++import { db, functions } from '../../services/database/FirebaseSync';
++import { checkSafaricomPhone } from '../../utils/safaricom';
++import { formatDate, formatKES } from '../../utils/FormatUtils';
++import PricingModal from './PricingPage';
++
++/** Purchasable tiers, lowest to highest. Mirrors PURCHASABLE_PLANS in the Cloud Function. */
++export const PLAN_ORDER = ['starter', 'solo', 'business', 'pro', 'enterprise'] as const;
++const PLAN_LABEL: Record<string, string> = {
++  starter: 'Starter',
++  solo: 'Solo',
++  business: 'Business',
++  pro: 'Professional',
++  enterprise: 'Enterprise',
++};
++const CYCLE_DAYS = { monthly: 30, annual: 365 } as const;
++type Cycle = keyof typeof CYCLE_DAYS;
++
++export const planLabel = (tier: string | null | undefined): string =>
++  PLAN_LABEL[String(tier || '').toLowerCase()] || (tier ? String(tier) : 'Free');
++
++interface PlanPrice { name?: string; price: number }
++
++export interface RenewPlanModalProps {
++  isOpen: boolean;
++  onClose: () => void;
++  /** 'renew' = a paid plan is about to lapse; 'choose' = trial / lapsed / free account picking a plan. */
++  mode: 'renew' | 'choose';
++  currentTier: string;
++  /** ISO expiry of the current plan or trial, if any. */
++  expiryIso: string | null;
++  isTrial: boolean;
++  user: { id: number | string; name?: string; email?: string; phone?: string | number } | null;
++}
++
++/**
++ * Renew / upgrade in one step. It pipes into the same `processWebSubscription` Cloud Function as the pricing page
++ * (M-Pesa STK push), so price, length and expiry are all decided server-side. On the native apps, where plans are bought
++ * through the store, it hands over to the existing pricing screen instead.
++ */
++const RenewPlanModal: React.FC<RenewPlanModalProps> = ({ isOpen, onClose, mode, currentTier, expiryIso, isTrial, user }) => {
++  const isWeb = Capacitor.getPlatform() === 'web';
++  const tier = String(currentTier || '').toLowerCase();
++  const currentRank = PLAN_ORDER.indexOf(tier as (typeof PLAN_ORDER)[number]);
++  const canRenew = mode === 'renew' && currentRank >= 0;
++  const upgradeTiers = useMemo(() => PLAN_ORDER.filter((_, i) => i > currentRank), [currentRank]);
++
++  const [tab, setTab] = useState<'renew' | 'upgrade'>(canRenew ? 'renew' : 'upgrade');
++  const [cycle, setCycle] = useState<Cycle>('monthly');
++  const [selected, setSelected] = useState<string>(canRenew ? tier : upgradeTiers[0] || 'solo');
++  const [prices, setPrices] = useState<Record<string, PlanPrice>>({});
++  const [loadingPrices, setLoadingPrices] = useState(true);
++  const [phone, setPhone] = useState('');
++  const [phoneError, setPhoneError] = useState('');
++  const [error, setError] = useState('');
++  const [paying, setPaying] = useState(false);
++  const [sent, setSent] = useState(false);
++
++  // Reset whenever the modal is (re)opened.
++  useEffect(() => {
++    if (!isOpen) return;
++    setTab(canRenew ? 'renew' : 'upgrade');
++    setSelected(canRenew ? tier : upgradeTiers[0] || 'solo');
++    setCycle('monthly');
++    setError('');
++    setPhoneError('');
++    setSent(false);
++    setPaying(false);
++    const check = checkSafaricomPhone(user?.phone);
++    setPhone(check.ok ? check.local : user?.phone ? String(user.phone) : '');
++  }, [isOpen, canRenew, tier, upgradeTiers, user?.phone]);
++
++  // Official prices: the same plans/{tier}_{cycle} documents the pricing page reads.
++  useEffect(() => {
++    if (!isOpen || !isWeb) return;
++    let cancelled = false;
++    (async () => {
++      try {
++        setLoadingPrices(true);
++        const snap = await getDocs(collection(db, 'plans'));
++        const map: Record<string, PlanPrice> = {};
++        snap.forEach((d) => {
++          const data = d.data() as { price?: number; name?: string };
++          if (typeof data.price === 'number') map[d.id] = { price: data.price, name: data.name };
++        });
++        if (!cancelled) setPrices(map);
++      } catch (e) {
++        console.error('RenewPlanModal: could not load plan prices', e);
++        if (!cancelled) setError('Could not load plan prices. Check your connection and try again.');
++      } finally {
++        if (!cancelled) setLoadingPrices(false);
++      }
++    })();
++    return () => { cancelled = true; };
++  }, [isOpen, isWeb]);
++
++  if (!isOpen) return null;
++
++  // Store-billed apps keep using the existing pricing screen.
++  if (!isWeb) {
++    return (
++      <PricingModal
++        isOpen
++        onClose={() => onClose()}
++        canDismiss
++        currentPlan={tier || 'free'}
++        userId={typeof user?.id === 'number' ? user.id : Number(user?.id) || undefined}
++        userPhone={Number(user?.phone) || undefined}
++      />
++    );
++  }
++
++  const priceOf = (planId: string): number | undefined => prices[`${planId}_${cycle}`]?.price;
++  const price = priceOf(selected);
++  const days = CYCLE_DAYS[cycle];
++
++  // Preview of the new expiry. Mirrors the server: time left on an active PAID plan is kept; a trial or lapsed plan starts today.
++  const now = Date.now();
++  const currentExpiryMs = expiryIso ? new Date(expiryIso).getTime() : NaN;
++  const stacks = !isTrial && Number.isFinite(currentExpiryMs) && currentExpiryMs > now;
++  const newExpiry = new Date((stacks ? currentExpiryMs : now) + days * 86_400_000);
++
++  const handlePay = async () => {
++    setError('');
++    const check = checkSafaricomPhone(phone);
++    if (!check.ok) {
++      setPhoneError(check.message);
++      return;
++    }
++    setPhoneError('');
++    if (!user?.id) { setError('Please sign in again and retry.'); return; }
++    if (!user.email || !user.name) { setError('Your profile needs a name and email before you can pay. Update it in Profile, then retry.'); return; }
++    if (price === undefined) { setError('This plan is not available right now. Please try again later.'); return; }
++
++    setPaying(true);
++    try {
++      const processWebSubscription = httpsCallable(functions, 'processWebSubscription');
++      const result = await processWebSubscription({
++        userId: user.id,
++        userName: user.name,
++        email: user.email,
++        phone: check.e164,
++        planId: selected,
++        planName: planLabel(selected),
++        billingCycle: cycle,
++        amount: price,
++        daysToAdd: days,
++      });
++      const data = result.data as { success?: boolean; message?: string };
++      if (data?.success) setSent(true);
++      else setError(data?.message || 'Could not start the payment. Please try again.');
++    } catch (e: unknown) {
++      console.error('RenewPlanModal payment error:', e);
++      setError((e as { message?: string })?.message || 'Something went wrong. Please try again or contact support.');
++    } finally {
++      setPaying(false);
++    }
++  };
++
++  const title = tab === 'renew' ? `Renew ${planLabel(tier)}` : mode === 'renew' ? 'Upgrade your plan' : 'Choose a plan';
++  const options = tab === 'renew' ? [tier] : upgradeTiers.length ? [...upgradeTiers] : [...PLAN_ORDER];
++
++  return (
++    <div
++      className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/55 backdrop-blur-sm md:items-center md:p-6"
++      role="dialog"
++      aria-modal="true"
++      aria-label={title}
++      onClick={(e) => { if (e.target === e.currentTarget && !paying) onClose(); }}
++    >
++      <div className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-line bg-surface text-ink shadow-pop md:rounded-3xl">
++        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 bg-gradient-to-r from-brand-600 to-indigo-600 px-5 py-4 text-white">
++          <div className="min-w-0">
++            <h3 className="flex items-center gap-2 text-lg font-bold">
++              {tab === 'renew' ? <RefreshCw className="h-5 w-5 shrink-0" /> : <Crown className="h-5 w-5 shrink-0" />}
++              <span className="truncate">{title}</span>
++            </h3>
++            {Number.isFinite(currentExpiryMs) && (
++              <p className="mt-0.5 flex items-center gap-1.5 text-xs text-white/85">
++                <CalendarClock className="h-3.5 w-3.5 shrink-0" />
++                {currentExpiryMs > now ? `${isTrial ? 'Trial ends' : 'Current plan ends'} ${formatDate(new Date(currentExpiryMs))}` : `Ended ${formatDate(new Date(currentExpiryMs))}`}
++              </p>
++            )}
++          </div>
++          <button onClick={onClose} disabled={paying} aria-label="Close" className="rounded-full p-1.5 text-white/85 hover:bg-white/15 hover:text-white">
++            <X className="h-5 w-5" />
++          </button>
++        </div>
++
++        {sent ? (
++          <div className="space-y-4 p-6 text-center">
++            <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-500" />
++            <h4 className="text-lg font-bold">Check your phone</h4>
++            <p className="text-sm text-ink-muted">
++              Enter your M-Pesa PIN to pay {price !== undefined ? formatKES(price) : ''} for {planLabel(selected)}. Your plan updates by itself as soon as the payment is confirmed. There is nothing else to do.
++            </p>
++            <button onClick={onClose} className="w-full rounded-xl bg-brand-600 py-3 font-semibold text-white hover:bg-brand-700">Done</button>
++          </div>
++        ) : (
++          <div className="space-y-5 p-5">
++            {canRenew && upgradeTiers.length > 0 && (
++              <div className="grid grid-cols-2 gap-1 rounded-xl bg-surface-sunken p-1 text-sm font-semibold">
++                {(['renew', 'upgrade'] as const).map((t) => (
++                  <button
++                    key={t}
++                    onClick={() => { setTab(t); setSelected(t === 'renew' ? tier : upgradeTiers[0]); }}
++                    className={`rounded-lg py-2 transition-colors ${tab === t ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink'}`}
++                  >
++                    {t === 'renew' ? 'Renew' : 'Upgrade'}
++                  </button>
++                ))}
++              </div>
++            )}
++
++            <div className="grid grid-cols-2 gap-2">
++              {(['monthly', 'annual'] as const).map((c) => (
++                <button
++                  key={c}
++                  onClick={() => setCycle(c)}
++                  className={`rounded-xl border-2 px-3 py-2 text-left text-sm transition-colors ${cycle === c ? 'border-brand-500 bg-brand-50 dark:bg-brand-500/10' : 'border-line hover:border-line-strong'}`}
++                >
++                  <span className="block font-semibold capitalize">{c}</span>
++                  <span className="text-xs text-ink-subtle">{CYCLE_DAYS[c]} days</span>
++                </button>
++              ))}
++            </div>
++
++            <div className="space-y-2">
++              {options.map((planId) => {
++                const p = priceOf(planId);
++                return (
++                  <button
++                    key={planId}
++                    onClick={() => setSelected(planId)}
++                    disabled={options.length === 1}
++                    className={`flex w-full items-center justify-between rounded-xl border-2 px-4 py-3 text-left transition-colors ${selected === planId ? 'border-brand-500 bg-brand-50 dark:bg-brand-500/10' : 'border-line hover:border-line-strong'}`}
++                  >
++                    <span className="font-semibold">{prices[`${planId}_${cycle}`]?.name || planLabel(planId)}</span>
++                    <span className="text-sm font-bold">{loadingPrices ? '…' : p !== undefined ? formatKES(p) : 'Unavailable'}</span>
++                  </button>
++                );
++              })}
++            </div>
++
++            <div className="rounded-xl bg-surface-muted px-4 py-3 text-sm">
++              <div className="flex items-center justify-between">
++                <span className="text-ink-muted">New expiry</span>
++                <span className="font-semibold">{formatDate(newExpiry)}</span>
++              </div>
++              {stacks && <p className="mt-1 text-xs text-ink-subtle">Your remaining days are kept. The new period is added on top.</p>}
++            </div>
++
++            <div>
++              <label className="mb-1.5 block text-sm font-semibold" htmlFor="renew-phone">M-Pesa number (Safaricom)</label>
++              <div className="relative">
++                <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
++                <input
++                  id="renew-phone"
++                  type="tel"
++                  inputMode="tel"
++                  autoComplete="tel"
++                  value={phone}
++                  onChange={(e) => { setPhone(e.target.value); setPhoneError(''); }}
++                  placeholder="0712 345 678"
++                  className={`w-full rounded-xl border-2 py-3 pl-10 pr-3 ${phoneError ? 'border-red-500' : 'border-line-strong'}`}
++                />
++              </div>
++              {phoneError && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{phoneError}</p>}
++            </div>
++
++            {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>}
++
++            <button
++              onClick={handlePay}
++              disabled={paying || loadingPrices || price === undefined}
++              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 py-3.5 font-semibold text-white shadow-lg disabled:opacity-60"
++            >
++              {paying ? <><Loader2 className="h-5 w-5 animate-spin" /> Sending request…</> : `Pay ${price !== undefined ? formatKES(price) : ''} with M-Pesa`}
++            </button>
++          </div>
++        )}
++      </div>
++    </div>
++  );
++};
++
++export default RenewPlanModal;
+diff --git a/src/components/ui/TrialStatsBanner.tsx b/src/components/ui/TrialStatsBanner.tsx
+index 47a2a14..854426e 100644
+--- a/src/components/ui/TrialStatsBanner.tsx
++++ b/src/components/ui/TrialStatsBanner.tsx
+@@ -1,5 +1,5 @@
+ import React from 'react';
+-import { FileText, MessageSquare, DollarSign, Users, Clock } from 'lucide-react';
++import { FileText, MessageSquare, Banknote, Users, Clock } from 'lucide-react';
+ import { useTrialStats } from '../../hooks/useTrialStats';
+ import { formatCurrencyCompact, formatNumber } from '../../utils/FormatUtils';
+ 
+@@ -24,7 +24,7 @@ const TrialStatsBanner: React.FC<TrialStatsBannerProps> = ({ userId, compact = f
+   const items = [
+     { icon: FileText, label: 'Invoices sent', value: formatNumber(stats.totalInvoices) },
+     { icon: MessageSquare, label: 'SMS sent', value: formatNumber(stats.totalSmsSent) },
+-    { icon: DollarSign, label: 'Collected', value: formatCurrencyCompact(stats.amountCollected) },
++    { icon: Banknote, label: 'Collected', value: formatCurrencyCompact(stats.amountCollected) },
+     { icon: Users, label: 'Tenants', value: formatNumber(stats.totalTenants) },
+   ];
+ 
+diff --git a/src/hooks/useSubscriptionInfo.ts b/src/hooks/useSubscriptionInfo.ts
+index cf6e36c..ad6eb51 100644
+--- a/src/hooks/useSubscriptionInfo.ts
++++ b/src/hooks/useSubscriptionInfo.ts
+@@ -5,10 +5,13 @@ import { db } from '../services/database/FirebaseSync';
+ 
+ export interface SubscriptionInfo {
+   tier: string;
++  type?: string; // 'paid' once a plan has been bought
+   isTrial: boolean;
+   subscriptionExpiry: string | null; // ISO string
+   tokens: number;
+   smsSentTotal: number; // lifetime count of successfully-sent SMS, incremented server-side
++  planName?: string | null; // display name of the last purchased plan
++  subscriptionExpiredAt?: string | null; // ISO string, set server-side when a paid plan lapses and the account drops to free
+ }
+ 
+ const CACHE_KEY = 'subscriptionInfo';
+@@ -54,10 +57,13 @@ export function useSubscriptionInfo(userId: number | string | undefined) {
+         const data = snap.data();
+         const parsed: SubscriptionInfo = {
+           tier: data.tier ?? 'free',
++          type: data.type ?? undefined,
+           isTrial: data.isTrial ?? false,
+           subscriptionExpiry: data.subscriptionExpiry?.toDate?.().toISOString() ?? null,
+           tokens: data.tokens ?? 0,
+           smsSentTotal: data.smsSentTotal ?? 0,
++          planName: data.planName ?? null,
++          subscriptionExpiredAt: data.subscriptionExpiredAt?.toDate?.().toISOString() ?? null,
+         };
+         setInfo(parsed);
+         writeCache(parsed);
+diff --git a/src/index.css b/src/index.css
+index 1e03bba..b11f8d5 100644
+--- a/src/index.css
++++ b/src/index.css
+@@ -343,13 +343,26 @@
+   /* Sticky section header: pinned under the fixed status bar, bleeds to the content edges */
+   .ui-page-header {
+     @apply sticky z-30 -mx-4 -mt-6 mb-4 flex items-center justify-between gap-3 border-b border-line bg-surface/90 px-4 py-2.5 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-10 lg:-mt-8 lg:px-10;
++    top: calc(3.5rem + env(safe-area-inset-top, 0px) + var(--ribbon-height, 0px));
++  }
++  @media (min-width: 640px) {
++    .ui-page-header { top: calc(2rem + env(safe-area-inset-top, 0px) + var(--ribbon-height, 0px)); }
++  }
++  @media (min-width: 768px) {
++    .ui-page-header { top: calc(var(--topbar-height) + env(safe-area-inset-top, 0px) + var(--ribbon-height, 0px)); }
++  }
++  /* Plan-expiry / low-SMS ribbons: pinned under the fixed status bar, above sticky page headers.
++     --ribbon-height is published by PlanRibbon so page headers stack beneath it. */
++  .plan-ribbon {
++    position: sticky;
++    z-index: 40;
+     top: calc(3.5rem + env(safe-area-inset-top, 0px));
+   }
+   @media (min-width: 640px) {
+-    .ui-page-header { top: calc(2rem + env(safe-area-inset-top, 0px)); }
++    .plan-ribbon { top: calc(2rem + env(safe-area-inset-top, 0px)); }
+   }
+   @media (min-width: 768px) {
+-    .ui-page-header { top: calc(var(--topbar-height) + env(safe-area-inset-top, 0px)); }
++    .plan-ribbon { top: calc(var(--topbar-height) + env(safe-area-inset-top, 0px)); }
+   }
+   .ui-page-subtitle {
+     @apply mt-1 text-sm text-ink-subtle lg:text-base;
+@@ -391,6 +404,21 @@
+   }
+ }
+ 
++/* ---- Phones: no zoom-on-focus, smoother horizontal scrollers -------------- */
++@media (max-width: 767px) {
++  /* iOS zooms the page when a field under 16px is focused. */
++  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
++  select,
++  textarea {
++    font-size: 16px;
++  }
++  .overflow-x-auto {
++    -webkit-overflow-scrolling: touch;
++    overscroll-behavior-x: contain;
++    scrollbar-width: thin;
++  }
++}
++
+ /* ---- Printing: never print app chrome ------------------------------------- */
+ @media print {
+   .app-chrome {
+diff --git a/src/pages/Dashboard.tsx b/src/pages/Dashboard.tsx
+index f15b28f..d18ddf8 100644
+--- a/src/pages/Dashboard.tsx
++++ b/src/pages/Dashboard.tsx
+@@ -1,11 +1,13 @@
+ import React, { useState, useEffect, useRef } from 'react';
++import { formatKES } from '../utils/FormatUtils';
++import Money from '../components/ui/Money';
+ import { 
+   ChevronDown, 
+   Search, 
+   TrendingUp, 
+   Users, 
+   Building, 
+-  DollarSign, 
++  Banknote, 
+   AlertTriangle,
+   Calendar,
+   Download,
+@@ -72,7 +74,9 @@ const StatsCard: React.FC<{
+   loading?: boolean;
+   subtitle?: string;
+   percentage?: number;
+-}> = ({ title, value, icon: Icon, trend, color, loading, subtitle, percentage }) => {
++  /** Render the value as Kenyan shillings. */
++  currency?: boolean;
++}> = ({ title, value, icon: Icon, trend, color, loading, subtitle, percentage, currency }) => {
+   if (loading) {
+     return (
+       <div className="ui-card p-4">
+@@ -87,10 +91,10 @@ const StatsCard: React.FC<{
+   }
+ 
+   return (
+-    <div className="ui-card ui-card-hover p-4">
+-      <div className="flex items-start justify-between mb-3">
+-        <div className={`p-2.5 rounded-xl ${color} shadow-lg`}>
+-          <Icon className="w-6 h-6 text-white" />
++    <div className="ui-card ui-card-hover p-3 sm:p-4">
++      <div className="flex items-start justify-between mb-2 sm:mb-3">
++        <div className={`p-2 sm:p-2.5 rounded-xl ${color} shadow-lg`}>
++          <Icon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+         </div>
+         {trend !== undefined && (
+           <div className={`flex items-center text-sm font-medium px-2 py-1 rounded-full ${
+@@ -104,11 +108,11 @@ const StatsCard: React.FC<{
+         )}
+       </div>
+       <div>
+-        <p className="text-sm font-medium text-ink-muted mb-1">{title}</p>
+-        <div className="flex items-baseline space-x-2">
+-          <p className="text-2xl font-bold text-ink">{value}</p>
++        <p className="text-xs sm:text-sm font-medium text-ink-muted mb-1 truncate">{title}</p>
++        <div className="flex flex-wrap items-baseline gap-x-2">
++          <p className="text-xl sm:text-2xl font-bold text-ink">{currency ? <Money value={Number(value)} /> : value}</p>
+           {percentage !== undefined && (
+-            <span className="text-lg font-semibold text-ink-subtle">
++            <span className="text-sm sm:text-lg font-semibold text-ink-subtle">
+               ({percentage.toFixed(1)}%)
+             </span>
+           )}
+@@ -433,7 +437,7 @@ const PaymentStatusChart: React.FC<{
+     );
+   }
+ 
+-  const total = unpaidCount;
++  const total = paidCount + unpaidCount;
+   const paidPercentage = total > 0 ? (paidCount / total) * 100 : 0;
+   
+   const pieData = [
+@@ -583,11 +587,11 @@ const RecentActivity: React.FC<{
+               </div>
+               <div className="text-right ml-3">
+                 <p className="font-bold text-ink text-sm">
+-                  ${invoice.totalAmount.toLocaleString()}
++                  {formatKES(invoice.totalAmount)}
+                 </p>
+                 {invoice.arrears > 0 && (
+                   <p className="text-xs text-orange-600 dark:text-orange-400 font-medium">
+-                    Arrears: ${invoice.arrears.toLocaleString()}
++                    Arrears: {formatKES(invoice.arrears)}
+                   </p>
+                 )}
+               </div>
+@@ -792,7 +796,7 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
+         />
+         <StatsCard
+           title="Active Tenants"
+-          value={dashboardData?.totalTenants || 0}
++          value={dashboardData?.occupiedUnits || 0}
+           icon={Users}
+           color="bg-gradient-to-r from-brand-500 to-indigo-600"
+           loading={loading}
+@@ -801,16 +805,18 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
+         />
+         <StatsCard
+           title="Monthly Revenue"
+-          value={`${(dashboardData?.monthlyRevenue || 0).toLocaleString()}`}
+-          icon={DollarSign}
++          value={dashboardData?.monthlyRevenue || 0}
++          currency
++          icon={Banknote}
+           trend={revenueTrend}
+           color="bg-gradient-to-r from-emerald-500 to-teal-600"
+           loading={loading}
+-          subtitle={`Avg: ${averageRent.toLocaleString()}/tenant`}
++          subtitle={`Avg: ${formatKES(averageRent)}/tenant`}
+         />
+         <StatsCard
+           title="Outstanding"
+-          value={`${(dashboardData?.totalArrears || 0).toLocaleString()}`}
++          value={dashboardData?.totalArrears || 0}
++          currency
+           icon={AlertTriangle}
+           color="bg-gradient-to-r from-red-500 to-rose-600"
+           loading={loading}
+@@ -897,10 +903,10 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
+           </div>
+           <div className="flex justify-between items-center mt-4">
+             <div className="text-sm text-ink-muted">
+-              {loading ? 'Loading...' : `${dashboardData?.totalTenants || 0} of ${dashboardData?.totalProperties || 0} units occupied`}
++              {loading ? 'Loading...' : `${dashboardData?.occupiedUnits || 0} of ${dashboardData?.totalUnits || 0} units occupied`}
+             </div>
+             <div className="text-sm font-medium text-purple-600 dark:text-purple-400">
+-              {loading ? '' : `${(dashboardData?.totalProperties || 0) - (dashboardData?.totalTenants || 0)} vacant`}
++              {loading ? '' : `${Math.max(0, (dashboardData?.totalUnits || 0) - (dashboardData?.occupiedUnits || 0))} vacant`}
+             </div>
+           </div>
+         </div>
+@@ -923,7 +929,7 @@ const Dashboard: React.FC<DashboardProps> = ({userData}) => {
+                 <span className="text-sm font-medium text-ink-soft">Average Rent</span>
+               </div>
+               <span className="font-bold text-ink">
+-                ${loading ? '...' : averageRent.toLocaleString()}
++                {loading ? '...' : formatKES(averageRent)}
+               </span>
+             </div>
+             <div className="flex items-center justify-between p-3 bg-surface-muted/80 rounded-xl">
+diff --git a/src/pages/payments/PaymentModal.tsx b/src/pages/payments/PaymentModal.tsx
+index 151f76d..c12d04a 100644
+--- a/src/pages/payments/PaymentModal.tsx
++++ b/src/pages/payments/PaymentModal.tsx
+@@ -1,6 +1,6 @@
+ // PaymentModal.tsx - Updated Payment Initiation Modal
+ import React, { useState, useEffect } from 'react';
+-import { X, Phone, DollarSign, AlertCircle, CheckCircle, Loader2, Info } from 'lucide-react';
++import { X, Phone, Banknote, AlertCircle, CheckCircle, Loader2, Info } from 'lucide-react';
+ import { PaymentService, type Invoice } from './Firebase';
+ 
+ interface PaymentModalProps {
+@@ -326,7 +326,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
+                   Amount to Pay
+                 </label>
+                 <div className="relative">
+-                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-ink-faint w-5 h-5" />
++                  <Banknote className="absolute left-3 top-1/2 transform -translate-y-1/2 text-ink-faint w-5 h-5" />
+                   <input
+                     id="amount"
+                     type="number"
+diff --git a/src/pages/payments/Payments.tsx b/src/pages/payments/Payments.tsx
+index 5607ebe..6802552 100644
+--- a/src/pages/payments/Payments.tsx
++++ b/src/pages/payments/Payments.tsx
+@@ -7,7 +7,6 @@ import {
+   PieChart, Pie, Cell, Legend
+ } from 'recharts';
+ import {
+-  DollarSign,
+   Receipt,
+   TrendingUp,
+   Search,
+@@ -912,7 +911,7 @@ const AgentView: React.FC = () => {
+           <div className="bg-surface rounded-xl shadow-lg p-4 sm:p-6">
+             <div className="flex items-center justify-between mb-4">
+               <h3 className="text-xs sm:text-sm font-medium text-ink-muted">Total Revenue</h3>
+-              <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 text-green-600 dark:text-green-400" />
++              <Banknote className="w-6 h-6 sm:w-8 sm:h-8 text-green-600 dark:text-green-400" />
+             </div>
+             <p className="text-xl sm:text-2xl font-bold text-ink">{formatCurrency(totalRevenue)}</p>
+             <p className="text-xs text-ink-subtle mt-2">From successful payments</p>
+diff --git a/src/pages/properties/Properties.tsx b/src/pages/properties/Properties.tsx
+index 1c9e269..73df4bc 100644
+--- a/src/pages/properties/Properties.tsx
++++ b/src/pages/properties/Properties.tsx
+@@ -1,10 +1,13 @@
+ import React, { useState, useEffect } from 'react';
++import { formatKES } from '../../utils/FormatUtils';
++import Money from '../../components/ui/Money';
++import { checkSafaricomPhone } from '../../utils/safaricom';
+ import {
+   Building2,
+   Edit3,
+   MapPin,
+   Users,
+-  DollarSign,
++  Banknote,
+   TrendingUp,
+   Percent,
+   Receipt,
+@@ -43,6 +46,7 @@ interface PropertyFormData {
+   address: string;
+   description: string;
+   agentCommissionRate: number;
++  ownerPhone: string;
+ }
+ 
+ const Property: React.FC<PropertyProps> = ({ 
+@@ -68,7 +72,8 @@ const Property: React.FC<PropertyProps> = ({
+     name: '',
+     address: '',
+     description: '',
+-    agentCommissionRate: 0
++    agentCommissionRate: 0,
++    ownerPhone: ''
+   });
+   const [formErrors, setFormErrors] = useState<Partial<PropertyFormData>>({});
+ 
+@@ -136,7 +141,8 @@ const Property: React.FC<PropertyProps> = ({
+         name: property.name,
+         address: property.address || '',
+         description: property.description || '',
+-        agentCommissionRate: property.agentCommissionRate
++        agentCommissionRate: property.agentCommissionRate,
++        ownerPhone: property.ownerPhone || ''
+       });
+     }
+     setFormErrors({});
+@@ -148,6 +154,11 @@ const Property: React.FC<PropertyProps> = ({
+     if (!formData.name.trim()) {
+       errors.name = 'Property name is required';
+     }
++
++    const ownerCheck = checkSafaricomPhone(formData.ownerPhone);
++    if (!ownerCheck.ok) {
++      errors.ownerPhone = ownerCheck.message;
++    }
+     
+     if (formData.agentCommissionRate < 0 || formData.agentCommissionRate > 100) {
+       //errors.agentCommissionRate = 'Commission rate must be between 0 and 100';
+@@ -165,7 +176,8 @@ const Property: React.FC<PropertyProps> = ({
+         name: formData.name.trim(),
+         address: formData.address.trim() || undefined,
+         description: formData.description.trim() || undefined,
+-        agentCommissionRate: formData.agentCommissionRate
++        agentCommissionRate: formData.agentCommissionRate,
++        ownerPhone: formData.ownerPhone
+       });
+ 
+       await loadPropertyData();
+@@ -415,17 +427,17 @@ return (
+                 {/* Monthly Revenue */}
+                 <div className="text-center p-3 sm:p-4 md:p-6 bg-green-50 dark:bg-green-500/10 rounded-lg sm:rounded-xl md:rounded-2xl">
+                   <div className="w-8 h-8 sm:w-10 md:w-12 sm:h-10 md:h-12 bg-green-600 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-4">
+-                    <DollarSign className="w-4 h-4 sm:w-5 md:w-6 sm:h-5 md:h-6 text-white" />
++                    <Banknote className="w-4 h-4 sm:w-5 md:w-6 sm:h-5 md:h-6 text-white" />
+                   </div>
+                   <div className="text-xl sm:text-2xl md:text-3xl font-bold text-ink mb-1">
+-                    ${property.monthlyRevenue.toLocaleString()}
++                    <Money value={property.monthlyRevenue} />
+                   </div>
+                   <div className="text-xs sm:text-sm font-medium text-ink-muted">
+                     Monthly Potential
+                   </div>
+                   {dashboardData && (
+                     <div className="text-xs text-ink-subtle mt-1">
+-                      ${dashboardData.monthlyRevenue.toLocaleString()} Collected
++                      {formatKES(dashboardData.monthlyRevenue)} Collected
+                     </div>
+                   )}
+                 </div>
+@@ -498,7 +510,7 @@ return (
+                       <span className="font-medium text-ink-soft text-sm sm:text-base">Revenue Collected</span>
+                     </div>
+                     <span className="text-lg sm:text-xl font-bold text-green-600 dark:text-green-400">
+-                      ${dashboardData.monthlyRevenue.toLocaleString()}
++                      {formatKES(dashboardData.monthlyRevenue)}
+                     </span>
+                   </div>
+ 
+@@ -510,7 +522,7 @@ return (
+                           <span className="font-medium text-ink-soft text-sm sm:text-base">Commission ({property.agentCommissionRate}%)</span>
+                         </div>
+                         <span className="text-lg sm:text-xl font-bold text-orange-600 dark:text-orange-400">
+-                          -${commissionAmount.toLocaleString()}
++                          -{formatKES(commissionAmount)}
+                         </span>
+                       </div>
+ 
+@@ -520,7 +532,7 @@ return (
+                           <span className="font-medium text-ink-soft text-sm sm:text-base">Net Revenue</span>
+                         </div>
+                         <span className="text-lg sm:text-xl font-bold text-blue-600 dark:text-blue-400">
+-                          ${netRevenue.toLocaleString()}
++                          {formatKES(netRevenue)}
+                         </span>
+                       </div>
+                     </>
+@@ -532,7 +544,7 @@ return (
+                       <span className="font-medium text-ink-soft text-sm sm:text-base">Total Arrears</span>
+                     </div>
+                     <span className="text-lg sm:text-xl font-bold text-red-600 dark:text-red-400">
+-                      ${dashboardData.totalArrears.toLocaleString()}
++                      {formatKES(dashboardData.totalArrears)}
+                     </span>
+                   </div>
+                 </div>
+@@ -645,6 +657,28 @@ return (
+                 )}
+               </div>
+ 
++              <div>
++                <label className="block text-sm font-medium text-ink-soft mb-2">
++                  Owner Phone (Safaricom) *
++                </label>
++                <input
++                  type="tel"
++                  inputMode="tel"
++                  value={formData.ownerPhone}
++                  onChange={(e) => setFormData({ ...formData, ownerPhone: e.target.value })}
++                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
++                    formErrors.ownerPhone ? 'border-red-500' : 'border-line'
++                  }`}
++                  placeholder="0712 345 678"
++                />
++                {formErrors.ownerPhone && (
++                  <p className="text-red-500 text-sm mt-1">{formErrors.ownerPhone}</p>
++                )}
++                {property?.ownerId && (
++                  <p className="text-ink-subtle text-xs mt-1">Owner ID: <span className="font-semibold text-ink-soft">{property.ownerId}</span></p>
++                )}
++              </div>
++
+               <div>
+                 <label className="block text-sm font-medium text-ink-soft mb-2">
+                   Address
+diff --git a/src/pages/properties/PropertyList.tsx b/src/pages/properties/PropertyList.tsx
+index 1d94a11..8181727 100644
+--- a/src/pages/properties/PropertyList.tsx
++++ b/src/pages/properties/PropertyList.tsx
+@@ -1,4 +1,6 @@
+ import PageHeader, { HeaderAction } from '../../components/ui/PageHeader';
++import { formatKES } from '../../utils/FormatUtils';
++import Money from '../../components/ui/Money';
+ import React, { useState, useEffect, useCallback, useRef } from 'react';
+ import { 
+   Plus, 
+@@ -7,7 +9,7 @@ import {
+   List, 
+   Building2, 
+   Users, 
+-  DollarSign, 
++  Banknote, 
+   TrendingUp,
+   Edit3,
+   Trash2,
+@@ -17,6 +19,7 @@ import {
+ import { database, type PropertyWithUnits, type PropertyInput, type User } from '../../services/database/Database';
+ import Property from './Properties';
+ import PropertyModal from './PropertyModal';
++import { checkSafaricomPhone } from '../../utils/safaricom';
+ import { USER_LIMITS, firebaseSyncService } from '../../services/database/FirebaseSync';
+ import PricingModal from '../../components/ui/PricingPage';
+ import SummariesModal from './Summaries';
+@@ -37,6 +40,7 @@ interface PropertyFormData {
+   image: string;
+   companyId?: number;
+   billingMode: 'rent_only' | 'full';
++  ownerPhone: string;
+ }
+ 
+ interface EnhancedProperty extends PropertyWithUnits {
+@@ -73,7 +77,8 @@ const Properties: React.FC<PropertyListProps> = ({
+     maxUnits: 12,
+     image: '',
+     companyId: undefined,
+-    billingMode: 'full'
++    billingMode: 'full',
++    ownerPhone: ''
+   });
+   const [formErrors, setFormErrors] = useState<Partial<PropertyFormData>>({});
+   
+@@ -187,7 +192,8 @@ const Properties: React.FC<PropertyListProps> = ({
+       maxUnits: 12,
+       image: '',
+       companyId: undefined,
+-      billingMode: 'full'
++      billingMode: 'full',
++      ownerPhone: ''
+     });
+     setFormErrors({});
+     setImagePreview('');
+@@ -202,6 +208,11 @@ const Properties: React.FC<PropertyListProps> = ({
+     if (!formData.name.trim()) {
+       errors.name = 'Property name is required';
+     }
++
++    const ownerCheck = checkSafaricomPhone(formData.ownerPhone);
++    if (!ownerCheck.ok) {
++      errors.ownerPhone = ownerCheck.message;
++    }
+     
+     if (formData.agentCommissionRate < 0 || formData.agentCommissionRate > 50) {
+       //errors.agentCommissionRate = 'Commission rate must be between 0% and 50%';
+@@ -261,7 +272,8 @@ const Properties: React.FC<PropertyListProps> = ({
+         image: formData.image || undefined,
+         agentCommissionRate: formData.agentCommissionRate,
+         maxUnits: formData.maxUnits,
+-        billingMode: formData.billingMode
++        billingMode: formData.billingMode,
++        ownerPhone: formData.ownerPhone
+       };
+ 
+       // Pull any properties created elsewhere (e.g. Samuhia Desk) first, so the next local ID can't collide with one
+@@ -288,7 +300,8 @@ const Properties: React.FC<PropertyListProps> = ({
+         image: formData.image || undefined,
+         agentCommissionRate: formData.agentCommissionRate,
+         maxUnits: formData.maxUnits,
+-        billingMode: formData.billingMode
++        billingMode: formData.billingMode,
++        ownerPhone: formData.ownerPhone
+       });
+ 
+       await loadProperties();
+@@ -323,7 +336,8 @@ const Properties: React.FC<PropertyListProps> = ({
+       maxUnits: property.maxUnits,
+       image: property.image || '',
+       companyId: property.companyId,
+-      billingMode: property.billingMode || 'full'
++      billingMode: property.billingMode || 'full',
++      ownerPhone: property.ownerPhone || ''
+     });
+     setImagePreview(property.image || '');
+     setShowEditModal(true);
+@@ -422,13 +436,13 @@ const Properties: React.FC<PropertyListProps> = ({
+         </div>
+ 
+         {/* Property Details */}
+-        <div className="p-6" onClick={() => handleProperty(property.id)}>
++        <div className="p-4 sm:p-6" onClick={() => handleProperty(property.id)}>
+           {/* Stats Row */}
+-          <div className="grid grid-cols-3 gap-4 mb-4">
++          <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
+             <div className="text-center">
+-              <div className="flex items-center justify-center mb-1">
++              <div className="flex flex-wrap items-center justify-center mb-1">
+                 <Users className="w-4 h-4 text-blue-600 dark:text-blue-400 mr-1" />
+-                <span className="text-2xl font-bold text-ink">
++                <span className="text-lg sm:text-2xl font-bold text-ink">
+                   {property.activeTenants}
+                 </span>
+               </div>
+@@ -436,17 +450,17 @@ const Properties: React.FC<PropertyListProps> = ({
+             </div>
+             
+             <div className="text-center border-x border-line-soft">
+-              <div className="flex items-center justify-center mb-1">
+-                <DollarSign className="w-4 h-4 text-green-600 dark:text-green-400 mr-1" />
+-                <span className="text-2xl font-bold text-ink">
+-                  ${property.monthlyRevenue.toLocaleString()}
++              <div className="flex flex-wrap items-center justify-center mb-1">
++                <Banknote className="w-4 h-4 text-green-600 dark:text-green-400 mr-1" />
++                <span className="text-lg sm:text-2xl font-bold text-ink">
++                  <Money value={property.monthlyRevenue} />
+                 </span>
+               </div>
+               <p className="text-xs text-ink-subtle font-medium">Monthly</p>
+             </div>
+             
+             <div className="text-center">
+-              <div className="flex items-center justify-center mb-1">
++              <div className="flex flex-wrap items-center justify-center mb-1">
+                 <TrendingUp className={`w-4 h-4 mr-1 ${occupancyPercentage >= 80 ? 'text-green-600 dark:text-green-400' : occupancyPercentage >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`} />
+                 <span className={`text-2xl font-bold ${occupancyPercentage >= 80 ? 'text-green-600 dark:text-green-400' : occupancyPercentage >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
+                   {occupancyPercentage.toFixed(0)}%
+@@ -479,7 +493,7 @@ const Properties: React.FC<PropertyListProps> = ({
+           {property.agentCommissionRate > 0 && (
+             <div className="inline-flex items-center px-3 py-1 bg-orange-100 dark:bg-orange-500/15 text-orange-800 dark:text-orange-300 text-xs font-medium rounded-full">
+               <TrendingUp className="w-3 h-3 mr-1" />
+-              {property.agentCommissionRate}% Commission (${property.agentIncome.toLocaleString()}/month)
++              {property.agentCommissionRate}% Commission ({formatKES(property.agentIncome)}/month)
+             </div>
+           )}
+         </div>
+@@ -559,8 +573,8 @@ const Properties: React.FC<PropertyListProps> = ({
+               </div>
+               
+               <div className="flex items-center text-ink-muted">
+-                <DollarSign className="w-4 h-4 mr-1 flex-shrink-0" />
+-                <span className="font-medium">${property.monthlyRevenue.toLocaleString()}</span>
++                <Banknote className="w-4 h-4 mr-1 flex-shrink-0" />
++                <span className="font-medium">{formatKES(property.monthlyRevenue)}</span>
+                 <span className="ml-1">monthly</span>
+               </div>
+               
+@@ -812,6 +826,7 @@ const Properties: React.FC<PropertyListProps> = ({
+         handleImageUpload={handleImageUpload}
+         removeImage={removeImage}
+         MAX_FREE_UNITS={MAX_FREE_UNITS}
++        ownerId={selectedProperty?.ownerId}
+       />
+ 
+       {/* Pricing Modal */}
+diff --git a/src/pages/properties/PropertyModal.tsx b/src/pages/properties/PropertyModal.tsx
+index 7315c19..2e69235 100644
+--- a/src/pages/properties/PropertyModal.tsx
++++ b/src/pages/properties/PropertyModal.tsx
+@@ -10,6 +10,7 @@ interface PropertyFormData {
+   image: string;
+   companyId?: number;
+   billingMode: 'rent_only' | 'full';
++  ownerPhone: string;
+ }
+ 
+ interface PropertyModalProps {
+@@ -26,6 +27,8 @@ interface PropertyModalProps {
+   handleImageUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+   removeImage: () => void;
+   MAX_FREE_UNITS: number;
++  /** PYP-NNNN, shown read-only once the property has synced. */
++  ownerId?: string | null;
+ }
+ 
+ const PropertyModal: React.FC<PropertyModalProps> = memo(({
+@@ -41,7 +44,8 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
+   fileInputRef,
+   handleImageUpload,
+   removeImage,
+-  MAX_FREE_UNITS
++  MAX_FREE_UNITS,
++  ownerId
+ }) => {
+   if (!isOpen) return null;
+ 
+@@ -106,6 +110,30 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
+             )}
+           </div>
+ 
++          {/* Owner phone (required) */}
++          <div>
++            <label className="block text-sm font-medium text-ink-soft mb-2">
++              Owner Phone (Safaricom) *
++            </label>
++            <input
++              type="tel"
++              inputMode="tel"
++              value={formData.ownerPhone}
++              onChange={(e) => handleInputChange('ownerPhone', e.target.value)}
++              className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
++                formErrors.ownerPhone ? 'border-red-500' : 'border-line'
++              }`}
++              placeholder="0712 345 678"
++              autoComplete="off"
++            />
++            {formErrors.ownerPhone && (
++              <p className="text-red-500 text-sm mt-1">{formErrors.ownerPhone}</p>
++            )}
++            {ownerId && (
++              <p className="text-ink-subtle text-xs mt-1">Owner ID: <span className="font-semibold text-ink-soft">{ownerId}</span></p>
++            )}
++          </div>
++
+           {/* Address */}
+           <div>
+             <label className="block text-sm font-medium text-ink-soft mb-2">
+diff --git a/src/pages/properties/Sheet.tsx b/src/pages/properties/Sheet.tsx
+index 3695494..e5c891d 100644
+--- a/src/pages/properties/Sheet.tsx
++++ b/src/pages/properties/Sheet.tsx
+@@ -1,4 +1,5 @@
+ import React, { useState, useEffect } from 'react';
++import { formatKES } from '../../utils/FormatUtils';
+ import {
+   X,
+   ChevronLeft,
+@@ -7,7 +8,7 @@ import {
+   Save,
+   Send,
+   Building2,
+-  DollarSign,
++  Banknote,
+   TrendingUp,
+   ClipboardList,
+   AlertCircle,
+@@ -451,10 +452,10 @@ const Sheet: React.FC<SheetProps> = ({
+                 <div className="lg:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-4">
+                   <div className="bg-blue-50 dark:bg-blue-500/10 rounded-xl p-4 text-center">
+                     <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center mx-auto mb-2">
+-                      <DollarSign className="w-5 h-5 text-white" />
++                      <Banknote className="w-5 h-5 text-white" />
+                     </div>
+                     <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
+-                      ${rentRecord.totalRentExpected.toLocaleString()}
++                      {formatKES(rentRecord.totalRentExpected)}
+                     </div>
+                     <div className="text-sm text-ink-muted">Expected</div>
+                   </div>
+@@ -464,7 +465,7 @@ const Sheet: React.FC<SheetProps> = ({
+                       <CheckCircle className="w-5 h-5 text-white" />
+                     </div>
+                     <div className="text-lg font-bold text-green-600 dark:text-green-400">
+-                      ${rentRecord.totalRentCollected.toLocaleString()}
++                      {formatKES(rentRecord.totalRentCollected)}
+                     </div>
+                     <div className="text-sm text-ink-muted">Collected</div>
+                   </div>
+@@ -474,7 +475,7 @@ const Sheet: React.FC<SheetProps> = ({
+                       <AlertCircle className="w-5 h-5 text-white" />
+                     </div>
+                     <div className="text-lg font-bold text-red-600 dark:text-red-400">
+-                      ${rentRecord.totalArrears.toLocaleString()}
++                      {formatKES(rentRecord.totalArrears)}
+                     </div>
+                     <div className="text-sm text-ink-muted">Arrears</div>
+                   </div>
+@@ -524,7 +525,7 @@ const Sheet: React.FC<SheetProps> = ({
+                   <table className="w-full">
+                     <thead className="bg-surface-muted border-b border-line">
+                       <tr>
+-                        <th className="px-4 py-3 text-left text-sm font-medium text-ink-soft">Tenant</th>
++                        <th className="px-4 py-3 text-left text-sm font-medium text-ink-soft max-md:sticky max-md:left-0 max-md:z-[1] max-md:bg-surface-muted">Tenant</th>
+                         <th className="px-4 py-3 text-left text-sm font-medium text-ink-soft">Unit</th>
+                         <th className="px-4 py-3 text-right text-sm font-medium text-ink-soft">Rent</th>
+                         <th className="px-4 py-3 text-right text-sm font-medium text-ink-soft">Water</th>
+@@ -540,41 +541,41 @@ const Sheet: React.FC<SheetProps> = ({
+                     <tbody className="divide-y divide-line-soft">
+                       {rentRecord.entries.map((entry) => (
+                         <tr key={entry.id} className="hover:bg-surface-muted">
+-                          <td className="px-4 py-4">
++                          <td className="px-4 py-4 max-md:px-3 max-md:py-3 max-md:sticky max-md:left-0 max-md:z-[1] max-md:bg-surface max-md:shadow-[2px_0_4px_-2px_rgba(0,0,0,0.18)]">
+                             <div className="flex items-center gap-2">
+                               <User className="w-4 h-4 text-ink-faint" />
+                               <span className="font-medium text-ink">{entry.tenantName}</span>
+                             </div>
+                           </td>
+-                          <td className="px-4 py-4">
++                          <td className="px-4 py-4 max-md:px-3 max-md:py-3">
+                             <div className="flex items-center gap-2">
+                               <Home className="w-4 h-4 text-ink-faint" />
+                               <span className="text-ink">{entry.unitNumber || 'N/A'}</span>
+                             </div>
+                           </td>
+-                          <td className="px-4 py-4 text-right font-mono text-sm">
+-                            ${entry.rentAmount.toLocaleString()}
++                          <td className="px-4 py-4 max-md:px-3 max-md:py-3 whitespace-nowrap text-right font-mono text-sm">
++                            {formatKES(entry.rentAmount)}
+                           </td>
+-                          <td className="px-4 py-4 text-right font-mono text-sm">
+-                            ${entry.waterCharges.toLocaleString()}
++                          <td className="px-4 py-4 max-md:px-3 max-md:py-3 whitespace-nowrap text-right font-mono text-sm">
++                            {formatKES(entry.waterCharges)}
+                           </td>
+-                          <td className="px-4 py-4 text-right font-mono text-sm">
+-                            ${entry.powerCharges.toLocaleString()}
++                          <td className="px-4 py-4 max-md:px-3 max-md:py-3 whitespace-nowrap text-right font-mono text-sm">
++                            {formatKES(entry.powerCharges)}
+                           </td>
+-                          <td className="px-4 py-4 text-right font-mono text-sm">
+-                            ${entry.otherCharges.toLocaleString()}
++                          <td className="px-4 py-4 max-md:px-3 max-md:py-3 whitespace-nowrap text-right font-mono text-sm">
++                            {formatKES(entry.otherCharges)}
+                           </td>
+-                          <td className="px-4 py-4 text-right font-mono text-sm font-semibold">
+-                            ${entry.totalDue.toLocaleString()}
++                          <td className="px-4 py-4 max-md:px-3 max-md:py-3 whitespace-nowrap text-right font-mono text-sm font-semibold">
++                            {formatKES(entry.totalDue)}
+                           </td>
+-                          <td className="px-4 py-4 text-right font-mono text-sm">
+-                            ${entry.amountPaid.toLocaleString()}
++                          <td className="px-4 py-4 max-md:px-3 max-md:py-3 whitespace-nowrap text-right font-mono text-sm">
++                            {formatKES(entry.amountPaid)}
+                           </td>
+-                          <td className={`px-4 py-4 text-right font-mono text-sm font-semibold ${
++                          <td className={`px-4 py-4 max-md:px-3 max-md:py-3 whitespace-nowrap text-right font-mono text-sm font-semibold ${
+                             entry.balance > 0 ? 'text-red-600 dark:text-red-400' : 
+                             entry.balance < 0 ? 'text-purple-600 dark:text-purple-400' : 'text-green-600 dark:text-green-400'
+                           }`}>
+-                            ${Math.abs(entry.balance).toLocaleString()}
++                            {formatKES(Math.abs(entry.balance))}
+                           </td>
+                           <td className="px-4 py-4 text-center">
+                             <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+@@ -602,15 +603,15 @@ const Sheet: React.FC<SheetProps> = ({
+                   <div className="grid grid-cols-3 md:grid-cols-6 gap-4 text-sm">
+                     <div>
+                       <span className="text-ink-faint">Total Expected:</span>
+-                      <div className="font-bold">${rentRecord.totalRentExpected.toLocaleString()}</div>
++                      <div className="font-bold">{formatKES(rentRecord.totalRentExpected)}</div>
+                     </div>
+                     <div>
+                       <span className="text-ink-faint">Total Collected:</span>
+-                      <div className="font-bold text-green-400">${rentRecord.totalRentCollected.toLocaleString()}</div>
++                      <div className="font-bold text-green-400">{formatKES(rentRecord.totalRentCollected)}</div>
+                     </div>
+                     <div>
+                       <span className="text-ink-faint">Total Arrears:</span>
+-                      <div className="font-bold text-red-400">${rentRecord.totalArrears.toLocaleString()}</div>
++                      <div className="font-bold text-red-400">{formatKES(rentRecord.totalArrears)}</div>
+                     </div>
+                     <div>
+                       <span className="text-ink-faint">Collection Rate:</span>
+diff --git a/src/pages/properties/Summaries.tsx b/src/pages/properties/Summaries.tsx
+index 9c22784..40e581c 100644
+--- a/src/pages/properties/Summaries.tsx
++++ b/src/pages/properties/Summaries.tsx
+@@ -1,10 +1,11 @@
+ import React, { useState, useEffect, useRef } from 'react';
++import { formatKES } from '../../utils/FormatUtils';
+ import {
+   X,
+   Calendar,
+   Building2,
+   TrendingUp,
+-  DollarSign,
++  Banknote,
+   Download,
+   RefreshCw,
+   Plus,
+@@ -198,7 +199,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({
+               Amount *
+             </label>
+             <div className="relative">
+-              <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-ink-faint" />
++              <Banknote className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-ink-faint" />
+               <input
+                 type="number"
+                 step="0.01"
+@@ -365,12 +366,7 @@ const SummariesModal: React.FC<SummariesModalProps> = ({
+     alert('PDF download functionality will be implemented soon. Contact us for feature requests.');
+   };
+ 
+-  const formatCurrency = (amount: number) => {
+-    return new Intl.NumberFormat('en-US', {
+-      style: 'currency',
+-      currency: 'USD'
+-    }).format(amount);
+-  };
++  const formatCurrency = (amount: number) => formatKES(amount);
+ 
+   const formatPercentage = (value: number) => {
+     return `${value.toFixed(1)}%`;
+@@ -494,7 +490,7 @@ const SummariesModal: React.FC<SummariesModalProps> = ({
+                   <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                     <div className="bg-gradient-to-br from-green-50 dark:from-green-500/10 to-emerald-50 dark:to-emerald-500/10 p-6 rounded-xl border border-green-100 dark:border-green-500/25">
+                       <div className="flex items-center justify-between mb-3">
+-                        <DollarSign className="w-10 h-10 text-green-600 dark:text-green-400" />
++                        <Banknote className="w-10 h-10 text-green-600 dark:text-green-400" />
+                         <span className="text-xs text-green-600 dark:text-green-400 font-semibold">COMMISSION REVENUE</span>
+                       </div>
+                       <p className="text-3xl font-bold text-green-700 dark:text-green-300 mb-1">
+@@ -549,7 +545,7 @@ const SummariesModal: React.FC<SummariesModalProps> = ({
+                   <div className="bg-surface rounded-xl border border-line shadow-sm">
+                     <div className="p-4 border-b border-line">
+                       <h3 className="font-semibold text-ink flex items-center">
+-                        <DollarSign className="w-5 h-5 mr-2 text-green-600 dark:text-green-400" />
++                        <Banknote className="w-5 h-5 mr-2 text-green-600 dark:text-green-400" />
+                         Monthly Recurring Revenue (Commission)
+                       </h3>
+                     </div>
+@@ -911,7 +907,7 @@ const SummariesModal: React.FC<SummariesModalProps> = ({
+ 
+                     <div className="bg-surface rounded-xl border border-line shadow-sm p-6">
+                       <div className="flex items-center justify-between mb-4">
+-                        <DollarSign className="w-8 h-8 text-purple-600 dark:text-purple-400" />
++                        <Banknote className="w-8 h-8 text-purple-600 dark:text-purple-400" />
+                         <Target className="w-5 h-5 text-ink-faint" />
+                       </div>
+                       <div className="text-3xl font-bold text-ink mb-2">
+diff --git a/src/pages/properties/TranscriptEditor.tsx b/src/pages/properties/TranscriptEditor.tsx
+index 6be841f..d8e0279 100644
+--- a/src/pages/properties/TranscriptEditor.tsx
++++ b/src/pages/properties/TranscriptEditor.tsx
+@@ -10,7 +10,7 @@ import {
+   Phone,
+   Building2,
+   Calendar,
+-  DollarSign,
++  Banknote,
+   AlertCircle,
+   CheckCircle,
+   Edit3,
+@@ -679,7 +679,7 @@ const handleSave = async () => {
+           <div className="bg-surface border border-line rounded-xl p-6">
+             <div className="flex items-center justify-between mb-6">
+               <h3 className="text-lg font-bold text-ink flex items-center gap-2">
+-                <DollarSign className="w-5 h-5" />
++                <Banknote className="w-5 h-5" />
+                 Custom Items & Deductions
+               </h3>
+               <button
+@@ -693,7 +693,7 @@ const handleSave = async () => {
+ 
+             {customItems.length === 0 ? (
+               <div className="text-center py-12 text-ink-subtle">
+-                <DollarSign className="w-16 h-16 text-ink-faint mx-auto mb-4" />
++                <Banknote className="w-16 h-16 text-ink-faint mx-auto mb-4" />
+                 <p className="text-lg font-medium mb-2">No Custom Items</p>
+                 <p className="text-sm">Add deductions, expenses, or other custom items to the transcript.</p>
+               </div>
+diff --git a/src/pages/tenants/AddTenant.tsx b/src/pages/tenants/AddTenant.tsx
+index 94c5124..f8a6090 100644
+--- a/src/pages/tenants/AddTenant.tsx
++++ b/src/pages/tenants/AddTenant.tsx
+@@ -1,5 +1,5 @@
+ import React, { useState, useEffect } from 'react';
+-import { X, User, Phone, Mail, MapPin, DollarSign, Calendar, Save, AlertCircle } from 'lucide-react';
++import { X, User, Phone, Mail, MapPin, Banknote, Calendar, Save, AlertCircle } from 'lucide-react';
+ import { database } from '../../services/database/Database';
+ import type { TenantInput, TenantWithInvoices } from '../../services/database/Database';
+ import { checkSafaricomPhone } from '../../utils/safaricom';
+@@ -349,7 +349,7 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
+                     Monthly Rent <span className="text-red-500">*</span>
+                   </label>
+                   <div className="relative">
+-                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
++                    <Banknote className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
+                     <input
+                       type="number"
+                       step="0.01"
+@@ -379,7 +379,7 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
+                 <div>
+                   <label className="block text-sm font-medium text-ink-soft mb-2">Standing Fees</label>
+                   <div className="relative">
+-                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
++                    <Banknote className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
+                     <input
+                       type="number"
+                       step="0.01"
+@@ -401,7 +401,7 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
+                 <div>
+                   <label className="block text-sm font-medium text-ink-soft mb-2">Security Deposit</label>
+                   <div className="relative">
+-                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
++                    <Banknote className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
+                     <input
+                       type="number"
+                       step="0.01"
+diff --git a/src/pages/tenants/TenantsList.tsx b/src/pages/tenants/TenantsList.tsx
+index 82317bb..5ae8c11 100644
+--- a/src/pages/tenants/TenantsList.tsx
++++ b/src/pages/tenants/TenantsList.tsx
+@@ -12,7 +12,7 @@ import {
+   User, 
+   AlertCircle,
+   Calendar,
+-  DollarSign,
++  Banknote,
+   TrendingUp,
+   TrendingDown,
+   Shield,
+@@ -608,7 +608,7 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
+                         
+                         <div className="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm text-ink-muted flex-wrap">
+                           <span className="flex items-center gap-1 whitespace-nowrap">
+-                            <DollarSign className="h-3 w-3" />
++                            <Banknote className="h-3 w-3" />
+                             {formatCurrency(tenant.rentAmount)}/month
+                           </span>
+                           {tenant.totalArrears > 0 && (
+diff --git a/src/services/database/Database.tsx b/src/services/database/Database.tsx
+index b786414..2ef6d58 100644
+--- a/src/services/database/Database.tsx
++++ b/src/services/database/Database.tsx
+@@ -4,6 +4,7 @@ import { type capSQLiteChanges } from '@capacitor-community/sqlite';
+ import { db, USER_LIMITS, type UserTier, type UserType } from './FirebaseSync';
+ import { deleteDoc, doc } from 'firebase/firestore';
+ import { tables } from './Tables';
++import { checkSafaricomPhone } from '../../utils/safaricom';
+ import { argon2id, argon2Verify } from 'hash-wasm';
+ import { 
+   UniversalConnectionManager as SQLiteConnectionManager,
+@@ -41,6 +42,10 @@ export interface Property {
+   maxUnits: number;
+   billingMode: 'rent_only' | 'full'; // 'rent_only': invoices are rent-only, no water/power metering. 'full': itemized billing (default).
+   isRestricted?: boolean; // Added for access control
++  /** PYP-NNNN: unique owner id, allocated server-side the first time the property reaches Firestore. */
++  ownerId?: string | null;
++  /** The property owner's Safaricom number, stored as +2547XXXXXXXX. */
++  ownerPhone?: string | null;
+   createdAt: string;
+   updatedAt: string;
+ }
+@@ -136,6 +141,8 @@ export interface PropertyInput {
+   maxUnits?: number;
+   billingMode?: 'rent_only' | 'full';
+   isRestricted?: boolean; // Added for access control
++  /** Owner's Safaricom number. REQUIRED when creating a property; validated and stored as +2547XXXXXXXX. */
++  ownerPhone?: string;
+ }
+ 
+ export interface UnitInput {
+@@ -155,6 +162,8 @@ export interface PropertyWithUnits {
+   agentCommissionRate: number;
+   maxUnits: number;
+   billingMode: 'rent_only' | 'full';
++  ownerId?: string | null;
++  ownerPhone?: string | null;
+   createdAt: string;
+   updatedAt: string;
+   units: Unit[];
+@@ -270,6 +279,10 @@ export interface DashboardData {
+   paidInvoices: number;
+   unpaidInvoices: number;
+   occupancyRate: number;
++  /** Total unit capacity (sum of max_units) across the properties in scope. */
++  totalUnits: number;
++  /** Units currently occupied: distinct active, unrestricted tenants across the properties in scope. */
++  occupiedUnits: number;
+ }
+ 
+ export interface MonthlyStats {
+@@ -1392,77 +1405,67 @@ async getInvoices(filters: InvoiceFilters = {}): Promise<InvoiceWithDetails[]> {
+ 
+ async getDashboardData(userId: number, propertyId?: number, month?: string): Promise<DashboardData> {
+   try {
+-    
+-    // Build the base query
+-    let query = `
+-      SELECT 
+-        COUNT(DISTINCT p.id) as total_properties,
+-        COUNT(DISTINCT CASE WHEN t.is_restricted = 0 THEN t.id END) as total_tenants,
+-        SUM(CASE WHEN (i.is_paid = 1 OR i.amount_paid > 0) AND t.is_restricted = 0 THEN i.total_amount ELSE 0 END) as monthly_revenue,
+-        SUM(CASE WHEN t.is_restricted = 0 THEN i.arrears ELSE 0 END) as total_arrears,
+-        COUNT(CASE WHEN i.is_paid = 1 AND t.is_restricted = 0 THEN 1 END) as paid_invoices,
+-        COUNT(CASE WHEN t.is_restricted = 0 THEN 1 END) as unpaid_invoices,
+-        COUNT(CASE WHEN t.is_active = 1 AND t.is_restricted = 0 THEN 1 END) as active_tenants,
+-        SUM(CASE WHEN p.is_restricted = 0 THEN p.max_units ELSE 0 END) as total_max_units
+-      FROM properties p
+-      LEFT JOIN tenants t ON p.id = t.property_id
+-      LEFT JOIN invoices i ON t.id = i.tenant_id`;
+-
+-    // Add month filter to JOIN condition if specifiedi.is_paid = 0 AND 
+-    if (month) {
+-      query = query.replace(
+-        'LEFT JOIN invoices i ON t.id = i.tenant_id',
+-        'LEFT JOIN invoices i ON t.id = i.tenant_id AND i.billing_month = ?'
+-      );
+-    }
+-
+-    // Add WHERE clause
+-    query += ` WHERE p.user_id = ? AND p.is_restricted = 0`;
+-
+-    // Add property filter if specified
+-    if (propertyId) {
+-      //const propertyData = await this.getPropertyById(propertyId);
+-      query += ` AND p.id = ?`;
+-    }
+-
+-    // Build parameters array in correct order
+-    const params: (number | string)[] = [];
+-    
+-    // First add month parameter if it's in the JOIN
+-    if (month) {
+-      params.push(month);
+-    }
+-    
+-    // Then add userId (always present)
+-    params.push(userId);
+-    
+-    // Finally add propertyId if specified
+-    if (propertyId) {
+-      params.push(propertyId);
+-    }
+-
+-    const result = await this.db!.query(query, params);
+-    const row = result.values?.[0] || {};
++    // Three independent aggregates. They used to be one query with LEFT JOINs from properties -> tenants -> invoices, which
++    // multiplied rows: every tenant (even one with no invoice) was counted as an "unpaid invoice", and max_units /
++    // active-tenant totals were summed once per joined row instead of once per property / tenant.
++    const scope = `p.user_id = ? AND p.is_restricted = 0${propertyId ? ' AND p.id = ?' : ''}`;
++    const scopeParams: (number | string)[] = propertyId ? [userId, propertyId] : [userId];
++
++    // 1. Properties and unit capacity (one row per property).
++    const propResult = await this.db!.query(
++      `SELECT COUNT(*) AS total_properties, COALESCE(SUM(p.max_units), 0) AS total_units
++       FROM properties p WHERE ${scope}`,
++      scopeParams
++    );
++    const propRow = propResult.values?.[0] || {};
++
++    // 2. Tenants (one row per tenant).
++    const tenantResult = await this.db!.query(
++      `SELECT COUNT(DISTINCT t.id) AS total_tenants,
++              COUNT(DISTINCT CASE WHEN t.is_active = 1 THEN t.id END) AS occupied_units
++       FROM tenants t
++       JOIN properties p ON p.id = t.property_id
++       WHERE ${scope} AND t.is_restricted = 0`,
++      scopeParams
++    );
++    const tenantRow = tenantResult.values?.[0] || {};
++
++    // 3. Invoices: only rows that really exist are counted, so a tenant with no invoice adds nothing.
++    //    "Unpaid" is every invoice that is not fully paid (partial payments stay due, as in invoiceStatus()).
++    const invoiceResult = await this.db!.query(
++      `SELECT
++         SUM(CASE WHEN i.is_paid = 1 OR i.amount_paid > 0 THEN i.total_amount ELSE 0 END) AS monthly_revenue,
++         SUM(i.arrears) AS total_arrears,
++         COUNT(CASE WHEN i.is_paid = 1 THEN 1 END) AS paid_invoices,
++         COUNT(CASE WHEN i.is_paid = 0 THEN 1 END) AS unpaid_invoices
++       FROM invoices i
++       JOIN tenants t ON t.id = i.tenant_id
++       JOIN properties p ON p.id = t.property_id
++       WHERE ${scope} AND t.is_restricted = 0${month ? ' AND i.billing_month = ?' : ''}`,
++      month ? [...scopeParams, month] : scopeParams
++    );
++    const invRow = invoiceResult.values?.[0] || {};
+ 
+-    // Calculate net monthly revenue (revenue minus arrears)
+-    const grossRevenue = row.monthly_revenue || 0;
+-    const totalArrears = row.total_arrears || 0;
++    // Net monthly revenue (revenue minus arrears)
++    const grossRevenue = invRow.monthly_revenue || 0;
++    const totalArrears = invRow.total_arrears || 0;
+     const netMonthlyRevenue = Math.max(0, grossRevenue - totalArrears);
+ 
+-    // Calculate occupancy rate based on max_units
+-    const activeTenants = row.active_tenants || 0;
+-    const totalMaxUnits = row.total_max_units || 0;
+-    //const occupancyRate = propertyData.maxUnits > 0 ? (occupiedUnits / propertyData.maxUnits) * 100 : 0;
+-    const occupancyRate = totalMaxUnits > 0 ? (activeTenants / totalMaxUnits) * 100 : 0;
++    // Occupancy is measured in UNITS: occupied units out of the unit capacity of the properties in scope.
++    const totalUnits = propRow.total_units || 0;
++    const occupiedUnits = tenantRow.occupied_units || 0;
++    const occupancyRate = totalUnits > 0 ? Math.min(100, (occupiedUnits / totalUnits) * 100) : 0;
+ 
+     return {
+-      totalProperties: row.total_properties || 0,
+-      totalTenants: row.total_tenants || 0,
+-      monthlyRevenue: netMonthlyRevenue, // Now returns net revenue (after deducting arrears)
++      totalProperties: propRow.total_properties || 0,
++      totalTenants: tenantRow.total_tenants || 0,
++      monthlyRevenue: netMonthlyRevenue, // net of arrears
+       totalArrears: totalArrears,
+-      paidInvoices: row.paid_invoices || 0,
+-      unpaidInvoices: row.unpaid_invoices || 0,
+-      occupancyRate: occupancyRate,// Round to 2 decimal places
++      paidInvoices: invRow.paid_invoices || 0,
++      unpaidInvoices: invRow.unpaid_invoices || 0,
++      occupancyRate,
++      totalUnits,
++      occupiedUnits,
+     };
+   } catch (error) {
+     console.error('Error getting dashboard data:', error);
+@@ -1473,7 +1476,9 @@ async getDashboardData(userId: number, propertyId?: number, month?: string): Pro
+       totalArrears: 0,
+       paidInvoices: 0,
+       unpaidInvoices: 0,
+-      occupancyRate: 0
++      occupancyRate: 0,
++      totalUnits: 0,
++      occupiedUnits: 0,
+     };
+   }
+ }
+@@ -1849,6 +1854,28 @@ async updateInvoice(id: number, invoice: Partial<InvoiceInput>): Promise<void> {
+   }
+ 
+ // 11. FIX: Secure update operations with validation
++/**
++ * Store the owner id allocated by the server. Never overwrites an id that is already set, and does not touch updated_at
++ * (an id assignment must not make the local copy look newer than the cloud copy).
++ */
++async setPropertyOwnerId(id: number, ownerId: string): Promise<void> {
++  if (!/^PYP-\d{4,}$/.test(ownerId)) throw new Error(`Invalid ownerId: ${ownerId}`);
++  await this.db!.run(
++    `UPDATE properties SET owner_id = ? WHERE id = ? AND (owner_id IS NULL OR owner_id = '')`,
++    [ownerId, id]
++  );
++}
++
++/** Apply owner fields that arrived from the cloud (sync only; the cloud copy was validated where it was written). */
++async applyRemoteOwner(id: number, remote: { ownerId?: unknown; ownerPhone?: unknown }): Promise<void> {
++  if (typeof remote.ownerId === 'string' && /^PYP-\d{4,}$/.test(remote.ownerId)) {
++    await this.setPropertyOwnerId(id, remote.ownerId);
++  }
++  if (typeof remote.ownerPhone === 'string' && remote.ownerPhone.trim()) {
++    await this.db!.run(`UPDATE properties SET owner_phone = ? WHERE id = ?`, [remote.ownerPhone.trim(), id]);
++  }
++}
++
+ async updateProperty(id: number, property: Partial<PropertyInput>): Promise<void> {
+   // CRITICAL: Validate property access before update
+   const existingProperty = await this.getPropertyById(id);
+@@ -1891,6 +1918,14 @@ async updateProperty(id: number, property: Partial<PropertyInput>): Promise<void
+     fields.push('billing_mode = ?');
+     values.push(property.billingMode === 'rent_only' ? 'rent_only' : 'full');
+   }
++  if (property.ownerPhone !== undefined) {
++    const ownerCheck = checkSafaricomPhone(property.ownerPhone);
++    if (!ownerCheck.ok) {
++      throw new Error(`Owner phone: ${ownerCheck.message}`);
++    }
++    fields.push('owner_phone = ?');
++    values.push(ownerCheck.e164);
++  }
+   
+   fields.push('updated_at = CURRENT_TIMESTAMP');
+   values.push(id);
+@@ -2183,11 +2218,15 @@ async checkUserLimits(userId: number): Promise<{
+     if (!canCreate.allowed) {
+       throw new Error(canCreate.reason);
+     }
++    const ownerCheck = checkSafaricomPhone(property.ownerPhone);
++    if (!ownerCheck.ok) {
++      throw new Error(`Owner phone: ${ownerCheck.message}`);
++    }
+     const newPropertyId = await this.generatePropertyId();
+ 
+     const query = `
+-      INSERT INTO properties (id, user_id, company_id, name, address, description, image, agent_commission_rate, max_units, billing_mode)
+-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
++      INSERT INTO properties (id, user_id, company_id, name, address, description, image, agent_commission_rate, max_units, billing_mode, owner_phone)
++      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     `;
+     
+     const result = await this.db!.run(query, [
+@@ -2200,7 +2239,8 @@ async checkUserLimits(userId: number): Promise<{
+       property.image || '',
+       property.agentCommissionRate || 0,
+       property.maxUnits || 1,
+-      property.billingMode === 'rent_only' ? 'rent_only' : 'full'
++      property.billingMode === 'rent_only' ? 'rent_only' : 'full',
++      ownerCheck.e164
+     ]);
+ 
+     const createdProperty = await this.getPropertyById(result.changes!.lastId!);
+@@ -2614,6 +2654,8 @@ async refreshCurrentUser(id: number): Promise<User | null> {
+       maxUnits: row.max_units || 1,
+       billingMode: row.billing_mode === 'rent_only' ? 'rent_only' : 'full',
+       isRestricted: Boolean(row.is_restricted),
++      ownerId: row.owner_id || null,
++      ownerPhone: row.owner_phone || null,
+       createdAt: row.created_at,
+       updatedAt: row.updated_at
+     };
+diff --git a/src/services/database/FirebaseSync.tsx b/src/services/database/FirebaseSync.tsx
+index 762d6e2..3bee385 100644
+--- a/src/services/database/FirebaseSync.tsx
++++ b/src/services/database/FirebaseSync.tsx
+@@ -28,7 +28,7 @@ import { database } from '../database/Database';
+ import { generateInvoicePDF } from '../pdf/PDFService';
+ import type { User, Property, Tenant } from '../database/Database';
+ import { integrateWithFirebaseSync } from '../screening/TenantScreeningService';
+-import { getFunctions } from 'firebase/functions';
++import { getFunctions, httpsCallable } from 'firebase/functions';
+ 
+ // Firebase config
+ const firebaseConfig = {
+@@ -681,9 +681,9 @@ private async upsertProperty(userId: number, data: any): Promise<boolean> {
+           INSERT INTO properties (
+             id, user_id, company_id, name, address, description, image,
+             agent_commission_rate, max_units, billing_mode, is_restricted,
+-            created_at, updated_at
++            owner_id, owner_phone, created_at, updated_at
+           )
+-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
++          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+         `, [
+           data.localId,  // Use exact ID from Firebase
+           data.userId || userId,
+@@ -695,7 +695,9 @@ private async upsertProperty(userId: number, data: any): Promise<boolean> {
+           data.agentCommissionRate || 0,
+           data.maxUnits || 50,
+           data.billingMode === 'rent_only' ? 'rent_only' : 'full',
+-          restrictedFlag
++          restrictedFlag,
++          typeof data.ownerId === 'string' && /^PYP-\d{4,}$/.test(data.ownerId) ? data.ownerId : null,
++          typeof data.ownerPhone === 'string' && data.ownerPhone.trim() ? data.ownerPhone.trim() : null
+         ]);
+         
+         console.log(`✅ Created property ${data.localId} for user ${userId}`);
+@@ -713,6 +715,8 @@ private async upsertProperty(userId: number, data: any): Promise<boolean> {
+       
+       console.log(`✅ Updated property ${data.localId}`);
+     }
++    // The owner id is assigned once and never changes; the owner phone follows the cloud copy.
++    if (local) await database.applyRemoteOwner(data.localId, { ownerId: data.ownerId, ownerPhone: data.ownerPhone });
+     return true;
+   } catch (error) {
+     console.error(`❌ Upsert property ${data.localId} failed:`, error);
+@@ -1063,6 +1067,31 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
+     }, `User ${user.id}`, 'UPDATE');
+   }
+ 
++  /**
++   * The property's PYP-NNNN owner id. Reuses the local or cloud id when there is one; otherwise asks the server to allocate
++   * the next number (atomic counter, idempotent per property). Returns null when offline: the property still uploads and
++   * gets its id on a later sync.
++   */
++  private async ensureOwnerId(userId: number, property: Property, remote?: Record<string, unknown>): Promise<string | null> {
++    const valid = (v: unknown): v is string => typeof v === 'string' && /^PYP-\d{4,}$/.test(v);
++    if (valid(property.ownerId)) return property.ownerId;
++    if (valid(remote?.ownerId)) {
++      await database.setPropertyOwnerId(property.id, remote.ownerId);
++      return remote.ownerId;
++    }
++    try {
++      const allocate = httpsCallable<{ userId: string; propertyId: number }, { ownerId: string }>(functions, 'allocatePropertyOwnerId');
++      const res = await allocate({ userId: String(userId), propertyId: property.id });
++      if (valid(res.data?.ownerId)) {
++        await database.setPropertyOwnerId(property.id, res.data.ownerId);
++        return res.data.ownerId;
++      }
++    } catch (error) {
++      console.warn(`Owner id for property ${property.id} will be allocated on a later sync:`, error);
++    }
++    return null;
++  }
++
+   private async uploadProperties(userId: number, batchManager: SafeBatchManager): Promise<void> {
+     const properties = await this.getFilteredPropertiesForSync(userId);
+     
+@@ -1075,10 +1104,17 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
+         continue;
+       }
+       
++      const ownerId = await this.ensureOwnerId(userId, property, existing.exists() ? existing.data() : undefined);
++      // Never write a null owner field over one that already exists in the cloud.
++      const { ownerId: _localOwnerId, ownerPhone, ...propertyFields } = property;
++      void _localOwnerId;
++
+       batchManager.addOperation((batch) => {
+         batch.set(ref, {
+           ...(existing.exists() ? existing.data() : {}),
+-          ...property,
++          ...propertyFields,
++          ...(ownerId ? { ownerId } : {}),
++          ...(ownerPhone ? { ownerPhone } : {}),
+           userId,
+           localId: property.id,
+           lastSyncTime: serverTimestamp(),
+@@ -1096,6 +1132,7 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
+           batch.set(unitRef, {
+             ...(existingUnit.exists() ? existingUnit.data() : {}),
+             ...unit,
++            ...(ownerId ? { ownerId } : {}),
+             userId,
+             propertyId: property.id,
+             localId: unit.id,
+@@ -1127,6 +1164,7 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
+           batch.set(ref, {
+             ...(existing.exists() ? existing.data() : {}),
+             ...tenant,
++            ...(property.ownerId ? { ownerId: property.ownerId } : {}),
+             userId,
+             propertyId: tenant.propertyId,
+             localId: tenant.id,
+@@ -1171,6 +1209,7 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
+             batch.set(ref, {
+               ...(existing.exists() ? existing.data() : {}),
+               ...invoice,
++              ...(property.ownerId ? { ownerId: property.ownerId } : {}),
+               userId,
+               tenantId: invoice.tenantId,
+               propertyId: property.id,
+@@ -1193,6 +1232,7 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
+               batch.set(paymentRef, {
+                 ...(existingPayment.exists() ? existingPayment.data() : {}),
+                 ...payment,
++                ...(property.ownerId ? { ownerId: property.ownerId } : {}),
+                 userId,
+                 invoiceId: invoice.id,
+                 tenantId: invoice.tenantId,
+diff --git a/src/services/database/Tables.tsx b/src/services/database/Tables.tsx
+index 8801714..72f6307 100644
+--- a/src/services/database/Tables.tsx
++++ b/src/services/database/Tables.tsx
+@@ -244,6 +244,8 @@ export class Tables {
+         max_units INTEGER DEFAULT 1,
+         billing_mode TEXT DEFAULT 'full' CHECK (billing_mode IN ('rent_only', 'full')),
+         is_restricted INTEGER DEFAULT 0,
++        owner_id TEXT,
++        owner_phone TEXT,
+         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+@@ -730,6 +732,9 @@ export class Tables {
+         { query: `ALTER TABLE users ADD COLUMN restricted_access INTEGER DEFAULT 0`, column: 'restricted_access' },
+         { query: `ALTER TABLE properties ADD COLUMN is_restricted INTEGER DEFAULT 0`, column: 'is_restricted' },
+         { query: `ALTER TABLE properties ADD COLUMN billing_mode TEXT DEFAULT 'full'`, column: 'billing_mode' },
++        // Owner identity: PYP-NNNN id (allocated server-side when the property first syncs) and the owner's Safaricom number
++        { query: `ALTER TABLE properties ADD COLUMN owner_id TEXT`, column: 'owner_id' },
++        { query: `ALTER TABLE properties ADD COLUMN owner_phone TEXT`, column: 'owner_phone' },
+         { query: `ALTER TABLE tenants ADD COLUMN is_restricted INTEGER DEFAULT 0`, column: 'is_restricted' },
+         // NEW: Add archival flags
+         { query: `ALTER TABLE monthly_transcripts ADD COLUMN is_archived INTEGER DEFAULT 0`, column: 'is_archived' },
+diff --git a/src/utils/FormatUtils.tsx b/src/utils/FormatUtils.tsx
+index 1519be5..9c24b39 100644
+--- a/src/utils/FormatUtils.tsx
++++ b/src/utils/FormatUtils.tsx
+@@ -47,6 +47,17 @@ export function formatCurrency(
+   return formatted;
+ }
+ 
++/**
++ * Kenyan Shillings for dashboards and tables: "KES 12,500" (cents only when present).
++ * Locale-independent on purpose — some ICU builds render the en-KE currency symbol as "Ksh".
++ */
++export function formatKES(amount: number | null | undefined): string {
++  const n = Number(amount);
++  if (!Number.isFinite(n)) return 'KES 0';
++  const sign = n < 0 ? '-' : '';
++  return `${sign}KES ${Math.abs(n).toLocaleString('en-KE', { maximumFractionDigits: 2 })}`;
++}
++
+ /**
+  * Formats currency for input fields (no symbol)
+  */
+diff --git a/whatsapp/src/index.ts b/whatsapp/src/index.ts
+index aa13b3e..ce54825 100644
+--- a/whatsapp/src/index.ts
++++ b/whatsapp/src/index.ts
+@@ -8,6 +8,8 @@ import * as admin from 'firebase-admin';
+ import axios from 'axios';
+ import crypto from 'crypto';
+ import { checkSafaricomPhone, toMsisdn } from './phone/safaricom';
++import { renewedExpiry } from './subscriptionExpiry';
++import { formatOwnerId, OWNER_ID_PATTERN } from './ownerId';
+ import { defineSecret } from 'firebase-functions/params';
+ import {
+   attachShortLink, buildShortUrl, isAllowedRedirectTarget, newShortCode, parseShortCode,
+@@ -1391,6 +1393,58 @@ async function lookupPlanPriceMinor(planId: string, billingCycle: string): Promi
+   return minor;
+ }
+ 
++/**
++ * Allocates the PYP-NNNN owner id for a property. Called by PMS (landlord) and CYBER (operator) when a property first
++ * reaches Firestore. A single transactional counter makes every id unique; the per-property index document makes the call
++ * idempotent, so a retry or a second device gets the same id back instead of burning a new number.
++ */
++export const allocatePropertyOwnerId = onCall({
++  timeoutSeconds: 30,
++  memory: "256MiB",
++  maxInstances: 10,
++  region: "africa-south1",
++  cors: true,
++}, async (request: CallableRequest<{ userId?: string | number; propertyId?: string | number }>) => {
++  if (!request.auth) throw new HttpsError("unauthenticated", "Please sign in");
++  const userId = String(request.data?.userId ?? "").trim();
++  const propertyId = String(request.data?.propertyId ?? "").trim();
++  if (!/^\d+$/.test(userId) || !/^[\w-]+$/.test(propertyId)) {
++    throw new HttpsError("invalid-argument", "userId and propertyId are required");
++  }
++
++  // The caller must be the landlord, or the CYBER operator who manages this landlord (same rule as firestore.rules).
++  const uid = request.auth.uid;
++  const ownerSnap = await db.collection("users").doc(userId).get();
++  const owner = ownerSnap.data();
++  let allowed = uid === userId
++    || (!!owner && owner.firebaseAuthUid === uid)
++    || (request.auth.token.role === "landlord" && request.auth.token.agentId === userId);
++  if (!allowed && owner?.cyberId) {
++    const agentSnap = await db.collection("agents").doc(uid).get();
++    allowed = agentSnap.exists && agentSnap.data()?.pId === owner.cyberId;
++  }
++  if (!allowed) throw new HttpsError("permission-denied", "You cannot manage this account");
++
++  const counterRef = db.collection("counters").doc("propertyOwnerId");
++  const indexRef = db.collection("propertyOwnerIds").doc(`${userId}_${propertyId}`);
++
++  const ownerId = await db.runTransaction(async (tx) => {
++    const existing = await tx.get(indexRef);
++    const known = existing.data()?.ownerId;
++    if (typeof known === "string" && OWNER_ID_PATTERN.test(known)) return known;
++
++    const counter = await tx.get(counterRef);
++    const next = Number(counter.data()?.last ?? 0) + 1;
++    const id = formatOwnerId(next);
++    tx.set(counterRef, { last: next }, { merge: true });
++    tx.set(indexRef, { ownerId: id, userId, propertyId, createdAt: admin.firestore.FieldValue.serverTimestamp() });
++    tx.set(db.collection("propertyOwnerIds").doc(id), { ownerId: id, userId, propertyId, createdAt: admin.firestore.FieldValue.serverTimestamp() });
++    return id;
++  });
++
++  return { ownerId };
++});
++
+ export const processWebSubscription = onCall({
+   timeoutSeconds: 60,
+   memory: "512MiB",
+@@ -1662,27 +1716,37 @@ export const paystackWebhook = onCall({
+       const planName = subscriptionData?.planName || PURCHASABLE_PLANS[storedPlanId];
+       const daysToAdd = DAYS_BY_CYCLE[storedCycle as 'monthly' | 'annual'] ?? (Number(subscriptionData?.daysToAdd) || 30);
+ 
+-      const expiryDate = new Date();
+-      expiryDate.setDate(expiryDate.getDate() + daysToAdd);
+-
+-      await subscriptionRef.update({
+-        status: "success",
+-        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+-        expiryDate: admin.firestore.Timestamp.fromDate(expiryDate),
+-        paystackResponse: data,
+-      });
+-
++      // Activate in one transaction so a retried webhook can never grant the days twice, and so the new expiry is
++      // computed from the user's CURRENT expiry: paying before the plan ends adds to the days left instead of resetting them.
+       const userRef = db.collection("users").doc(userId);
+-      await userRef.set({
+-        type: "paid",
+-        tier: planId,
+-        storage: true,
+-        subscriptionExpiry: admin.firestore.Timestamp.fromDate(expiryDate),
+-        lastPaymentDate: admin.firestore.FieldValue.serverTimestamp(),
+-        lastPaymentReference: reference,
+-        lastPaymentAmount: data.amount / 100,
+-        planName: planName
+-      }, { merge: true });
++      const expiryDate = await db.runTransaction(async (tx) => {
++        const [subSnap, userSnap] = await Promise.all([tx.get(subscriptionRef), tx.get(userRef)]);
++        if (subSnap.data()?.status === "success") return null; // already activated by a concurrent delivery
++        const newExpiry = renewedExpiry(userSnap.data(), daysToAdd);
++
++        tx.update(subscriptionRef, {
++          status: "success",
++          completedAt: admin.firestore.FieldValue.serverTimestamp(),
++          expiryDate: admin.firestore.Timestamp.fromDate(newExpiry),
++          paystackResponse: data,
++        });
++        tx.set(userRef, {
++          type: "paid",
++          tier: planId,
++          storage: true,
++          isTrial: false, // paying ends any trial
++          subscriptionExpiry: admin.firestore.Timestamp.fromDate(newExpiry),
++          lastPaymentDate: admin.firestore.FieldValue.serverTimestamp(),
++          lastPaymentReference: reference,
++          lastPaymentAmount: data.amount / 100,
++          planName: planName
++        }, { merge: true });
++        return newExpiry;
++      });
++      if (!expiryDate) {
++        console.log(`Subscription ${reference} already activated — ignoring repeat webhook`);
++        return { received: true, processed: false, eventType: event.event, reason: "already_processed" };
++      }
+ 
+       console.log(`Successfully activated subscription for user ${userId}, expires: ${expiryDate.toISOString()}`);
+     }
+diff --git a/whatsapp/src/ownerId.spec.ts b/whatsapp/src/ownerId.spec.ts
+new file mode 100644
+index 0000000..1e71c3f
+--- /dev/null
++++ b/whatsapp/src/ownerId.spec.ts
+@@ -0,0 +1,13 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { formatOwnerId, OWNER_ID_PATTERN } from "./ownerId";
++
++test("owner ids pad to four digits and keep scaling", () => {
++  assert.equal(formatOwnerId(1), "PYP-0001");
++  assert.equal(formatOwnerId(42), "PYP-0042");
++  assert.equal(formatOwnerId(9999), "PYP-9999");
++  assert.equal(formatOwnerId(10000), "PYP-10000");
++  assert.ok(OWNER_ID_PATTERN.test("PYP-0001") && OWNER_ID_PATTERN.test("PYP-123456"));
++  assert.ok(!OWNER_ID_PATTERN.test("PYP-001") && !OWNER_ID_PATTERN.test("COG-0001"));
++  assert.throws(() => formatOwnerId(0));
++});
+diff --git a/whatsapp/src/ownerId.ts b/whatsapp/src/ownerId.ts
+new file mode 100644
+index 0000000..b153db3
+--- /dev/null
++++ b/whatsapp/src/ownerId.ts
+@@ -0,0 +1,7 @@
++/** Property owner ids: PYP-NNNN, a 4-digit scaling number that simply grows to 5 digits after PYP-9999. */
++export const OWNER_ID_PATTERN = /^PYP-\d{4,}$/;
++
++export function formatOwnerId(n: number): string {
++  if (!Number.isSafeInteger(n) || n < 1) throw new Error(`Invalid owner counter: ${n}`);
++  return `PYP-${String(n).padStart(4, "0")}`;
++}
+diff --git a/whatsapp/src/subscriptionExpiry.spec.ts b/whatsapp/src/subscriptionExpiry.spec.ts
+new file mode 100644
+index 0000000..012e725
+--- /dev/null
++++ b/whatsapp/src/subscriptionExpiry.spec.ts
+@@ -0,0 +1,19 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { renewedExpiry } from "./subscriptionExpiry";
++
++const NOW = new Date("2026-10-23T09:00:00Z");
++const days = (n: number) => new Date(NOW.getTime() + n * 86_400_000);
++
++test("paying early keeps the days already paid for", () => {
++  const user = { type: "paid", subscriptionExpiry: days(3) };
++  assert.equal(renewedExpiry(user, 30, NOW).getTime(), days(33).getTime());
++  assert.equal(renewedExpiry({ type: "paid", subscriptionExpiry: { toDate: () => days(3) } }, 365, NOW).getTime(), days(368).getTime());
++});
++test("an expired plan, a trial or a new account starts from today", () => {
++  assert.equal(renewedExpiry({ type: "paid", subscriptionExpiry: days(-2) }, 30, NOW).getTime(), days(30).getTime());
++  assert.equal(renewedExpiry({ type: "free", isTrial: true, subscriptionExpiry: days(4) }, 30, NOW).getTime(), days(30).getTime());
++  assert.equal(renewedExpiry({ type: "paid", isTrial: true, subscriptionExpiry: days(4) }, 30, NOW).getTime(), days(30).getTime());
++  assert.equal(renewedExpiry(undefined, 30, NOW).getTime(), days(30).getTime());
++  assert.equal(renewedExpiry({ type: "free" }, 30, NOW).getTime(), days(30).getTime());
++});
+diff --git a/whatsapp/src/subscriptionExpiry.ts b/whatsapp/src/subscriptionExpiry.ts
+new file mode 100644
+index 0000000..1a74661
+--- /dev/null
++++ b/whatsapp/src/subscriptionExpiry.ts
+@@ -0,0 +1,31 @@
++/**
++ * Plan expiry maths, kept pure so it can be tested.
++ *
++ * Paying BEFORE the current paid plan ends must not throw away the days already paid for: the new period is added on
++ * top of the existing expiry. A trial, a plan that already ended, or an account with no expiry starts from today.
++ */
++const DAY_MS = 24 * 60 * 60 * 1000;
++
++export interface ExpiryUserDoc {
++  type?: unknown;
++  isTrial?: unknown;
++  subscriptionExpiry?: { toDate?: () => Date } | Date | null;
++}
++
++function readExpiry(value: ExpiryUserDoc["subscriptionExpiry"]): Date | null {
++  if (!value) return null;
++  const d = value instanceof Date ? value : typeof value.toDate === "function" ? value.toDate() : null;
++  return d && !Number.isNaN(d.getTime()) ? d : null;
++}
++
++/** The moment the new period starts counting from. */
++export function renewalBase(user: ExpiryUserDoc | undefined, now: Date = new Date()): Date {
++  const current = readExpiry(user?.subscriptionExpiry);
++  const stillActivePaid = user?.type === "paid" && user?.isTrial !== true && current !== null && current.getTime() > now.getTime();
++  return stillActivePaid ? current : now;
++}
++
++/** New expiry after paying for `daysToAdd` days. */
++export function renewedExpiry(user: ExpiryUserDoc | undefined, daysToAdd: number, now: Date = new Date()): Date {
++  return new Date(renewalBase(user, now).getTime() + daysToAdd * DAY_MS);
++}

@@ -193,3 +193,18 @@ test('desk: own desk_agents readable, config closed', async () => {
   await assertFails(getDoc(doc(as('agentB'), 'desk_agents/agentA')));
   await assertFails(getDoc(doc(as('agentA'), 'desk_config/main')));
 });
+
+// ---------------------------------------------------------------- property ownerId
+test('properties: landlord can create a property and keep updating it', async () => {
+  await assertSucceeds(setDoc(doc(as('111'), 'users/111/properties/p1'), { name: 'A', ownerPhone: '+254712345678' }));
+});
+test('properties: ownerId can be set once, then never changed', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => { await setDoc(doc(ctx.firestore(), 'users/111/properties/p2'), { name: 'B' }); });
+  await assertSucceeds(updateDoc(doc(as('111'), 'users/111/properties/p2'), { ownerId: 'PYP-0001' }));
+  await assertSucceeds(updateDoc(doc(as('111'), 'users/111/properties/p2'), { name: 'B2' }));
+  await assertFails(updateDoc(doc(as('111'), 'users/111/properties/p2'), { ownerId: 'PYP-0002' }));
+});
+test('allocator collections are server-only', async () => {
+  await assertFails(getDoc(doc(as('111'), 'counters/propertyOwnerId')));
+  await assertFails(setDoc(doc(as('111'), 'propertyOwnerIds/PYP-0001'), { userId: '111' }));
+});

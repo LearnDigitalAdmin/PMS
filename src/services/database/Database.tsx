@@ -4,6 +4,7 @@ import { type capSQLiteChanges } from '@capacitor-community/sqlite';
 import { db, USER_LIMITS, type UserTier, type UserType } from './FirebaseSync';
 import { deleteDoc, doc } from 'firebase/firestore';
 import { tables } from './Tables';
+import { checkSafaricomPhone } from '../../utils/safaricom';
 import { argon2id, argon2Verify } from 'hash-wasm';
 import { 
   UniversalConnectionManager as SQLiteConnectionManager,
@@ -41,6 +42,10 @@ export interface Property {
   maxUnits: number;
   billingMode: 'rent_only' | 'full'; // 'rent_only': invoices are rent-only, no water/power metering. 'full': itemized billing (default).
   isRestricted?: boolean; // Added for access control
+  /** PYP-NNNN: unique owner id, allocated server-side the first time the property reaches Firestore. */
+  ownerId?: string | null;
+  /** The property owner's Safaricom number, stored as +2547XXXXXXXX. */
+  ownerPhone?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -136,6 +141,8 @@ export interface PropertyInput {
   maxUnits?: number;
   billingMode?: 'rent_only' | 'full';
   isRestricted?: boolean; // Added for access control
+  /** Owner's Safaricom number. REQUIRED when creating a property; validated and stored as +2547XXXXXXXX. */
+  ownerPhone?: string;
 }
 
 export interface UnitInput {
@@ -155,6 +162,8 @@ export interface PropertyWithUnits {
   agentCommissionRate: number;
   maxUnits: number;
   billingMode: 'rent_only' | 'full';
+  ownerId?: string | null;
+  ownerPhone?: string | null;
   createdAt: string;
   updatedAt: string;
   units: Unit[];
@@ -270,6 +279,10 @@ export interface DashboardData {
   paidInvoices: number;
   unpaidInvoices: number;
   occupancyRate: number;
+  /** Total unit capacity (sum of max_units) across the properties in scope. */
+  totalUnits: number;
+  /** Units currently occupied: distinct active, unrestricted tenants across the properties in scope. */
+  occupiedUnits: number;
 }
 
 export interface MonthlyStats {
@@ -1392,77 +1405,67 @@ async getInvoices(filters: InvoiceFilters = {}): Promise<InvoiceWithDetails[]> {
 
 async getDashboardData(userId: number, propertyId?: number, month?: string): Promise<DashboardData> {
   try {
-    
-    // Build the base query
-    let query = `
-      SELECT 
-        COUNT(DISTINCT p.id) as total_properties,
-        COUNT(DISTINCT CASE WHEN t.is_restricted = 0 THEN t.id END) as total_tenants,
-        SUM(CASE WHEN (i.is_paid = 1 OR i.amount_paid > 0) AND t.is_restricted = 0 THEN i.total_amount ELSE 0 END) as monthly_revenue,
-        SUM(CASE WHEN t.is_restricted = 0 THEN i.arrears ELSE 0 END) as total_arrears,
-        COUNT(CASE WHEN i.is_paid = 1 AND t.is_restricted = 0 THEN 1 END) as paid_invoices,
-        COUNT(CASE WHEN t.is_restricted = 0 THEN 1 END) as unpaid_invoices,
-        COUNT(CASE WHEN t.is_active = 1 AND t.is_restricted = 0 THEN 1 END) as active_tenants,
-        SUM(CASE WHEN p.is_restricted = 0 THEN p.max_units ELSE 0 END) as total_max_units
-      FROM properties p
-      LEFT JOIN tenants t ON p.id = t.property_id
-      LEFT JOIN invoices i ON t.id = i.tenant_id`;
+    // Three independent aggregates. They used to be one query with LEFT JOINs from properties -> tenants -> invoices, which
+    // multiplied rows: every tenant (even one with no invoice) was counted as an "unpaid invoice", and max_units /
+    // active-tenant totals were summed once per joined row instead of once per property / tenant.
+    const scope = `p.user_id = ? AND p.is_restricted = 0${propertyId ? ' AND p.id = ?' : ''}`;
+    const scopeParams: (number | string)[] = propertyId ? [userId, propertyId] : [userId];
 
-    // Add month filter to JOIN condition if specifiedi.is_paid = 0 AND 
-    if (month) {
-      query = query.replace(
-        'LEFT JOIN invoices i ON t.id = i.tenant_id',
-        'LEFT JOIN invoices i ON t.id = i.tenant_id AND i.billing_month = ?'
-      );
-    }
+    // 1. Properties and unit capacity (one row per property).
+    const propResult = await this.db!.query(
+      `SELECT COUNT(*) AS total_properties, COALESCE(SUM(p.max_units), 0) AS total_units
+       FROM properties p WHERE ${scope}`,
+      scopeParams
+    );
+    const propRow = propResult.values?.[0] || {};
 
-    // Add WHERE clause
-    query += ` WHERE p.user_id = ? AND p.is_restricted = 0`;
+    // 2. Tenants (one row per tenant).
+    const tenantResult = await this.db!.query(
+      `SELECT COUNT(DISTINCT t.id) AS total_tenants,
+              COUNT(DISTINCT CASE WHEN t.is_active = 1 THEN t.id END) AS occupied_units
+       FROM tenants t
+       JOIN properties p ON p.id = t.property_id
+       WHERE ${scope} AND t.is_restricted = 0`,
+      scopeParams
+    );
+    const tenantRow = tenantResult.values?.[0] || {};
 
-    // Add property filter if specified
-    if (propertyId) {
-      //const propertyData = await this.getPropertyById(propertyId);
-      query += ` AND p.id = ?`;
-    }
+    // 3. Invoices: only rows that really exist are counted, so a tenant with no invoice adds nothing.
+    //    "Unpaid" is every invoice that is not fully paid (partial payments stay due, as in invoiceStatus()).
+    const invoiceResult = await this.db!.query(
+      `SELECT
+         SUM(CASE WHEN i.is_paid = 1 OR i.amount_paid > 0 THEN i.total_amount ELSE 0 END) AS monthly_revenue,
+         SUM(i.arrears) AS total_arrears,
+         COUNT(CASE WHEN i.is_paid = 1 THEN 1 END) AS paid_invoices,
+         COUNT(CASE WHEN i.is_paid = 0 THEN 1 END) AS unpaid_invoices
+       FROM invoices i
+       JOIN tenants t ON t.id = i.tenant_id
+       JOIN properties p ON p.id = t.property_id
+       WHERE ${scope} AND t.is_restricted = 0${month ? ' AND i.billing_month = ?' : ''}`,
+      month ? [...scopeParams, month] : scopeParams
+    );
+    const invRow = invoiceResult.values?.[0] || {};
 
-    // Build parameters array in correct order
-    const params: (number | string)[] = [];
-    
-    // First add month parameter if it's in the JOIN
-    if (month) {
-      params.push(month);
-    }
-    
-    // Then add userId (always present)
-    params.push(userId);
-    
-    // Finally add propertyId if specified
-    if (propertyId) {
-      params.push(propertyId);
-    }
-
-    const result = await this.db!.query(query, params);
-    const row = result.values?.[0] || {};
-
-    // Calculate net monthly revenue (revenue minus arrears)
-    const grossRevenue = row.monthly_revenue || 0;
-    const totalArrears = row.total_arrears || 0;
+    // Net monthly revenue (revenue minus arrears)
+    const grossRevenue = invRow.monthly_revenue || 0;
+    const totalArrears = invRow.total_arrears || 0;
     const netMonthlyRevenue = Math.max(0, grossRevenue - totalArrears);
 
-    // Calculate occupancy rate based on max_units
-    const activeTenants = row.active_tenants || 0;
-    const totalMaxUnits = row.total_max_units || 0;
-    //const occupancyRate = propertyData.maxUnits > 0 ? (occupiedUnits / propertyData.maxUnits) * 100 : 0;
-    const occupancyRate = totalMaxUnits > 0 ? (activeTenants / totalMaxUnits) * 100 : 0;
+    // Occupancy is measured in UNITS: occupied units out of the unit capacity of the properties in scope.
+    const totalUnits = propRow.total_units || 0;
+    const occupiedUnits = tenantRow.occupied_units || 0;
+    const occupancyRate = totalUnits > 0 ? Math.min(100, (occupiedUnits / totalUnits) * 100) : 0;
 
     return {
-      totalProperties: row.total_properties || 0,
-      totalTenants: row.total_tenants || 0,
-      monthlyRevenue: netMonthlyRevenue, // Now returns net revenue (after deducting arrears)
+      totalProperties: propRow.total_properties || 0,
+      totalTenants: tenantRow.total_tenants || 0,
+      monthlyRevenue: netMonthlyRevenue, // net of arrears
       totalArrears: totalArrears,
-      paidInvoices: row.paid_invoices || 0,
-      unpaidInvoices: row.unpaid_invoices || 0,
-      occupancyRate: occupancyRate,// Round to 2 decimal places
+      paidInvoices: invRow.paid_invoices || 0,
+      unpaidInvoices: invRow.unpaid_invoices || 0,
+      occupancyRate,
+      totalUnits,
+      occupiedUnits,
     };
   } catch (error) {
     console.error('Error getting dashboard data:', error);
@@ -1473,7 +1476,9 @@ async getDashboardData(userId: number, propertyId?: number, month?: string): Pro
       totalArrears: 0,
       paidInvoices: 0,
       unpaidInvoices: 0,
-      occupancyRate: 0
+      occupancyRate: 0,
+      totalUnits: 0,
+      occupiedUnits: 0,
     };
   }
 }
@@ -1849,6 +1854,28 @@ async updateInvoice(id: number, invoice: Partial<InvoiceInput>): Promise<void> {
   }
 
 // 11. FIX: Secure update operations with validation
+/**
+ * Store the owner id allocated by the server. Never overwrites an id that is already set, and does not touch updated_at
+ * (an id assignment must not make the local copy look newer than the cloud copy).
+ */
+async setPropertyOwnerId(id: number, ownerId: string): Promise<void> {
+  if (!/^PYP-\d{4,}$/.test(ownerId)) throw new Error(`Invalid ownerId: ${ownerId}`);
+  await this.db!.run(
+    `UPDATE properties SET owner_id = ? WHERE id = ? AND (owner_id IS NULL OR owner_id = '')`,
+    [ownerId, id]
+  );
+}
+
+/** Apply owner fields that arrived from the cloud (sync only; the cloud copy was validated where it was written). */
+async applyRemoteOwner(id: number, remote: { ownerId?: unknown; ownerPhone?: unknown }): Promise<void> {
+  if (typeof remote.ownerId === 'string' && /^PYP-\d{4,}$/.test(remote.ownerId)) {
+    await this.setPropertyOwnerId(id, remote.ownerId);
+  }
+  if (typeof remote.ownerPhone === 'string' && remote.ownerPhone.trim()) {
+    await this.db!.run(`UPDATE properties SET owner_phone = ? WHERE id = ?`, [remote.ownerPhone.trim(), id]);
+  }
+}
+
 async updateProperty(id: number, property: Partial<PropertyInput>): Promise<void> {
   // CRITICAL: Validate property access before update
   const existingProperty = await this.getPropertyById(id);
@@ -1890,6 +1917,14 @@ async updateProperty(id: number, property: Partial<PropertyInput>): Promise<void
   if (property.billingMode !== undefined) {
     fields.push('billing_mode = ?');
     values.push(property.billingMode === 'rent_only' ? 'rent_only' : 'full');
+  }
+  if (property.ownerPhone !== undefined) {
+    const ownerCheck = checkSafaricomPhone(property.ownerPhone);
+    if (!ownerCheck.ok) {
+      throw new Error(`Owner phone: ${ownerCheck.message}`);
+    }
+    fields.push('owner_phone = ?');
+    values.push(ownerCheck.e164);
   }
   
   fields.push('updated_at = CURRENT_TIMESTAMP');
@@ -2183,11 +2218,15 @@ async checkUserLimits(userId: number): Promise<{
     if (!canCreate.allowed) {
       throw new Error(canCreate.reason);
     }
+    const ownerCheck = checkSafaricomPhone(property.ownerPhone);
+    if (!ownerCheck.ok) {
+      throw new Error(`Owner phone: ${ownerCheck.message}`);
+    }
     const newPropertyId = await this.generatePropertyId();
 
     const query = `
-      INSERT INTO properties (id, user_id, company_id, name, address, description, image, agent_commission_rate, max_units, billing_mode)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO properties (id, user_id, company_id, name, address, description, image, agent_commission_rate, max_units, billing_mode, owner_phone)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
     const result = await this.db!.run(query, [
@@ -2200,7 +2239,8 @@ async checkUserLimits(userId: number): Promise<{
       property.image || '',
       property.agentCommissionRate || 0,
       property.maxUnits || 1,
-      property.billingMode === 'rent_only' ? 'rent_only' : 'full'
+      property.billingMode === 'rent_only' ? 'rent_only' : 'full',
+      ownerCheck.e164
     ]);
 
     const createdProperty = await this.getPropertyById(result.changes!.lastId!);
@@ -2614,6 +2654,8 @@ async refreshCurrentUser(id: number): Promise<User | null> {
       maxUnits: row.max_units || 1,
       billingMode: row.billing_mode === 'rent_only' ? 'rent_only' : 'full',
       isRestricted: Boolean(row.is_restricted),
+      ownerId: row.owner_id || null,
+      ownerPhone: row.owner_phone || null,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };

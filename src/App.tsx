@@ -3,7 +3,7 @@ import React, { useState, useEffect, Suspense, useCallback, useRef } from 'react
 import { BrowserRouter as Router, Routes, Route, Navigate, NavLink } from 'react-router-dom';
 import PWAPrompts from './pwa/PWAPrompts';
 import InstallButton from './pwa/InstallButton';
-import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, DollarSign, MessageSquare, Settings as SettingsIcon, LifeBuoy } from 'lucide-react';
+import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, Banknote, MessageSquare, Settings as SettingsIcon, LifeBuoy } from 'lucide-react';
 import { database } from './services/database/Database';
 import { firebaseSyncService } from './services/database/FirebaseSync';
 import Dashboard from './pages/Dashboard';
@@ -22,6 +22,7 @@ import AgentView from './pages/payments/Payments';
 import { useSmsTokens } from './hooks/useSmsTokens';
 import { useSubscriptionInfo } from './hooks/useSubscriptionInfo';
 import { getDaysRemaining } from './utils/trial';
+import PlanRibbon from './components/ui/PlanRibbon';
 
 // Loading component with skeleton animation
 const LoadingSpinner = () => (
@@ -212,7 +213,7 @@ const NAV_ITEMS = [
   { path: '/', icon: Home, label: 'Dashboard', color: 'blue', restricted: false },
   { path: '/properties', icon: Building, label: 'Properties', color: 'indigo', restricted: false },
   { path: '/invoices', icon: FileText, label: 'Invoices', color: 'purple', restricted: false },
-  { path: '/payments', icon: DollarSign, label: 'Payments', color: 'black', restricted: false },
+  { path: '/payments', icon: Banknote, label: 'Payments', color: 'black', restricted: false },
   { path: '/profile', icon: UserIcon, label: 'Profile', color: 'green', restricted: false },
   { path: '/settings', icon: SettingsIcon, label: 'Settings', color: 'indigo', restricted: false },
   // Samuhia Desk requests. Sidebar/rail only: the phone bottom bar is already full (Settings also links here).
@@ -580,6 +581,8 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
         {/* Main content: padded for the status bar on phones, for the top bar on md+ */}
         <main className="app-main min-h-screen pt-[calc(3.5rem+env(safe-area-inset-top,0px))] pb-20 sm:pt-[calc(2rem+env(safe-area-inset-top,0px))] md:pt-[calc(var(--topbar-height)+0.5rem+env(safe-area-inset-top,0px))] md:pb-10">
+          {/* Plan-expiry and low-SMS ribbons: sticky under the status bar */}
+          <PlanRibbon />
           <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
             {children}
           </div>

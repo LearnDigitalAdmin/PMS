@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, MessageSquare, DollarSign, Users, Clock } from 'lucide-react';
+import { FileText, MessageSquare, Banknote, Users, Clock } from 'lucide-react';
 import { useTrialStats } from '../../hooks/useTrialStats';
 import { formatCurrencyCompact, formatNumber } from '../../utils/FormatUtils';
 
@@ -24,7 +24,7 @@ const TrialStatsBanner: React.FC<TrialStatsBannerProps> = ({ userId, compact = f
   const items = [
     { icon: FileText, label: 'Invoices sent', value: formatNumber(stats.totalInvoices) },
     { icon: MessageSquare, label: 'SMS sent', value: formatNumber(stats.totalSmsSent) },
-    { icon: DollarSign, label: 'Collected', value: formatCurrencyCompact(stats.amountCollected) },
+    { icon: Banknote, label: 'Collected', value: formatCurrencyCompact(stats.amountCollected) },
     { icon: Users, label: 'Tenants', value: formatNumber(stats.totalTenants) },
   ];
 

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { formatKES } from '../../utils/FormatUtils';
 import {
   X,
   Calendar,
   Building2,
   TrendingUp,
-  DollarSign,
+  Banknote,
   Download,
   RefreshCw,
   Plus,
@@ -198,7 +199,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({
               Amount *
             </label>
             <div className="relative">
-              <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-ink-faint" />
+              <Banknote className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-ink-faint" />
               <input
                 type="number"
                 step="0.01"
@@ -365,12 +366,7 @@ const SummariesModal: React.FC<SummariesModalProps> = ({
     alert('PDF download functionality will be implemented soon. Contact us for feature requests.');
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount);
-  };
+  const formatCurrency = (amount: number) => formatKES(amount);
 
   const formatPercentage = (value: number) => {
     return `${value.toFixed(1)}%`;
@@ -494,7 +490,7 @@ const SummariesModal: React.FC<SummariesModalProps> = ({
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div className="bg-gradient-to-br from-green-50 dark:from-green-500/10 to-emerald-50 dark:to-emerald-500/10 p-6 rounded-xl border border-green-100 dark:border-green-500/25">
                       <div className="flex items-center justify-between mb-3">
-                        <DollarSign className="w-10 h-10 text-green-600 dark:text-green-400" />
+                        <Banknote className="w-10 h-10 text-green-600 dark:text-green-400" />
                         <span className="text-xs text-green-600 dark:text-green-400 font-semibold">COMMISSION REVENUE</span>
                       </div>
                       <p className="text-3xl font-bold text-green-700 dark:text-green-300 mb-1">
@@ -549,7 +545,7 @@ const SummariesModal: React.FC<SummariesModalProps> = ({
                   <div className="bg-surface rounded-xl border border-line shadow-sm">
                     <div className="p-4 border-b border-line">
                       <h3 className="font-semibold text-ink flex items-center">
-                        <DollarSign className="w-5 h-5 mr-2 text-green-600 dark:text-green-400" />
+                        <Banknote className="w-5 h-5 mr-2 text-green-600 dark:text-green-400" />
                         Monthly Recurring Revenue (Commission)
                       </h3>
                     </div>
@@ -911,7 +907,7 @@ const SummariesModal: React.FC<SummariesModalProps> = ({
 
                     <div className="bg-surface rounded-xl border border-line shadow-sm p-6">
                       <div className="flex items-center justify-between mb-4">
-                        <DollarSign className="w-8 h-8 text-purple-600 dark:text-purple-400" />
+                        <Banknote className="w-8 h-8 text-purple-600 dark:text-purple-400" />
                         <Target className="w-5 h-5 text-ink-faint" />
                       </div>
                       <div className="text-3xl font-bold text-ink mb-2">

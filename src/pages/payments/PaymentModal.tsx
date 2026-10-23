@@ -1,6 +1,6 @@
 // PaymentModal.tsx - Updated Payment Initiation Modal
 import React, { useState, useEffect } from 'react';
-import { X, Phone, DollarSign, AlertCircle, CheckCircle, Loader2, Info } from 'lucide-react';
+import { X, Phone, Banknote, AlertCircle, CheckCircle, Loader2, Info } from 'lucide-react';
 import { PaymentService, type Invoice } from './Firebase';
 
 interface PaymentModalProps {
@@ -326,7 +326,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                   Amount to Pay
                 </label>
                 <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-ink-faint w-5 h-5" />
+                  <Banknote className="absolute left-3 top-1/2 transform -translate-y-1/2 text-ink-faint w-5 h-5" />
                   <input
                     id="amount"
                     type="number"

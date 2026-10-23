@@ -132,7 +132,11 @@ service cloud.firestore {
       // ---- users/{userId}/properties/{propertyId}[/units/{unitId}] ----------
       match /properties/{propertyId} {
         allow read: if isLandlord(userId) || isAgent();
-        allow create, update, delete: if isLandlord(userId) || managesAsset(userId);
+        allow create, delete: if isLandlord(userId) || managesAsset(userId);
+        // The PYP-NNNN ownerId is allocated by the server (allocatePropertyOwnerId) and never changes once set.
+        allow update: if (isLandlord(userId) || managesAsset(userId))
+          && (resource.data.get('ownerId', null) == null
+              || request.resource.data.get('ownerId', null) == resource.data.ownerId);
 
         match /units/{unitId} {
           allow read: if isLandlord(userId) || isAgent();
@@ -430,6 +434,9 @@ service cloud.firestore {
     match /desk_audit/{id}       { allow read, write: if false; }
     match /desk_events/{id}      { allow read, write: if false; }
     match /desk_counters/{id}    { allow read, write: if false; }
+    // PYP-NNNN owner id allocator (allocatePropertyOwnerId, Admin SDK only)
+    match /counters/{id}           { allow read, write: if false; }
+    match /propertyOwnerIds/{id}   { allow read, write: if false; }
     match /desk_split_codes/{id} { allow read, write: if false; }
     match /desk_requests/{id}    { allow read, write: if false; }
     match /desk_docs/{id}        { allow read, write: if false; }

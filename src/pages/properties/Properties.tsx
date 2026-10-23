@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { formatKES } from '../../utils/FormatUtils';
+import Money from '../../components/ui/Money';
+import { checkSafaricomPhone } from '../../utils/safaricom';
 import {
   Building2,
   Edit3,
   MapPin,
   Users,
-  DollarSign,
+  Banknote,
   TrendingUp,
   Percent,
   Receipt,
@@ -43,6 +46,7 @@ interface PropertyFormData {
   address: string;
   description: string;
   agentCommissionRate: number;
+  ownerPhone: string;
 }
 
 const Property: React.FC<PropertyProps> = ({ 
@@ -68,7 +72,8 @@ const Property: React.FC<PropertyProps> = ({
     name: '',
     address: '',
     description: '',
-    agentCommissionRate: 0
+    agentCommissionRate: 0,
+    ownerPhone: ''
   });
   const [formErrors, setFormErrors] = useState<Partial<PropertyFormData>>({});
 
@@ -136,7 +141,8 @@ const Property: React.FC<PropertyProps> = ({
         name: property.name,
         address: property.address || '',
         description: property.description || '',
-        agentCommissionRate: property.agentCommissionRate
+        agentCommissionRate: property.agentCommissionRate,
+        ownerPhone: property.ownerPhone || ''
       });
     }
     setFormErrors({});
@@ -147,6 +153,11 @@ const Property: React.FC<PropertyProps> = ({
     
     if (!formData.name.trim()) {
       errors.name = 'Property name is required';
+    }
+
+    const ownerCheck = checkSafaricomPhone(formData.ownerPhone);
+    if (!ownerCheck.ok) {
+      errors.ownerPhone = ownerCheck.message;
     }
     
     if (formData.agentCommissionRate < 0 || formData.agentCommissionRate > 100) {
@@ -165,7 +176,8 @@ const Property: React.FC<PropertyProps> = ({
         name: formData.name.trim(),
         address: formData.address.trim() || undefined,
         description: formData.description.trim() || undefined,
-        agentCommissionRate: formData.agentCommissionRate
+        agentCommissionRate: formData.agentCommissionRate,
+        ownerPhone: formData.ownerPhone
       });
 
       await loadPropertyData();
@@ -415,17 +427,17 @@ return (
                 {/* Monthly Revenue */}
                 <div className="text-center p-3 sm:p-4 md:p-6 bg-green-50 dark:bg-green-500/10 rounded-lg sm:rounded-xl md:rounded-2xl">
                   <div className="w-8 h-8 sm:w-10 md:w-12 sm:h-10 md:h-12 bg-green-600 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-4">
-                    <DollarSign className="w-4 h-4 sm:w-5 md:w-6 sm:h-5 md:h-6 text-white" />
+                    <Banknote className="w-4 h-4 sm:w-5 md:w-6 sm:h-5 md:h-6 text-white" />
                   </div>
                   <div className="text-xl sm:text-2xl md:text-3xl font-bold text-ink mb-1">
-                    ${property.monthlyRevenue.toLocaleString()}
+                    <Money value={property.monthlyRevenue} />
                   </div>
                   <div className="text-xs sm:text-sm font-medium text-ink-muted">
                     Monthly Potential
                   </div>
                   {dashboardData && (
                     <div className="text-xs text-ink-subtle mt-1">
-                      ${dashboardData.monthlyRevenue.toLocaleString()} Collected
+                      {formatKES(dashboardData.monthlyRevenue)} Collected
                     </div>
                   )}
                 </div>
@@ -498,7 +510,7 @@ return (
                       <span className="font-medium text-ink-soft text-sm sm:text-base">Revenue Collected</span>
                     </div>
                     <span className="text-lg sm:text-xl font-bold text-green-600 dark:text-green-400">
-                      ${dashboardData.monthlyRevenue.toLocaleString()}
+                      {formatKES(dashboardData.monthlyRevenue)}
                     </span>
                   </div>
 
@@ -510,7 +522,7 @@ return (
                           <span className="font-medium text-ink-soft text-sm sm:text-base">Commission ({property.agentCommissionRate}%)</span>
                         </div>
                         <span className="text-lg sm:text-xl font-bold text-orange-600 dark:text-orange-400">
-                          -${commissionAmount.toLocaleString()}
+                          -{formatKES(commissionAmount)}
                         </span>
                       </div>
 
@@ -520,7 +532,7 @@ return (
                           <span className="font-medium text-ink-soft text-sm sm:text-base">Net Revenue</span>
                         </div>
                         <span className="text-lg sm:text-xl font-bold text-blue-600 dark:text-blue-400">
-                          ${netRevenue.toLocaleString()}
+                          {formatKES(netRevenue)}
                         </span>
                       </div>
                     </>
@@ -532,7 +544,7 @@ return (
                       <span className="font-medium text-ink-soft text-sm sm:text-base">Total Arrears</span>
                     </div>
                     <span className="text-lg sm:text-xl font-bold text-red-600 dark:text-red-400">
-                      ${dashboardData.totalArrears.toLocaleString()}
+                      {formatKES(dashboardData.totalArrears)}
                     </span>
                   </div>
                 </div>
@@ -642,6 +654,28 @@ return (
                 />
                 {formErrors.name && (
                   <p className="text-red-500 text-sm mt-1">{formErrors.name}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-ink-soft mb-2">
+                  Owner Phone (Safaricom) *
+                </label>
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  value={formData.ownerPhone}
+                  onChange={(e) => setFormData({ ...formData, ownerPhone: e.target.value })}
+                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                    formErrors.ownerPhone ? 'border-red-500' : 'border-line'
+                  }`}
+                  placeholder="0712 345 678"
+                />
+                {formErrors.ownerPhone && (
+                  <p className="text-red-500 text-sm mt-1">{formErrors.ownerPhone}</p>
+                )}
+                {property?.ownerId && (
+                  <p className="text-ink-subtle text-xs mt-1">Owner ID: <span className="font-semibold text-ink-soft">{property.ownerId}</span></p>
                 )}
               </div>
 

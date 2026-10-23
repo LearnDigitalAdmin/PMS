@@ -28,7 +28,7 @@ import { database } from '../database/Database';
 import { generateInvoicePDF } from '../pdf/PDFService';
 import type { User, Property, Tenant } from '../database/Database';
 import { integrateWithFirebaseSync } from '../screening/TenantScreeningService';
-import { getFunctions } from 'firebase/functions';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 // Firebase config
 const firebaseConfig = {
@@ -681,9 +681,9 @@ private async upsertProperty(userId: number, data: any): Promise<boolean> {
           INSERT INTO properties (
             id, user_id, company_id, name, address, description, image,
             agent_commission_rate, max_units, billing_mode, is_restricted,
-            created_at, updated_at
+            owner_id, owner_phone, created_at, updated_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         `, [
           data.localId,  // Use exact ID from Firebase
           data.userId || userId,
@@ -695,7 +695,9 @@ private async upsertProperty(userId: number, data: any): Promise<boolean> {
           data.agentCommissionRate || 0,
           data.maxUnits || 50,
           data.billingMode === 'rent_only' ? 'rent_only' : 'full',
-          restrictedFlag
+          restrictedFlag,
+          typeof data.ownerId === 'string' && /^PYP-\d{4,}$/.test(data.ownerId) ? data.ownerId : null,
+          typeof data.ownerPhone === 'string' && data.ownerPhone.trim() ? data.ownerPhone.trim() : null
         ]);
         
         console.log(`✅ Created property ${data.localId} for user ${userId}`);
@@ -713,6 +715,8 @@ private async upsertProperty(userId: number, data: any): Promise<boolean> {
       
       console.log(`✅ Updated property ${data.localId}`);
     }
+    // The owner id is assigned once and never changes; the owner phone follows the cloud copy.
+    if (local) await database.applyRemoteOwner(data.localId, { ownerId: data.ownerId, ownerPhone: data.ownerPhone });
     return true;
   } catch (error) {
     console.error(`❌ Upsert property ${data.localId} failed:`, error);
@@ -1063,6 +1067,31 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
     }, `User ${user.id}`, 'UPDATE');
   }
 
+  /**
+   * The property's PYP-NNNN owner id. Reuses the local or cloud id when there is one; otherwise asks the server to allocate
+   * the next number (atomic counter, idempotent per property). Returns null when offline: the property still uploads and
+   * gets its id on a later sync.
+   */
+  private async ensureOwnerId(userId: number, property: Property, remote?: Record<string, unknown>): Promise<string | null> {
+    const valid = (v: unknown): v is string => typeof v === 'string' && /^PYP-\d{4,}$/.test(v);
+    if (valid(property.ownerId)) return property.ownerId;
+    if (valid(remote?.ownerId)) {
+      await database.setPropertyOwnerId(property.id, remote.ownerId);
+      return remote.ownerId;
+    }
+    try {
+      const allocate = httpsCallable<{ userId: string; propertyId: number }, { ownerId: string }>(functions, 'allocatePropertyOwnerId');
+      const res = await allocate({ userId: String(userId), propertyId: property.id });
+      if (valid(res.data?.ownerId)) {
+        await database.setPropertyOwnerId(property.id, res.data.ownerId);
+        return res.data.ownerId;
+      }
+    } catch (error) {
+      console.warn(`Owner id for property ${property.id} will be allocated on a later sync:`, error);
+    }
+    return null;
+  }
+
   private async uploadProperties(userId: number, batchManager: SafeBatchManager): Promise<void> {
     const properties = await this.getFilteredPropertiesForSync(userId);
     
@@ -1075,10 +1104,17 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
         continue;
       }
       
+      const ownerId = await this.ensureOwnerId(userId, property, existing.exists() ? existing.data() : undefined);
+      // Never write a null owner field over one that already exists in the cloud.
+      const { ownerId: _localOwnerId, ownerPhone, ...propertyFields } = property;
+      void _localOwnerId;
+
       batchManager.addOperation((batch) => {
         batch.set(ref, {
           ...(existing.exists() ? existing.data() : {}),
-          ...property,
+          ...propertyFields,
+          ...(ownerId ? { ownerId } : {}),
+          ...(ownerPhone ? { ownerPhone } : {}),
           userId,
           localId: property.id,
           lastSyncTime: serverTimestamp(),
@@ -1096,6 +1132,7 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
           batch.set(unitRef, {
             ...(existingUnit.exists() ? existingUnit.data() : {}),
             ...unit,
+            ...(ownerId ? { ownerId } : {}),
             userId,
             propertyId: property.id,
             localId: unit.id,
@@ -1127,6 +1164,7 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
           batch.set(ref, {
             ...(existing.exists() ? existing.data() : {}),
             ...tenant,
+            ...(property.ownerId ? { ownerId: property.ownerId } : {}),
             userId,
             propertyId: tenant.propertyId,
             localId: tenant.id,
@@ -1171,6 +1209,7 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
             batch.set(ref, {
               ...(existing.exists() ? existing.data() : {}),
               ...invoice,
+              ...(property.ownerId ? { ownerId: property.ownerId } : {}),
               userId,
               tenantId: invoice.tenantId,
               propertyId: property.id,
@@ -1193,6 +1232,7 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
               batch.set(paymentRef, {
                 ...(existingPayment.exists() ? existingPayment.data() : {}),
                 ...payment,
+                ...(property.ownerId ? { ownerId: property.ownerId } : {}),
                 userId,
                 invoiceId: invoice.id,
                 tenantId: invoice.tenantId,
