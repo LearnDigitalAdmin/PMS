@@ -1616,7 +1616,12 @@ async getHighRiskTenants(userId: number): Promise<any[]> {
 export const tenantScreeningService = TenantScreeningService.getInstance();
 
 // Integration hooks for FirebaseSync service
+let firebaseSyncIntegrated = false;
+
 export const integrateWithFirebaseSync = async (userId: number) => {
+  // Patch the sync service only once; re-wrapping nests the hooks and re-runs mining.
+  if (!firebaseSyncIntegrated) {
+  firebaseSyncIntegrated = true;
   // Hook into successful upload completion
   const originalPerformSafeUploadSync = firebaseSyncService.performSafeUploadSync;
   firebaseSyncService.performSafeUploadSync = async function(userIdParam: number, source: 'scheduled' | 'manual' = 'manual') {
@@ -1650,6 +1655,7 @@ export const integrateWithFirebaseSync = async (userId: number) => {
     
     return result;
   };
+  }
 
   // For users who can't sync, start periodic mining
   const user = await database.getUserById(userId);// ? firebaseSyncService.getUserById(userId) : null;

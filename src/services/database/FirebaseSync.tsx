@@ -1,5 +1,6 @@
 // services/sync/FirebaseSyncService.ts - SIMPLIFIED VERSION
 import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
 import { 
   getFirestore, 
   doc, 
@@ -123,6 +124,8 @@ export class FirebaseSyncService {
   private static instance: FirebaseSyncService;
   
   private operationLocks = new Map<string, boolean>();
+  private initPromises = new Map<number, Promise<SyncStatus>>();
+  private initializedUsers = new Set<number>();
   private userListeners = new Map<number, Unsubscribe>();
   private uploadScheduleTimers = new Map<number, NodeJS.Timeout>();
   
@@ -230,7 +233,7 @@ private async processSuccessfulTransaction(userId: number, data: any): Promise<v
     // Verify invoice exists and belongs to user
     const invoice = await database.getInvoiceById(invoiceId);
     if (!invoice) {
-      console.warn(`⚠️ Invoice ${invoiceId} not found`);
+      console.debug(`Invoice ${invoiceId} not found locally, skipping`);
       return;
     }
 
@@ -336,8 +339,32 @@ removeTransactionListener(userId: number): void {
  * Updated initialization to include transaction listener
  */
 async initializeForUser(userId: number): Promise<SyncStatus> {
+  // De-duplicate: StrictMode double effects and the App + AuthWrapper both start sync.
+  const inFlight = this.initPromises.get(userId);
+  if (inFlight) return inFlight;
+  if (this.initializedUsers.has(userId)) {
+    return this.buildSyncStatus('Already initialized');
+  }
+
+  const promise = this.runInitializeForUser(userId).finally(() => {
+    this.initPromises.delete(userId);
+  });
+  this.initPromises.set(userId, promise);
+  return promise;
+}
+
+private async runInitializeForUser(userId: number): Promise<SyncStatus> {
   console.log(`🚀 Initializing sync for user ${userId}...`);
-  
+
+  // Wait for Firebase Auth to restore the session before any Firestore call;
+  // otherwise request.auth is null and every rule denies.
+  const fbAuth = getAuth();
+  await fbAuth.authStateReady();
+  if (!fbAuth.currentUser) {
+    console.warn('⚠️ No Firebase Auth user yet - skipping sync until sign-in');
+    return this.buildSyncStatus('Waiting for Firebase sign-in');
+  }
+
   try {
     // Setup user updates listener
     this.setupUserListener(userId, (user) => {
@@ -359,6 +386,7 @@ async initializeForUser(userId: number): Promise<SyncStatus> {
     // Sync any pending transactions
     await this.syncPendingTransactions(userId);
     
+    this.initializedUsers.add(userId);
     console.log('✅ Sync initialized with transaction listener');
     return result;
   } catch (error) {
@@ -377,6 +405,8 @@ cleanup(userId?: number): void {
     this.removeUserListener(userId);
     this.removeTransactionListener(userId);
     this.stopUploadScheduling(userId);
+    this.initializedUsers.delete(userId);
+    this.initPromises.delete(userId);
     this.releaseOperationLock(`download_${userId}`);
     this.releaseOperationLock(`upload_${userId}`);
   } else {
@@ -388,6 +418,8 @@ cleanup(userId?: number): void {
     
     this.userListeners.clear();
     this.transactionListeners.clear();
+    this.initializedUsers.clear();
+    this.initPromises.clear();
     this.uploadScheduleTimers.clear();
     this.operationLocks.clear();
   }
@@ -1629,7 +1661,9 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
     const lockKey = `upload_${userId}`;
     
     if (this.isOperationLocked(lockKey)) {
-      throw new Error('Upload already in progress');
+      // Not an error: another upload is running. Skip instead of rejecting.
+      console.log('⏳ Upload already in progress, skipping duplicate request');
+      return this.buildSyncStatus('Upload already in progress');
     }
 
     console.log(`🔼 Starting upload (${source})...`);

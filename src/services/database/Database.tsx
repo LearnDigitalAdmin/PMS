@@ -2534,14 +2534,11 @@ async checkUserLimits(userId: number): Promise<{
   // }
 
   async getUserById(id: number): Promise<User | null> {
-  console.log('getUserById called for ID:', id);
-  
   // Try to get from localStorage first
   try {
     const cachedUser = localStorage.getItem('currentUser');
     if (cachedUser) {
       const user = JSON.parse(cachedUser);
-      console.log('Returning user from localStorage:', user);
       return user;
     }
   } catch (error) {

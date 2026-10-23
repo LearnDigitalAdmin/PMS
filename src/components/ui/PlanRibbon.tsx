@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AlertTriangle, Clock, MessageSquare, X } from 'lucide-react';
-import { useAuth } from '../auh/AuthContext';
+import { useAuth } from '../auh/AuthWrapper';
 import { useSmsTokens } from '../../hooks/useSmsTokens';
 import { useSubscriptionInfo } from '../../hooks/useSubscriptionInfo';
 import { formatDate } from '../../utils/FormatUtils';
