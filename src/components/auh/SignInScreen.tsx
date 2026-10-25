@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Building, Eye, EyeOff, LogIn, Mail, Lock, X } from 'lucide-react';
+import { enterWatchMode } from '../../watch/session';
 import { useAuth } from './AuthWrapper';
 import { getAuth, sendPasswordResetEmail } from 'firebase/auth';
 
@@ -256,6 +257,19 @@ const SignInScreen: React.FC<SignInScreenProps> = ({ onSwitchToSignUp }) => {
                 )}
               </button>
             </form>
+
+            <div className="mt-6">
+              <button
+                type="button"
+                onClick={enterWatchMode}
+                disabled={isLoading}
+                className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-blue-600 px-4 py-3 font-semibold text-blue-700 transition-colors hover:bg-blue-50 disabled:opacity-50"
+              >
+                <Eye className="w-5 h-5" />
+                Landlord Watch
+              </button>
+              <p className="mt-1 text-center text-xs text-gray-500">Property owner? Follow your property with your phone number.</p>
+            </div>
 
             <div className="mt-8 text-center">
               <p className="text-gray-600">

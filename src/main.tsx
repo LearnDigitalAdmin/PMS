@@ -2,8 +2,8 @@
 import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import App from './App.tsx'
 import { legalKeyForPath } from './pages/legal/legalConfig'
+import { isWatchMode } from './watch/session'
 
 // Start listening for install / update events before React renders (a beforeinstallprompt fired early is otherwise lost)
 import { pwaManager } from './pwa/pwaManager'
@@ -22,6 +22,12 @@ const removeLoadingScreen = () => {
 const LegalRoot = lazy(() => import('./pages/legal/LegalRoot'))
 const showLegalPage = legalKeyForPath(window.location.pathname) !== null
 
+// Landlord Watch mode renders its own root and NEVER loads the PMS app (which initialises the SQLite database).
+// The PMS app is loaded lazily, only when Watch mode is off.
+const WatchRoot = lazy(() => import('./watch/WatchRoot'))
+const App = lazy(() => import('./App.tsx'))
+const watchMode = !showLegalPage && isWatchMode()
+
 // Create and render app
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -30,7 +36,9 @@ createRoot(document.getElementById('root')!).render(
         <LegalRoot />
       </Suspense>
     ) : (
-      <App />
+      <Suspense fallback={null}>
+        {watchMode ? <WatchRoot /> : <App />}
+      </Suspense>
     )}
   </StrictMode>,
 )
