@@ -172,7 +172,7 @@ const TenantsList: React.FC<TenantsListProps> = ({ propertyId, userId, onTenantA
       onTenantAdded?.();
     } catch (err) {
       console.error('Error deleting tenant:', err);
-      alert('Failed to delete tenant. Please try again.');
+      alert(err instanceof Error && /offline/i.test(err.message) ? err.message : 'Failed to delete tenant. Please try again.');
     } finally {
       setDeletingTenant(null);
     }

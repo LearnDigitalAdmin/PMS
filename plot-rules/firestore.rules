@@ -138,6 +138,7 @@ service cloud.firestore {
           && (resource.data.get('ownerId', null) == null
               || request.resource.data.get('ownerId', null) == resource.data.ownerId);
 
+        // Private source of truth. A Cloud Function (mirrorPublicUnit) copies each unit to the public /units collection.
         match /units/{unitId} {
           allow read: if isLandlord(userId) || isAgent();
           allow create, update, delete: if isLandlord(userId) || managesAsset(userId);
@@ -217,6 +218,16 @@ service cloud.firestore {
     }
     match /{path=**}/invoices/{invoiceId} {
       allow read: if signedIn();
+    }
+    // -------------------------------------------------------------------------
+    // units/{ownerId}_{unitId}  — PUBLIC unit listing (vacant units can be listed for renting).
+    // Read: anyone. Write/delete: nobody from a client; the mirrorPublicUnit Cloud Function (Admin SDK)
+    // keeps it in step with users/{uid}/properties/{pid}/units. Holds unit facts only: no landlord id,
+    // no tenant data.
+    // -------------------------------------------------------------------------
+    match /units/{unitId} {
+      allow read: if true;
+      allow write: if false;
     }
 
     // -------------------------------------------------------------------------

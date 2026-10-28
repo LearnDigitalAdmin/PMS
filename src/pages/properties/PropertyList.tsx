@@ -19,6 +19,8 @@ import {
 import { database, type PropertyWithUnits, type PropertyInput, type User } from '../../services/database/Database';
 import Property from './Properties';
 import PropertyModal from './PropertyModal';
+import { newUnitSpec } from './UnitsBuilder';
+import { validateUnitSpecs, type UnitSpec } from '../../services/database/Units';
 import { checkSafaricomPhone } from '../../utils/safaricom';
 import { USER_LIMITS, firebaseSyncService } from '../../services/database/FirebaseSync';
 import PricingModal from '../../components/ui/PricingPage';
@@ -81,6 +83,8 @@ const Properties: React.FC<PropertyListProps> = ({
     ownerPhone: ''
   });
   const [formErrors, setFormErrors] = useState<Partial<PropertyFormData>>({});
+  const [unitSpecs, setUnitSpecs] = useState<UnitSpec[]>([newUnitSpec()]);
+  const [unitError, setUnitError] = useState('');
   
   // Image handling refs
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -196,6 +200,8 @@ const Properties: React.FC<PropertyListProps> = ({
       ownerPhone: ''
     });
     setFormErrors({});
+    setUnitSpecs([newUnitSpec()]);
+    setUnitError('');
     setImagePreview('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -261,6 +267,9 @@ const Properties: React.FC<PropertyListProps> = ({
 
   const handleAddProperty = async () => {
     if (!validateForm()) return;
+    const problem = validateUnitSpecs(unitSpecs);
+    setUnitError(problem || '');
+    if (problem) return;
 
     try {
       const propertyInput: PropertyInput = {
@@ -271,7 +280,8 @@ const Properties: React.FC<PropertyListProps> = ({
         description: formData.description.trim() || undefined,
         image: formData.image || undefined,
         agentCommissionRate: formData.agentCommissionRate,
-        maxUnits: formData.maxUnits,
+        maxUnits: unitSpecs.reduce((sum, u) => sum + u.count, 0),
+        units: unitSpecs,
         billingMode: formData.billingMode,
         ownerPhone: formData.ownerPhone
       };
@@ -285,11 +295,17 @@ const Properties: React.FC<PropertyListProps> = ({
       resetForm();
     } catch (error) {
       console.error('Error creating property:', error);
+      setUnitError(error instanceof Error ? error.message : 'Something went wrong');
     }
   };
 
   const handleEditProperty = async () => {
     if (!validateForm() || !selectedProperty) return;
+    // In edit mode extra units are optional; an untouched blank row is ignored
+    const extraUnits = unitSpecs.filter(u => u.rentAmount > 0);
+    const problem = extraUnits.length ? validateUnitSpecs(extraUnits) : null;
+    setUnitError(problem || '');
+    if (problem) return;
 
     try {
       await database.updateProperty(selectedProperty.id, {
@@ -303,6 +319,9 @@ const Properties: React.FC<PropertyListProps> = ({
         billingMode: formData.billingMode,
         ownerPhone: formData.ownerPhone
       });
+      if (extraUnits.length) {
+        await database.createUnitsFromSpecs(selectedProperty.id, extraUnits);
+      }
 
       await loadProperties();
       setShowEditModal(false);
@@ -310,6 +329,7 @@ const Properties: React.FC<PropertyListProps> = ({
       resetForm();
     } catch (error) {
       console.error('Error updating property:', error);
+      setUnitError(error instanceof Error ? error.message : 'Something went wrong');
     }
   };
 
@@ -323,6 +343,7 @@ const Properties: React.FC<PropertyListProps> = ({
       setSelectedProperty(null);
     } catch (error) {
       console.error('Error deleting property:', error);
+      alert(error instanceof Error ? error.message : 'Failed to delete property. Please try again.');
     }
   };
 
@@ -339,6 +360,8 @@ const Properties: React.FC<PropertyListProps> = ({
       billingMode: property.billingMode || 'full',
       ownerPhone: property.ownerPhone || ''
     });
+    setUnitSpecs([newUnitSpec()]);
+    setUnitError('');
     setImagePreview(property.image || '');
     setShowEditModal(true);
   };
@@ -810,6 +833,9 @@ const Properties: React.FC<PropertyListProps> = ({
         handleImageUpload={handleImageUpload}
         removeImage={removeImage}
         MAX_FREE_UNITS={MAX_FREE_UNITS}
+        unitSpecs={unitSpecs}
+        setUnitSpecs={setUnitSpecs}
+        unitError={unitError}
       />
 
       <PropertyModal
@@ -827,6 +853,10 @@ const Properties: React.FC<PropertyListProps> = ({
         removeImage={removeImage}
         MAX_FREE_UNITS={MAX_FREE_UNITS}
         ownerId={selectedProperty?.ownerId}
+        unitSpecs={unitSpecs}
+        setUnitSpecs={setUnitSpecs}
+        unitError={unitError}
+        isEdit
       />
 
       {/* Pricing Modal */}

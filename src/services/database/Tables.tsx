@@ -207,6 +207,11 @@ export class Tables {
         property_id INTEGER NOT NULL,
         unit_number TEXT NOT NULL,
         rent_amount REAL NOT NULL,
+        deposit_amount REAL DEFAULT 0,
+        unit_type TEXT DEFAULT 'residential' CHECK (unit_type IN ('residential', 'commercial')),
+        unit_size TEXT DEFAULT 'other',
+        unit_condition TEXT DEFAULT 'maintained' CHECK (unit_condition IN ('new', 'maintained', 'old')),
+        status TEXT DEFAULT 'vacant' CHECK (status IN ('vacant', 'occupied', 'maintenance')),
         is_occupied INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -736,6 +741,13 @@ export class Tables {
         { query: `ALTER TABLE properties ADD COLUMN owner_id TEXT`, column: 'owner_id' },
         { query: `ALTER TABLE properties ADD COLUMN owner_phone TEXT`, column: 'owner_phone' },
         { query: `ALTER TABLE tenants ADD COLUMN is_restricted INTEGER DEFAULT 0`, column: 'is_restricted' },
+        // Units: price, deposit, type, size, condition and availability live on the unit; a tenant points at one.
+        { query: `ALTER TABLE tenants ADD COLUMN unit_id INTEGER`, column: 'unit_id' },
+        { query: `ALTER TABLE units ADD COLUMN deposit_amount REAL DEFAULT 0`, column: 'deposit_amount' },
+        { query: `ALTER TABLE units ADD COLUMN unit_type TEXT DEFAULT 'residential'`, column: 'unit_type' },
+        { query: `ALTER TABLE units ADD COLUMN unit_size TEXT DEFAULT 'other'`, column: 'unit_size' },
+        { query: `ALTER TABLE units ADD COLUMN unit_condition TEXT DEFAULT 'maintained'`, column: 'unit_condition' },
+        { query: `ALTER TABLE units ADD COLUMN status TEXT DEFAULT 'vacant'`, column: 'status' },
         // NEW: Add archival flags
         { query: `ALTER TABLE monthly_transcripts ADD COLUMN is_archived INTEGER DEFAULT 0`, column: 'is_archived' },
         { query: `ALTER TABLE rent_record_sheets ADD COLUMN is_archived INTEGER DEFAULT 0`, column: 'is_archived' }
@@ -762,6 +774,19 @@ export class Tables {
         } catch (error) {
           console.warn(`Migration skipped (${migration.column}):`, error);
         }
+      }
+
+      // Unit indexes (after the columns exist) and one-off backfill of units from tenants' free-text unit numbers.
+      for (const idx of [
+        'CREATE INDEX IF NOT EXISTS idx_units_property_status ON units(property_id, status)',
+        'CREATE INDEX IF NOT EXISTS idx_tenants_unit_id ON tenants(unit_id)'
+      ]) {
+        try { await database.db.run(idx); } catch (error) { console.warn('Unit index skipped:', error); }
+      }
+      try {
+        await database.backfillUnitsFromTenants();
+      } catch (error) {
+        console.warn('Unit backfill skipped:', error);
       }
       console.log('Database migrations completed successfully');
     } catch (error) {

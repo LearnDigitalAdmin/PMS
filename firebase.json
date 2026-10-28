@@ -54,6 +54,7 @@
     }
   ],
   "firestore": {
-    "indexes": "firestore.indexes.json"
+    "indexes": "firestore.indexes.json",
+    "rules": "/plot-rules/firestore.rules"
   }
 }

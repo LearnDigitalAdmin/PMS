@@ -1,5 +1,7 @@
 import React, { memo } from 'react';
 import { X, ImageIcon } from 'lucide-react';
+import UnitsBuilder from './UnitsBuilder';
+import type { UnitSpec } from '../../services/database/Units';
 
 interface PropertyFormData {
   name: string;
@@ -29,6 +31,11 @@ interface PropertyModalProps {
   MAX_FREE_UNITS: number;
   /** PYP-NNNN, shown read-only once the property has synced. */
   ownerId?: string | null;
+  unitSpecs: UnitSpec[];
+  setUnitSpecs: (specs: UnitSpec[]) => void;
+  unitError?: string;
+  /** True in the edit modal: new units are optional there. */
+  isEdit?: boolean;
 }
 
 const PropertyModal: React.FC<PropertyModalProps> = memo(({
@@ -44,8 +51,12 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
   fileInputRef,
   handleImageUpload,
   removeImage,
-  MAX_FREE_UNITS,
-  ownerId
+  MAX_FREE_UNITS: _MAX_FREE_UNITS,
+  ownerId,
+  unitSpecs,
+  setUnitSpecs,
+  unitError,
+  isEdit
 }) => {
   if (!isOpen) return null;
 
@@ -163,27 +174,8 @@ const PropertyModal: React.FC<PropertyModalProps> = memo(({
             />
           </div>
 
-          {/* Max Units */}
-          <div>
-            <label className="block text-sm font-medium text-ink-soft mb-2">
-              Maximum Units *
-            </label>
-            <input
-              type="number"
-              value={formData.maxUnits}
-              onChange={(e) => handleInputChange('maxUnits', Number(e.target.value))}
-              min="1"
-              max={MAX_FREE_UNITS}
-              className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
-                formErrors.maxUnits ? 'border-red-500' : 'border-line'
-              }`}
-              placeholder="1"
-            />
-            {formErrors.maxUnits && (
-              <p className="text-red-500 text-sm mt-1">{formErrors.maxUnits}</p>
-            )}
-            <p className="text-ink-subtle text-xs mt-1">Maximum {MAX_FREE_UNITS} units allowed</p>
-          </div>
+          {/* Units */}
+          <UnitsBuilder specs={unitSpecs} onChange={setUnitSpecs} error={unitError} optional={isEdit} />
 
           {/* Image Upload */}
           <div>

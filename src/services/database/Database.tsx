@@ -1,15 +1,24 @@
 // Database.tsx - Complete SQLite Database Implementation with Transaction Fixes
 import { type capSQLiteChanges } from '@capacitor-community/sqlite';
 //import SQLiteConnectionManager from './Initializer';SQLiteDBConnection, t
-import { db, USER_LIMITS, type UserTier, type UserType } from './FirebaseSync';
+import { db, USER_LIMITS, firebaseSyncService, type UserTier, type UserType } from './FirebaseSync';
 import { deleteDoc, doc } from 'firebase/firestore';
 import { tables } from './Tables';
 import { checkSafaricomPhone } from '../../utils/safaricom';
+import {
+  MAX_UNITS_PER_PROPERTY, unitSizeCode, validateUnitSpecs,
+  normalizeUnitType, normalizeUnitSize, normalizeUnitCondition, normalizeUnitStatus,
+  type UnitType, type UnitSize, type UnitCondition, type UnitStatus, type UnitSpec
+} from './Units';
+export type { UnitType, UnitSize, UnitCondition, UnitStatus, UnitSpec } from './Units';
 import { argon2id, argon2Verify } from 'hash-wasm';
 import { 
   UniversalConnectionManager as SQLiteConnectionManager,
   type UniversalSQLiteConnection  // Import the interface
 } from './UniversalSQLiteAdapter';
+
+/** SQLite expression for "now" as an ISO-8601 UTC string, so unit timestamps compare correctly with cloud timestamps. */
+const NOW_ISO = `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`;
 
 // ==================== TYPE INTERFACES ====================
 export interface User {
@@ -56,7 +65,10 @@ export interface Tenant {
   name: string;
   phone?: string;
   email?: string;
+  /** The leased unit's id (units.unit_number), e.g. BS-01. Copied from the unit. */
   unitNumber?: string;
+  /** units.id of the leased unit. */
+  unitId?: number | null;
   rentAmount: number;
   standingFees: number;
   depositAmount: number;
@@ -122,8 +134,15 @@ export interface UserWithCompanyInput {
 export interface Unit {
   id: number;
   propertyId: number;
+  /** Human unit id inside the property (BS-01, 1B-03, SH-02 ...). Passed to tenants as their unit number. */
   unitNumber: string;
   rentAmount: number;
+  depositAmount: number;
+  unitType: UnitType;
+  unitSize: UnitSize;
+  condition: UnitCondition;
+  status: UnitStatus;
+  /** Kept in step with status === 'occupied' for older queries. */
   isOccupied: boolean;
   createdAt: string;
   updatedAt: string;
@@ -143,12 +162,20 @@ export interface PropertyInput {
   isRestricted?: boolean; // Added for access control
   /** Owner's Safaricom number. REQUIRED when creating a property; validated and stored as +2547XXXXXXXX. */
   ownerPhone?: string;
+  /** Units to create with the property (required on create). maxUnits becomes the total count. */
+  units?: UnitSpec[];
 }
 
 export interface UnitInput {
   propertyId: number;
-  unitNumber: string;
+  /** Optional: generated from the size (BS-01, BS-02 ...) when omitted. */
+  unitNumber?: string;
   rentAmount: number;
+  depositAmount?: number;
+  unitType?: UnitType;
+  unitSize?: UnitSize;
+  condition?: UnitCondition;
+  status?: UnitStatus;
 }
 
 export interface PropertyWithUnits {
@@ -262,6 +289,8 @@ export interface TenantInput {
   phone?: string;
   email?: string;
   unitNumber?: string;
+  /** The unit to lease (must be vacant). Rent and unit number are taken from it. */
+  unitId?: number | null;
   rentAmount: number;
   standingFees?: number;
   depositAmount?: number;
@@ -503,6 +532,37 @@ async getPropertiesWithTenants(userId: number): Promise<PropertyWithTenants[]> {
   }
 }
 
+/** Plan limit: a plan's tenant total is also its unit total (e.g. 300 tenants = 300 units). Counts all the user's properties. */
+private async assertUnitCapacity(propertyId: number, adding: number): Promise<void> {
+  const property = await this.getPropertyById(propertyId);
+  if (!property) throw new Error('Property not found');
+  const user = await this.getUserById(property.userId);
+  if (!user) return;
+  const limit = (USER_LIMITS[user.tier as keyof typeof USER_LIMITS] || USER_LIMITS.free).totalTenants;
+  if (limit === -1) return;
+  const result = await this.db!.query(
+    'SELECT COUNT(*) AS n FROM units WHERE property_id IN (SELECT id FROM properties WHERE user_id = ?)',
+    [property.userId]
+  );
+  const current = result.values?.[0]?.n || 0;
+  if (current + adding > limit) {
+    throw new Error(`Your plan allows ${limit} units in total (you have ${current}). Upgrade to add more.`);
+  }
+}
+
+/** Live sync: push what just changed, without blocking the UI. Online users on plans with cloud storage only. */
+private liveSync(propertyId: number, only: { unitIds?: number[]; tenantId?: number; invoiceId?: number } = {}): void {
+  if (!navigator.onLine) return;
+  void (async () => {
+    try {
+      const property = await this.getPropertyById(propertyId);
+      if (property) await firebaseSyncService.pushLive(property.userId, propertyId, only);
+    } catch (error) {
+      console.warn('Live sync skipped:', error);
+    }
+  })();
+}
+
 // 3. FIX: Secure createUnit with property validation
 async createUnit(unit: UnitInput): Promise<Unit> {
   // CRITICAL: Validate property access before creating unit
@@ -520,23 +580,107 @@ async createUnit(unit: UnitInput): Promise<Unit> {
   if (existingUnits.length >= property.maxUnits) {
     throw new Error(`Property has reached maximum units limit (${property.maxUnits})`);
   }
+  if (!(unit.rentAmount > 0)) {
+    throw new Error('A unit needs a rent amount greater than 0');
+  }
+  await this.assertUnitCapacity(unit.propertyId, 1);
 
-  const query = `
-    INSERT INTO units (property_id, unit_number, rent_amount)
-    VALUES (?, ?, ?)
-  `;
-  
-  const result = await this.db!.run(query, [
+  const unitSize = normalizeUnitSize(unit.unitSize);
+  const unitNumber = unit.unitNumber?.trim() || await this.nextUnitNumber(unit.propertyId, unitSize);
+  const status = normalizeUnitStatus(unit.status);
+  const id = await this.nextUnitId(unit.propertyId);
+
+  await this.db!.run(`
+    INSERT INTO units (
+      id, property_id, unit_number, rent_amount, deposit_amount,
+      unit_type, unit_size, unit_condition, status, is_occupied, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${NOW_ISO}, ${NOW_ISO})
+  `, [
+    id,
     unit.propertyId,
-    unit.unitNumber,
-    unit.rentAmount
+    unitNumber,
+    unit.rentAmount,
+    unit.depositAmount || 0,
+    normalizeUnitType(unit.unitType),
+    unitSize,
+    normalizeUnitCondition(unit.condition),
+    status,
+    status === 'occupied' ? 1 : 0
   ]);
 
-  const createdUnit = await this.getUnitById(result.changes!.lastId!);
+  const createdUnit = await this.getUnitById(id);
   if (!createdUnit) {
     throw new Error('Failed to retrieve created unit');
   }
   return createdUnit;
+}
+
+/** Unit ids are propertyId * 1000 + n, so a unit keeps the same id on every device and in Firestore. */
+private async nextUnitId(propertyId: number): Promise<number> {
+  const base = propertyId * 1000;
+  const result = await this.db!.query(
+    'SELECT MAX(id) AS max_id FROM units WHERE id > ? AND id <= ?',
+    [base, base + MAX_UNITS_PER_PROPERTY]
+  );
+  const next = (result.values?.[0]?.max_id || base) + 1;
+  if (next > base + MAX_UNITS_PER_PROPERTY) {
+    throw new Error(`A property can have at most ${MAX_UNITS_PER_PROPERTY} units`);
+  }
+  return next;
+}
+
+/** BS-01, BS-02 ... the first free number for this size inside the property. */
+private async nextUnitNumber(propertyId: number, size: UnitSize): Promise<string> {
+  const code = unitSizeCode(size);
+  const result = await this.db!.query('SELECT unit_number FROM units WHERE property_id = ?', [propertyId]);
+  const taken = new Set((result.values || []).map((r: any) => String(r.unit_number).toUpperCase()));
+  for (let n = 1; n <= MAX_UNITS_PER_PROPERTY; n++) {
+    const candidate = `${code}-${String(n).padStart(2, '0')}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  throw new Error('No free unit number left for this size');
+}
+
+/**
+ * Creates the units chosen in the "add units" builder (each row = `count` identical units).
+ * Raises the property's max_units when needed so max_units never drops below the number of units.
+ */
+async createUnitsFromSpecs(propertyId: number, specs: UnitSpec[]): Promise<Unit[]> {
+  const problem = validateUnitSpecs(specs);
+  if (problem) throw new Error(problem);
+
+  const property = await this.getPropertyById(propertyId);
+  if (!property) throw new Error('Property not found');
+  if (property.isRestricted) {
+    throw new Error('Cannot create unit for restricted property. Upgrade your plan to access.');
+  }
+
+  const total = specs.reduce((sum, spec) => sum + spec.count, 0);
+  await this.assertUnitCapacity(propertyId, total);
+  const existing = (await this.getUnitsByProperty(propertyId)).length;
+  if (existing + total > MAX_UNITS_PER_PROPERTY) {
+    throw new Error(`A property can have at most ${MAX_UNITS_PER_PROPERTY} units`);
+  }
+  if (existing + total > property.maxUnits) {
+    await this.db!.run(`UPDATE properties SET max_units = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [existing + total, propertyId]);
+  }
+
+  const created: Unit[] = [];
+  for (const spec of specs) {
+    for (let i = 0; i < spec.count; i++) {
+      created.push(await this.createUnit({
+        propertyId,
+        rentAmount: spec.rentAmount,
+        depositAmount: spec.depositAmount,
+        unitType: spec.unitType,
+        unitSize: spec.unitSize,
+        condition: spec.condition
+      }));
+    }
+  }
+  this.liveSync(propertyId, { unitIds: created.map(u => u.id) });
+  return created;
 }
 
 // 4. FIX: Secure getUnitsByProperty (prevents access to restricted properties)
@@ -585,8 +729,28 @@ async updateUnit(id: number, unit: Partial<UnitInput>): Promise<void> {
     fields.push('rent_amount = ?');
     values.push(unit.rentAmount);
   }
+  if (unit.depositAmount !== undefined) {
+    fields.push('deposit_amount = ?');
+    values.push(unit.depositAmount);
+  }
+  if (unit.unitType !== undefined) {
+    fields.push('unit_type = ?');
+    values.push(normalizeUnitType(unit.unitType));
+  }
+  if (unit.unitSize !== undefined) {
+    fields.push('unit_size = ?');
+    values.push(normalizeUnitSize(unit.unitSize));
+  }
+  if (unit.condition !== undefined) {
+    fields.push('unit_condition = ?');
+    values.push(normalizeUnitCondition(unit.condition));
+  }
+  // Occupancy is owned by the tenant flow; here a unit can only be marked vacant or under maintenance.
+  if (unit.status !== undefined) {
+    await this.setUnitStatus(id, unit.status);
+  }
   
-  fields.push('updated_at = CURRENT_TIMESTAMP');
+  fields.push(`updated_at = ${NOW_ISO}`);
   values.push(id);
   
   const query = `UPDATE units SET ${fields.join(', ')} WHERE id = ?`;
@@ -605,7 +769,141 @@ async deleteUnit(id: number): Promise<void> {
     throw new Error('Cannot delete unit for restricted property. Upgrade your plan to access.');
   }
   
+  if (unit.status === 'occupied') {
+    throw new Error(`Unit ${unit.unitNumber} is occupied. Remove its tenant first.`);
+  }
+  
   await this.db!.run('DELETE FROM units WHERE id = ?', [id]);
+}
+
+/** Units a new tenant can be given: vacant and not already leased. In edit mode the tenant's own unit stays selectable. */
+async getAvailableUnits(propertyId: number, includeUnitId?: number | null): Promise<Unit[]> {
+  try {
+    const property = await this.getPropertyById(propertyId);
+    if (!property || property.isRestricted) return [];
+
+    const result = await this.db!.query(
+      `SELECT * FROM units
+       WHERE property_id = ?
+         AND (
+           (status = 'vacant' AND id NOT IN (SELECT unit_id FROM tenants WHERE unit_id IS NOT NULL))
+           OR id = ?
+         )
+       ORDER BY unit_number ASC`,
+      [propertyId, includeUnitId ?? -1]
+    );
+    return this.mapToUnits(result.values || []);
+  } catch (error) {
+    console.error('Error getting available units:', error);
+    return [];
+  }
+}
+
+/**
+ * Marks a vacant unit occupied. Throws when the unit is not in this property, is under maintenance, or already has a
+ * tenant, so two tenants can never lease the same unit. The conditional UPDATE also guards two quick submits.
+ */
+private async claimUnit(unitId: number, propertyId: number): Promise<Unit> {
+  const unit = await this.getUnitById(unitId);
+  if (!unit || unit.propertyId !== propertyId) {
+    throw new Error('The selected unit does not belong to this property');
+  }
+  if (unit.status === 'maintenance') {
+    throw new Error(`Unit ${unit.unitNumber} is under maintenance`);
+  }
+  const leased = await this.db!.query('SELECT id FROM tenants WHERE unit_id = ? LIMIT 1', [unitId]);
+  if (unit.status !== 'vacant' || (leased.values?.length ?? 0) > 0) {
+    throw new Error(`Unit ${unit.unitNumber} is already occupied`);
+  }
+  const result = await this.db!.run(
+    `UPDATE units SET status = 'occupied', is_occupied = 1, updated_at = ${NOW_ISO} WHERE id = ? AND status = 'vacant'`,
+    [unitId]
+  );
+  if (!result.changes?.changes) {
+    throw new Error(`Unit ${unit.unitNumber} is already occupied`);
+  }
+  return { ...unit, status: 'occupied', isOccupied: true };
+}
+
+/** Occupied -> vacant. A unit marked as under maintenance is left alone. */
+private async releaseUnit(unitId: number): Promise<void> {
+  await this.db!.run(
+    `UPDATE units SET status = 'vacant', is_occupied = 0, updated_at = ${NOW_ISO} WHERE id = ? AND status = 'occupied'`,
+    [unitId]
+  );
+}
+
+/** Manual tracking: vacant <-> maintenance. Occupied is only ever set by leasing the unit to a tenant. */
+async setUnitStatus(id: number, status: UnitStatus): Promise<void> {
+  const unit = await this.getUnitById(id);
+  if (!unit) throw new Error('Unit not found');
+  const next = normalizeUnitStatus(status);
+  if (next === 'occupied') {
+    throw new Error('A unit becomes occupied when a tenant is added to it');
+  }
+  if (unit.status === 'occupied') {
+    throw new Error(`Unit ${unit.unitNumber} is occupied. Remove its tenant first.`);
+  }
+  await this.db!.run(
+    `UPDATE units SET status = ?, is_occupied = 0, updated_at = ${NOW_ISO} WHERE id = ?`,
+    [next, id]
+  );
+  this.liveSync(unit.propertyId, { unitIds: [id] });
+}
+
+/** A unit that has a tenant is occupied (repairs a unit whose status lagged behind a synced tenant). */
+async reconcileUnitOccupancy(): Promise<void> {
+  await this.db!.run(`
+    UPDATE units SET status = 'occupied', is_occupied = 1, updated_at = ${NOW_ISO}
+    WHERE status != 'occupied' AND id IN (SELECT unit_id FROM tenants WHERE unit_id IS NOT NULL)
+  `);
+}
+
+/**
+ * One-off, idempotent: tenants created before units existed have a free-text unit number. Give each a real unit
+ * (rent and deposit taken from the tenant) and link it, so existing properties start tracking units too.
+ */
+async backfillUnitsFromTenants(): Promise<void> {
+  await this.db!.run(`UPDATE units SET status = 'occupied' WHERE is_occupied = 1 AND status = 'vacant'`);
+
+  const legacy = await this.db!.query(
+    `SELECT id, property_id, unit_number, rent_amount, deposit_amount, is_active
+     FROM tenants
+     WHERE unit_id IS NULL AND TRIM(COALESCE(unit_number, '')) <> ''`
+  );
+  for (const t of (legacy.values || [])) {
+    try {
+      const label = String(t.unit_number).trim();
+      const found = await this.db!.query(
+        'SELECT id FROM units WHERE property_id = ? AND unit_number = ?',
+        [t.property_id, label]
+      );
+      let unitId: number | undefined = found.values?.[0]?.id;
+      if (unitId === undefined) {
+        unitId = await this.nextUnitId(t.property_id);
+        await this.db!.run(`
+          INSERT INTO units (
+            id, property_id, unit_number, rent_amount, deposit_amount,
+            unit_type, unit_size, unit_condition, status, is_occupied, created_at, updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, 'residential', 'other', 'maintained', ?, ?, ${NOW_ISO}, ${NOW_ISO})
+        `, [unitId, t.property_id, label, t.rent_amount || 0, t.deposit_amount || 0,
+            t.is_active ? 'occupied' : 'vacant', t.is_active ? 1 : 0]);
+      } else if (t.is_active) {
+        await this.db!.run(`UPDATE units SET status = 'occupied', is_occupied = 1 WHERE id = ? AND status = 'vacant'`, [unitId]);
+      }
+      await this.db!.run('UPDATE tenants SET unit_id = ? WHERE id = ?', [unitId, t.id]);
+    } catch (error) {
+      console.warn(`Unit backfill skipped for tenant ${t.id}:`, error);
+    }
+  }
+
+  // max_units must never be lower than the number of units.
+  await this.db!.run(`
+    UPDATE properties
+    SET max_units = (SELECT COUNT(*) FROM units WHERE units.property_id = properties.id)
+    WHERE max_units < (SELECT COUNT(*) FROM units WHERE units.property_id = properties.id)
+  `);
 }
 
 // 7. FIX: Secure getTenantsWithInvoices (prevents data leakage)
@@ -1526,6 +1824,7 @@ async getTrialStats(userId: number): Promise<{ totalInvoices: number; totalTenan
 
 // 10. FIX: Secure createInvoice with validation
 async deleteInvoice(id: number, userId: number): Promise<void> {
+  await this.assertCanDelete(userId);
   const invoice = await this.getInvoiceById(id);
   if (!invoice) {
     throw new Error('Invoice not found');
@@ -1552,7 +1851,16 @@ async deleteInvoice(id: number, userId: number): Promise<void> {
   }
 }
 
+/** Plans with cloud storage must be online to delete, so the cloud copy is removed too and local and cloud never drift apart. */
+private async assertCanDelete(userId: number): Promise<void> {
+  const user = await this.getUserById(userId);
+  if (user && USER_LIMITS[user.tier as keyof typeof USER_LIMITS]?.storage === true && !navigator.onLine) {
+    throw new Error('You are offline. Deleting needs a connection on your plan, so your cloud data stays in step. Reconnect and try again.');
+  }
+}
+
 async deleteTenant(id: number, userId: number): Promise<void> {
+  await this.assertCanDelete(userId);
   const tenant = await this.getTenantById(id);
   if (!tenant) {
     throw new Error('Tenant not found');
@@ -1564,6 +1872,12 @@ async deleteTenant(id: number, userId: number): Promise<void> {
   
   // Delete from SQLite first
   await this.db!.run('DELETE FROM tenants WHERE id = ? AND is_restricted = 0', [id]);
+
+  // The unit is free again
+  if (tenant.unitId != null) {
+    await this.releaseUnit(tenant.unitId);
+    this.liveSync(tenant.propertyId, { unitIds: [tenant.unitId] });
+  }
   
   // Delete from Firestore
   try {
@@ -1576,6 +1890,7 @@ async deleteTenant(id: number, userId: number): Promise<void> {
 }
 
 async deleteProperty(id: number, userId: number): Promise<void> {
+  await this.assertCanDelete(userId);
   const property = await this.getPropertyById(id);
   if (!property) {
     throw new Error('Property not found');
@@ -1594,10 +1909,15 @@ async deleteProperty(id: number, userId: number): Promise<void> {
     'SELECT id FROM invoices WHERE property_id = ?', 
     [id]
   );
+  const associatedUnits = await this.db!.query(
+    'SELECT id FROM units WHERE property_id = ?',
+    [id]
+  );
 
   // Delete from SQLite (cascade delete)
   await this.db!.run('DELETE FROM invoices WHERE property_id = ?', [id]);
   await this.db!.run('DELETE FROM tenants WHERE property_id = ?', [id]);
+  await this.db!.run('DELETE FROM units WHERE property_id = ?', [id]);
   await this.db!.run('DELETE FROM properties WHERE id = ? AND is_restricted = 0', [id]);
   
   // Delete from Firestore
@@ -1619,6 +1939,14 @@ async deleteProperty(id: number, userId: number): Promise<void> {
       for (const invoice of associatedInvoices.values) {
         const invoiceDocRef = doc(this.fireDB, 'users', userId.toString(), 'invoices', invoice.id.toString());
         await deleteDoc(invoiceDocRef);
+      }
+    }
+
+    // Delete the property's units from Firestore
+    if (associatedUnits.values) {
+      for (const unit of associatedUnits.values) {
+        const unitDocRef = doc(this.fireDB, 'users', userId.toString(), 'properties', id.toString(), 'units', unit.id.toString());
+        await deleteDoc(unitDocRef);
       }
     }
     
@@ -1859,6 +2187,7 @@ async updateInvoice(id: number, invoice: Partial<InvoiceInput>): Promise<void> {
     
     const query = `UPDATE invoices SET ${fields.join(', ')} WHERE id = ?`;
     await this.db!.run(query, values);
+    await this.autoSyncAfterChange(id, 'invoice');
   }
 
 // 11. FIX: Secure update operations with validation
@@ -1957,8 +2286,20 @@ async updateTenant(id: number, tenant: Partial<TenantInput>): Promise<void> {
     throw new Error('Cannot update restricted tenant. Upgrade your plan to access.');
   }
 
+  // Moving to another unit: it must be vacant, and its rent and unit number replace the old ones.
+  let newUnit: Unit | null = null;
+  if (tenant.unitId != null && tenant.unitId !== existingTenant.unitId) {
+    newUnit = await this.claimUnit(tenant.unitId, existingTenant.propertyId);
+  }
+
   const fields = [];
   const values = [];
+
+  if (newUnit) {
+    fields.push('unit_id = ?', 'unit_number = ?', 'rent_amount = ?');
+    values.push(newUnit.id, newUnit.unitNumber, newUnit.rentAmount);
+    tenant = { ...tenant, unitNumber: undefined, rentAmount: undefined };
+  }
   
   if (tenant.name !== undefined) {
     fields.push('name = ?');
@@ -2001,7 +2342,19 @@ async updateTenant(id: number, tenant: Partial<TenantInput>): Promise<void> {
   values.push(id);
   
   const query = `UPDATE tenants SET ${fields.join(', ')} WHERE id = ? AND is_restricted = 0`;
-  await this.db!.run(query, values);
+  try {
+    await this.db!.run(query, values);
+  } catch (error) {
+    if (newUnit) await this.releaseUnit(newUnit.id);
+    throw error;
+  }
+  if (newUnit && existingTenant.unitId != null) {
+    await this.releaseUnit(existingTenant.unitId);
+  }
+  this.liveSync(existingTenant.propertyId, {
+    tenantId: id,
+    unitIds: [newUnit?.id, newUnit ? existingTenant.unitId : undefined].filter((x): x is number => typeof x === 'number')
+  });
 
   // Auto-sync if enabled
   await this.autoSyncAfterChange(id, 'tenant');
@@ -2230,6 +2583,13 @@ async checkUserLimits(userId: number): Promise<{
     if (!ownerCheck.ok) {
       throw new Error(`Owner phone: ${ownerCheck.message}`);
     }
+    // Units are chosen when the property is added; max_units is simply how many were chosen.
+    const unitSpecs = property.units || [];
+    const unitProblem = validateUnitSpecs(unitSpecs);
+    if (unitProblem) {
+      throw new Error(unitProblem);
+    }
+    const totalUnits = unitSpecs.reduce((sum, spec) => sum + spec.count, 0);
     const newPropertyId = await this.generatePropertyId();
 
     const query = `
@@ -2246,7 +2606,7 @@ async checkUserLimits(userId: number): Promise<{
       property.description || '',
       property.image || '',
       property.agentCommissionRate || 0,
-      property.maxUnits || 1,
+      totalUnits,
       property.billingMode === 'rent_only' ? 'rent_only' : 'full',
       ownerCheck.e164
     ]);
@@ -2255,6 +2615,16 @@ async checkUserLimits(userId: number): Promise<{
     if (!createdProperty) {
       throw new Error('Failed to retrieve created property');
     }
+
+    try {
+      await this.createUnitsFromSpecs(createdProperty.id, unitSpecs);
+    } catch (error) {
+      // No property without its units: undo the insert so the user can simply try again.
+      await this.db!.run('DELETE FROM units WHERE property_id = ?', [createdProperty.id]);
+      await this.db!.run('DELETE FROM properties WHERE id = ?', [createdProperty.id]);
+      throw error;
+    }
+    this.liveSync(createdProperty.id);
 
     // Sync to Firebase if user has permission
     // const user = await this.getUserById(property.userId);
@@ -2278,49 +2648,50 @@ async checkUserLimits(userId: number): Promise<{
       throw new Error(canCreate.reason);
     }
 
-    const newTenantId = await this.generateTenantId();
-
-    const query = `
-      INSERT INTO tenants (
-        id, property_id, name, phone, email, unit_number, 
-        rent_amount, standing_fees, deposit_amount, lease_start, lease_end
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-    
-    const result = await this.db!.run(query, [
-      tenant.id || newTenantId,
-      tenant.propertyId,
-      tenant.name,
-      tenant.phone || '',
-      tenant.email || '',
-      tenant.unitNumber || '',
-      tenant.rentAmount,
-      tenant.standingFees || 0,
-      tenant.depositAmount || 0,
-      tenant.leaseStart || null,
-      tenant.leaseEnd || null
-    ]);
-
-    const createdTenant = await this.getTenantById(result.changes!.lastId!);
-    if (!createdTenant) {
-      throw new Error('Failed to retrieve created tenant');
+    // A tenant always leases one vacant unit. Rent (and the default deposit) come from that unit.
+    if (tenant.unitId == null) {
+      throw new Error('Select a vacant unit for this tenant');
     }
+    const unit = await this.claimUnit(tenant.unitId, tenant.propertyId);
 
-    // Sync to Firebase if user has permission
-    // const property = await this.getPropertyById(tenant.propertyId);
-    // if (property) {
-    //   const user = await this.getUserById(property.userId);
-    //   if (user && this.canUserSync(user)) {
-    //     try {
-    //       await firebaseSyncService.syncUserToFirestore(user);
-    //     } catch (error) {
-    //       console.error('Failed to sync after tenant creation:', error);
-    //     }
-    //   }
-    // }
+    try {
+      const newTenantId = await this.generateTenantId();
 
-    return createdTenant;
+      const query = `
+        INSERT INTO tenants (
+          id, property_id, unit_id, name, phone, email, unit_number, 
+          rent_amount, standing_fees, deposit_amount, lease_start, lease_end
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+      
+      const result = await this.db!.run(query, [
+        tenant.id || newTenantId,
+        tenant.propertyId,
+        unit.id,
+        tenant.name,
+        tenant.phone || '',
+        tenant.email || '',
+        unit.unitNumber,
+        unit.rentAmount,
+        tenant.standingFees || 0,
+        tenant.depositAmount ?? unit.depositAmount ?? 0,
+        tenant.leaseStart || null,
+        tenant.leaseEnd || null
+      ]);
+
+      const createdTenant = await this.getTenantById(result.changes!.lastId!);
+      if (!createdTenant) {
+        throw new Error('Failed to retrieve created tenant');
+      }
+
+      this.liveSync(tenant.propertyId, { tenantId: createdTenant.id, unitIds: [unit.id] });
+      return createdTenant;
+    } catch (error) {
+      // The tenant was not fully added, so the unit goes back to vacant.
+      await this.releaseUnit(unit.id);
+      throw error;
+    }
   }
 
   // ==================== ENHANCED AUTHENTICATION ====================
@@ -2457,48 +2828,19 @@ async checkUserLimits(userId: number): Promise<{
 
   
 
+  /**
+   * Live sync. Runs only after the local save succeeded (a failed save throws before this is reached, so nothing
+   * is pushed). Offline, or on plans without cloud storage, it does nothing and the scheduled sync covers it later.
+   * Tenants push themselves (together with their unit) from their own methods.
+   */
   private async autoSyncAfterChange(entityId: number, entityType: 'property' | 'tenant' | 'invoice'): Promise<void> {
     try {
-      let userId: number;
-      
-      switch (entityType) {
-        case 'property':
-          const property = await this.getPropertyById(entityId);
-          userId = property?.userId || 0;
-          break;
-        case 'tenant':
-          const tenant = await this.getTenantById(entityId);
-          if (tenant) {
-            const tenantProperty = await this.getPropertyById(tenant.propertyId);
-            userId = tenantProperty?.userId || 0;
-          } else {
-            return;
-          }
-          break;
-        case 'invoice':
-          const invoice = await this.getInvoiceById(entityId);
-          if (invoice) {
-            const invoiceProperty = await this.getPropertyById(invoice.propertyId);
-            userId = invoiceProperty?.userId || 0;
-          } else {
-            return;
-          }
-          break;
-        default:
-          return;
+      if (entityType === 'property') {
+        this.liveSync(entityId, { unitIds: [] });
+      } else if (entityType === 'invoice') {
+        const invoice = await this.getInvoiceById(entityId);
+        if (invoice) this.liveSync(invoice.propertyId, { invoiceId: entityId });
       }
-
-      await this.getUserById(userId);
-      // if (user && this.canUserSync(user)) {
-      //   // Schedule sync (don't await to avoid blocking UI)
-      //   setTimeout(async () => {
-      //     try {
-      //       await firebaseSyncService.forceSyncUserData(userId);
-      //     } catch (error) {
-      //       console.error('Auto-sync failed:', error);
-      //     }
-      //   }, 1000);
-      // }
     } catch (error) {
       console.error('Auto-sync error:', error);
     }
@@ -2678,6 +3020,7 @@ async refreshCurrentUser(id: number): Promise<User | null> {
       phone: row.phone,
       email: row.email,
       unitNumber: row.unit_number,
+      unitId: row.unit_id ?? null,
       rentAmount: row.rent_amount,
       standingFees: row.standing_fees,
       depositAmount: row.deposit_amount,
@@ -2790,10 +3133,10 @@ async getUnitById(id: number): Promise<Unit | null> {
 async setUnitOccupancy(id: number, isOccupied: boolean): Promise<void> {
   const query = `
     UPDATE units 
-    SET is_occupied = ?, updated_at = CURRENT_TIMESTAMP
+    SET is_occupied = ?, status = ?, updated_at = ${NOW_ISO}
     WHERE id = ?
   `;
-  await this.db!.run(query, [isOccupied ? 1 : 0, id]);
+  await this.db!.run(query, [isOccupied ? 1 : 0, isOccupied ? 'occupied' : 'vacant', id]);
 }
 
 // ==================== UPDATED MAPPING FUNCTIONS ====================
@@ -2804,7 +3147,12 @@ private mapToUnit(row: any): Unit {
     propertyId: row.property_id,
     unitNumber: row.unit_number,
     rentAmount: row.rent_amount,
-    isOccupied: Boolean(row.is_occupied),
+    depositAmount: row.deposit_amount || 0,
+    unitType: normalizeUnitType(row.unit_type),
+    unitSize: normalizeUnitSize(row.unit_size),
+    condition: normalizeUnitCondition(row.unit_condition),
+    status: normalizeUnitStatus(row.status),
+    isOccupied: row.status ? row.status === 'occupied' : Boolean(row.is_occupied),
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -2916,6 +3264,7 @@ async createPayment(payment: {
     throw new Error('Failed to retrieve created payment');
   }
   
+  await this.autoSyncAfterChange(payment.invoiceId, 'invoice');
   return this.mapToPayment(createdPayment.values[0]);
 }
 

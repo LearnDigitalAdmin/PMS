@@ -265,6 +265,7 @@ const handleShare = async (method: 'whatsapp' | 'email' | 'pdf' | 'summary') => 
       onBack?.();
     } catch (error) {
       console.error('Error deleting invoice:', error);
+      alert(error instanceof Error ? error.message : 'Failed to delete invoice. Please try again.');
     }
   };
 

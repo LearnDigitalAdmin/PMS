@@ -447,9 +447,17 @@ cleanup(userId?: number): void {
       const propertiesResult = await this.downloadProperties(userId);
       console.log(`✅ Downloaded ${propertiesResult} properties`);
       
-      // 2. Tenants second (depend on properties)
+      // 2. Tenants second (depend on properties; units were downloaded with their property)
       const tenantsResult = await this.downloadTenants(userId);
       console.log(`✅ Downloaded ${tenantsResult} tenants`);
+
+      // Tenants from before units existed get a unit, and a unit with a tenant is always occupied
+      try {
+        await database.backfillUnitsFromTenants();
+        await database.reconcileUnitOccupancy();
+      } catch (error) {
+        console.warn('Unit reconcile skipped:', error);
+      }
       
       // 3. Invoices last (depend on tenants and properties)
       const invoicesResult = await this.downloadInvoices(userId);
@@ -479,13 +487,43 @@ cleanup(userId?: number): void {
       
       let count = 0;
       for (const docSnap of this.sortByLocalId(snapshot.docs)) {
-        if (await this.syncPropertyDoc(userId, docSnap)) count++;
+        if (await this.syncPropertyDoc(userId, docSnap)) {
+          count++;
+          await this.downloadUnits(userId, docSnap.id, Number(docSnap.data().localId));
+        }
       }
       
       return count;
     } catch (error) {
       console.error('❌ Properties download failed:', error);
       return 0;
+    }
+  }
+
+  private async downloadUnits(userId: number, firestorePropertyId: string, localPropertyId: number): Promise<void> {
+    try {
+      const snapshot = await getDocs(
+        collection(db, 'users', userId.toString(), 'properties', firestorePropertyId, 'units')
+      );
+
+      for (const docSnap of this.sortByLocalId(snapshot.docs)) {
+        const data = docSnap.data();
+        if (!data?.localId) continue;
+
+        const unclaimed = this.isUnclaimedDeskDoc(data);
+        if (unclaimed) {
+          const local: any = await this.safeLocal(() => database.getUnitById(data.localId));
+          if (local && !this.sameText(local.unitNumber, data.unitNumber)) {
+            console.warn(`⚠️ ID conflict: desk unit ${data.localId} ("${data.unitNumber}") vs local unit ("${local.unitNumber}"). Skipping; local record kept.`);
+            continue;
+          }
+        }
+
+        const ok = await this.upsertUnit(localPropertyId, data);
+        if (ok && unclaimed) await this.claimDeskDoc(docSnap.ref);
+      }
+    } catch (error) {
+      console.error(`❌ Units download failed for property ${localPropertyId}:`, error);
     }
   }
 
@@ -756,6 +794,67 @@ private async upsertProperty(userId: number, data: any): Promise<boolean> {
   }
 }
 
+private async upsertUnit(propertyId: number, data: any): Promise<boolean> {
+  try {
+    const unitType = data.unitType === 'commercial' ? 'commercial' : 'residential';
+    const unitCondition = data.condition === 'new' || data.condition === 'old' ? data.condition : 'maintained';
+    const status = data.status === 'occupied' || data.status === 'maintenance' ? data.status : 'vacant';
+    const unitSize = typeof data.unitSize === 'string' && data.unitSize ? data.unitSize : 'other';
+
+    let local = null;
+    try {
+      local = await database.getUnitById(data.localId);
+    } catch {}
+
+    if (!local) {
+      await database.db!.run(`
+        INSERT OR IGNORE INTO units (
+          id, property_id, unit_number, rent_amount, deposit_amount,
+          unit_type, unit_size, unit_condition, status, is_occupied, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        data.localId,  // Use exact ID from Firebase
+        propertyId,
+        data.unitNumber || `UN-${data.localId}`,
+        data.rentAmount || 0,
+        data.depositAmount || 0,
+        unitType,
+        unitSize,
+        unitCondition,
+        status,
+        status === 'occupied' ? 1 : 0,
+        new Date().toISOString(),
+        new Date().toISOString()
+      ]);
+      console.log(`✅ Created unit ${data.localId} for property ${propertyId}`);
+    } else if (this.isNewer(this.cloudModified(data), local.updatedAt)) {
+      await database.db!.run(`
+        UPDATE units
+        SET unit_number = ?, rent_amount = ?, deposit_amount = ?, unit_type = ?, unit_size = ?,
+            unit_condition = ?, status = ?, is_occupied = ?, updated_at = ?
+        WHERE id = ?
+      `, [
+        data.unitNumber || local.unitNumber,
+        data.rentAmount ?? local.rentAmount,
+        data.depositAmount ?? local.depositAmount,
+        unitType,
+        unitSize,
+        unitCondition,
+        status,
+        status === 'occupied' ? 1 : 0,
+        new Date().toISOString(),
+        data.localId
+      ]);
+      console.log(`✅ Updated unit ${data.localId}`);
+    }
+    return true;
+  } catch (error) {
+    console.error(`❌ Upsert unit ${data.localId} failed:`, error);
+    return false;
+  }
+}
+
 private async upsertTenant(data: any): Promise<boolean> {
   try {
     let local = null;
@@ -763,18 +862,26 @@ private async upsertTenant(data: any): Promise<boolean> {
       local = await database.getTenantById(data.localId);
     } catch {}
     
+    // The leased unit (units are downloaded with their property, before tenants)
+    let cloudUnitId: number | null = null;
+    if (data.unitId != null) {
+      const unit = await this.safeLocal(() => database.getUnitById(Number(data.unitId)));
+      if (unit) cloudUnitId = unit.id;
+    }
+
     if (!local) {
       // CRITICAL: Use raw SQL to insert with exact ID from Firebase
       await database.db!.run(`
         INSERT INTO tenants (
-          id, property_id, name, phone, email, unit_number, rent_amount,
+          id, property_id, unit_id, name, phone, email, unit_number, rent_amount,
           standing_fees, deposit_amount, lease_start, lease_end,
           is_restricted, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       `, [
         data.localId,  // Use exact ID from Firebase
         data.propertyId,
+        cloudUnitId,
         data.name || 'Restored Tenant',
         data.phone || '',
         data.email || '',
@@ -800,6 +907,10 @@ private async upsertTenant(data: any): Promise<boolean> {
         leaseStart: data.leaseStart || local.leaseStart,
         leaseEnd: data.leaseEnd || local.leaseEnd
       });
+      // The unit link comes from the cloud as-is (the unit's own status was synced with the units)
+      if (cloudUnitId !== null && cloudUnitId !== local.unitId) {
+        await database.db!.run('UPDATE tenants SET unit_id = ? WHERE id = ?', [cloudUnitId, data.localId]);
+      }
       
       console.log(`✅ Updated tenant ${data.localId}`);
     }
@@ -1130,8 +1241,8 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
     return null;
   }
 
-  private async uploadProperties(userId: number, batchManager: SafeBatchManager): Promise<void> {
-    const properties = await this.getFilteredPropertiesForSync(userId);
+  private async uploadProperties(userId: number, batchManager: SafeBatchManager, only?: { propertyId: number; unitIds?: number[] }): Promise<void> {
+    const properties = (await this.getFilteredPropertiesForSync(userId)).filter(p => !only || p.id === only.propertyId);
     
     for (const property of properties) {
       const ref = doc(db, 'users', userId.toString(), 'properties', property.id.toString());
@@ -1160,34 +1271,50 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
         }, { merge: true });
       }, `Property ${property.id}`, existing.exists() ? 'UPDATE' : 'CREATE');
       
-      // Upload units
-      const units = await database.getUnitsByProperty(property.id);
+      // Upload units (unit facts only, never tenant details). A Cloud Function mirrors them to the public /units collection.
+      const units = (await database.getUnitsByProperty(property.id)).filter(u => !only?.unitIds || only.unitIds.includes(u.id));
       for (const unit of units) {
         const unitRef = doc(db, 'users', userId.toString(), 'properties', property.id.toString(), 'units', unit.id.toString());
         const existingUnit = await getDoc(unitRef);
+
+        if (existingUnit.exists() && this.isUnclaimedDeskDoc(existingUnit.data())) {
+          console.warn(`⚠️ Not uploading unit ${unit.id}: that ID already belongs to a different, unsynced unit created in Desk.`);
+          continue;
+        }
+
+        // Real time of the last change (SQLite stores UTC), so another device's newer change is never masked
+        const modified = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(unit.updatedAt) ? unit.updatedAt : unit.updatedAt.replace(' ', 'T') + 'Z');
         
         batchManager.addOperation((batch) => {
           batch.set(unitRef, {
             ...(existingUnit.exists() ? existingUnit.data() : {}),
-            ...unit,
-            ...(ownerId ? { ownerId } : {}),
+            id: unit.id,
+            localId: unit.id,
             userId,
             propertyId: property.id,
-            localId: unit.id,
+            ...(ownerId ? { ownerId } : {}),
+            unitNumber: unit.unitNumber,
+            unitType: unit.unitType,
+            unitSize: unit.unitSize,
+            condition: unit.condition,
+            status: unit.status,
+            isOccupied: unit.status === 'occupied',
+            rentAmount: unit.rentAmount,
+            depositAmount: unit.depositAmount,
             lastSyncTime: serverTimestamp(),
-            lastModified: new Date().toISOString()
+            lastModified: isNaN(modified.getTime()) ? new Date().toISOString() : modified.toISOString()
           }, { merge: true });
         }, `Unit ${unit.id}`, existingUnit.exists() ? 'UPDATE' : 'CREATE');
       }
     }
   }
 
-  private async uploadTenants(userId: number, batchManager: SafeBatchManager): Promise<void> {
-    const properties = await this.getFilteredPropertiesForSync(userId);
+  private async uploadTenants(userId: number, batchManager: SafeBatchManager, only?: { propertyId: number; tenantId?: number }): Promise<void> {
+    const properties = (await this.getFilteredPropertiesForSync(userId)).filter(p => !only || p.id === only.propertyId);
     const user = await database.getUserById(userId);
     
     for (const property of properties) {
-      const tenants = await this.getFilteredTenantsForSync(property.id, user);
+      const tenants = (await this.getFilteredTenantsForSync(property.id, user)).filter(t => !only?.tenantId || t.id === only.tenantId);
       
       for (const tenant of tenants) {
         const ref = doc(db, 'users', userId.toString(), 'tenants', tenant.id.toString());
@@ -1295,15 +1422,15 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
     }
   }
 
-  private async uploadInvoices(userId: number, batchManager: SafeBatchManager): Promise<void> {
-    const properties = await this.getFilteredPropertiesForSync(userId);
+  private async uploadInvoices(userId: number, batchManager: SafeBatchManager, only?: { propertyId: number; invoiceId?: number }): Promise<void> {
+    const properties = (await this.getFilteredPropertiesForSync(userId)).filter(p => !only || p.id === only.propertyId);
     const user = await database.getUserById(userId);
     
     for (const property of properties) {
       const tenants = await this.getFilteredTenantsForSync(property.id, user);
       
       for (const tenant of tenants) {
-        const invoices = await database.getInvoices({ tenantId: tenant.id });
+        const invoices = (await database.getInvoices({ tenantId: tenant.id })).filter(i => !only?.invoiceId || i.id === only.invoiceId);
         
         for (const invoice of invoices) {
           const ref = doc(db, 'users', userId.toString(), 'invoices', invoice.id.toString());
@@ -1726,6 +1853,22 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
 
   async forceDownload(userId: number): Promise<SyncStatus> {
     return this.performDownloadSync(userId, 'manual');
+  }
+
+  /**
+   * Live sync: pushes just the property (+ the given units / tenant) that changed, right away.
+   * Only for online users on plans with cloud storage (free and starter stay offline).
+   */
+  async pushLive(userId: number, propertyId: number, only: { unitIds?: number[]; tenantId?: number; invoiceId?: number } = {}): Promise<void> {
+    if (!navigator.onLine) return;
+    const user = await database.getUserById(userId);
+    if (!user || USER_LIMITS[user.tier as keyof typeof USER_LIMITS]?.storage !== true) return;
+
+    const batchManager = new SafeBatchManager();
+    await this.uploadProperties(userId, batchManager, { propertyId, unitIds: only.unitIds });
+    if (only.tenantId) await this.uploadTenants(userId, batchManager, { propertyId, tenantId: only.tenantId });
+    if (only.invoiceId) await this.uploadInvoices(userId, batchManager, { propertyId, invoiceId: only.invoiceId });
+    await batchManager.commitAll();
   }
 
   async forceUpload(userId: number): Promise<SyncStatus> {

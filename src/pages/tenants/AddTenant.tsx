@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, User, Phone, Mail, MapPin, Banknote, Calendar, Save, AlertCircle } from 'lucide-react';
 import { database } from '../../services/database/Database';
-import type { TenantInput, TenantWithInvoices } from '../../services/database/Database';
+import type { TenantInput, TenantWithInvoices, Unit } from '../../services/database/Database';
+import { unitSizeLabel, unitConditionLabel } from '../../services/database/Units';
 import { checkSafaricomPhone } from '../../utils/safaricom';
 
 interface AddTenantProps {
@@ -17,6 +18,7 @@ interface FormData {
   phone: string;
   email: string;
   unitNumber: string;
+  unitId: string;
   rentAmount: string;
   standingFees: string;
   depositAmount: string;
@@ -44,6 +46,7 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
     phone: '',
     email: '',
     unitNumber: '',
+    unitId: '',
     rentAmount: '',
     standingFees: '',
     depositAmount: '',
@@ -54,6 +57,16 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
   const [errors, setErrors] = useState<FormErrors>({});
   const [loading, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [availableUnits, setAvailableUnits] = useState<Unit[]>([]);
+
+  // Vacant units of this property (a tenant being edited keeps their own unit in the list)
+  useEffect(() => {
+    let cancelled = false;
+    database.getAvailableUnits(propertyId, tenant?.unitId ?? null).then(units => {
+      if (!cancelled) setAvailableUnits(units);
+    });
+    return () => { cancelled = true; };
+  }, [propertyId, tenant?.unitId]);
 
   // Initialize form data when tenant prop changes (for edit mode)
   useEffect(() => {
@@ -64,6 +77,7 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
         phone: tenant.phone || '',
         email: tenant.email || '',
         unitNumber: tenant.unitNumber || '',
+        unitId: tenant.unitId != null ? String(tenant.unitId) : '',
         rentAmount: tenant.rentAmount?.toString() || '',
         standingFees: tenant.standingFees?.toString() || '',
         depositAmount: tenant.depositAmount?.toString() || '',
@@ -97,10 +111,8 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
       if (!phoneCheck.ok) newErrors.phone = phoneCheck.message;
     }
 
-    if (!formData.unitNumber.trim()) {
-      newErrors.unitNumber = 'Unit number is required';
-    } else if (formData.unitNumber.trim().length < 1) {
-      newErrors.unitNumber = 'Unit number must be at least 1 character';
+    if (!formData.unitId) {
+      newErrors.unitNumber = 'Select a unit';
     }
 
     if (!formData.rentAmount.trim()) {
@@ -140,6 +152,20 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
     }
   };
 
+  // Picking a unit passes its id as the unit number and its price (rent, default deposit) to the form
+  const handleUnitSelect = (value: string) => {
+    const unit = availableUnits.find(u => String(u.id) === value);
+    setFormData(prev => ({
+      ...prev,
+      unitId: value,
+      unitNumber: unit ? unit.unitNumber : '',
+      rentAmount: unit ? String(unit.rentAmount) : '',
+      depositAmount: unit && !(tenant && String(tenant.unitId) === value) ? String(unit.depositAmount || '') : prev.depositAmount
+    }));
+    setHasUnsavedChanges(true);
+    setErrors(prev => ({ ...prev, unitNumber: undefined, rentAmount: undefined }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -159,6 +185,7 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
         phone: (() => { const c = checkSafaricomPhone(formData.phone); return c.ok ? c.local : (formData.phone.trim() || undefined); })(),
         email: formData.email.trim() || undefined,
         unitNumber: formData.unitNumber.trim() || undefined,
+        unitId: formData.unitId ? Number(formData.unitId) : undefined,
         rentAmount: parseFloat(formData.rentAmount),
         standingFees: formData.standingFees.trim() ? parseFloat(formData.standingFees) : undefined,
         depositAmount: formData.depositAmount.trim() ? parseFloat(formData.depositAmount) : undefined,
@@ -178,7 +205,8 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
       onTenantAdded();
     } catch (error) {
       console.error('Error saving tenant:', error);
-      alert(`Failed to ${isEditMode ? 'update' : 'create'} tenant. Please try again.`);
+      const reason = error instanceof Error && /unit/i.test(error.message) ? ` ${error.message}.` : '';
+      alert(`Failed to ${isEditMode ? 'update' : 'create'} tenant.${reason || ' Please try again.'}`);
     } finally {
       setSaving(false);
     }
@@ -322,19 +350,37 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
                   )}
                 </div>
 
-                {/* Unit Number */}
+                {/* Unit (selected from the property's vacant units) */}
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-ink-soft mb-2">Unit/Apartment Number</label>
+                  <label className="block text-sm font-medium text-ink-soft mb-2">
+                    Unit <span className="text-red-500">*</span>
+                  </label>
                   <div className="relative">
                     <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-ink-faint" />
-                    <input
-                      type="text"
-                      value={formData.unitNumber}
-                      onChange={(e) => handleInputChange('unitNumber', e.target.value)}
-                      placeholder="e.g., A1, 2B, Ground Floor"
-                      className="w-full pl-10 pr-4 py-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
+                    <select
+                      value={formData.unitId}
+                      onChange={(e) => handleUnitSelect(e.target.value)}
+                      className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                        errors.unitNumber ? 'border-red-300 dark:border-red-500/40' : 'border-line-strong'
+                      }`}
+                    >
+                      <option value="">{availableUnits.length ? 'Select a vacant unit' : 'No vacant units'}</option>
+                      {availableUnits.map(u => (
+                        <option key={u.id} value={u.id}>
+                          {u.unitNumber} · {unitSizeLabel(u.unitSize)} · {u.unitType} · {unitConditionLabel(u.condition)} · KES {u.rentAmount.toLocaleString()}
+                        </option>
+                      ))}
+                    </select>
                   </div>
+                  {errors.unitNumber && (
+                    <p className="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.unitNumber}
+                    </p>
+                  )}
+                  {!availableUnits.length && (
+                    <p className="mt-1 text-xs text-ink-subtle">Add units from Edit Property to lease them.</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -356,7 +402,8 @@ const AddTenant: React.FC<AddTenantProps> = ({ propertyId, tenant, onClose, onTe
                       min="0"
                       value={formData.rentAmount}
                       onChange={(e) => handleInputChange('rentAmount', e.target.value)}
-                      placeholder="0.00"
+                      readOnly={!(isEditMode && tenant && String(tenant.unitId ?? '') === formData.unitId)}
+                      placeholder="Set by the selected unit"
                       className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                         errors.rentAmount ? 'border-red-300 dark:border-red-500/40' : 'border-line-strong'
                       }`}

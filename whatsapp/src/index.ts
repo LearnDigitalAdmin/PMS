@@ -2989,6 +2989,38 @@ export const plotWebhookHealth = onRequest({
 });
 
 // Main Cloud Function - Invoice Document Trigger - SOUTH AFRICA REGION
+// Public unit listing: mirrors users/{userId}/properties/{propertyId}/units/{unitId} to the top-level /units collection
+// (doc id = {ownerId}_{unitId}). Only unit facts are copied: never the landlord's id or any tenant data.
+export const mirrorPublicUnit = onDocumentWritten({
+    document: 'users/{userId}/properties/{propertyId}/units/{unitId}',
+    region: 'africa-south1'
+}, async (event) => {
+    const before = event.data?.before.data();
+    const after = event.data?.after.data();
+    const { unitId } = event.params;
+
+    // Deleted: remove the public copy
+    if (!after) {
+        if (before?.ownerId) await db.collection('units').doc(`${before.ownerId}_${unitId}`).delete();
+        return;
+    }
+    // The owner id is allocated on the property's first sync; later writes carry it.
+    if (!after.ownerId) return;
+
+    await db.collection('units').doc(`${after.ownerId}_${unitId}`).set({
+        ownerId: after.ownerId,
+        unitId: Number(unitId),
+        unitNumber: after.unitNumber ?? '',
+        unitType: after.unitType ?? 'residential',
+        unitSize: after.unitSize ?? 'other',
+        condition: after.condition ?? 'maintained',
+        status: after.status ?? 'vacant',
+        rentAmount: after.rentAmount ?? 0,
+        depositAmount: after.depositAmount ?? 0,
+        updatedAt: FieldValue.serverTimestamp()
+    });
+});
+
 export const processInvoiceNotifications = onDocumentWritten({
     document: 'users/{userId}/invoices/{invoiceId}',
     region: 'africa-south1'

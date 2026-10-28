@@ -23,10 +23,13 @@ import {
   FileText,
   ClipboardList,
   PenTool,
-  MessageSquare
+  MessageSquare,
+  Copy,
+  Check
 } from 'lucide-react';
 import { database, type PropertyWithTenants, type DashboardData, type MonthlyStats } from '../../services/database/Database';
 import TenantsList from '../tenants/TenantsList';
+import PropertyUnits from './PropertyUnits';
 import AddTenant from '../tenants/AddTenant';
 import Transcript from './Transcript';
 import Sheet from './Sheet';
@@ -84,6 +87,17 @@ const Property: React.FC<PropertyProps> = ({
 
   const { user, company } = useAuth();
   const [showSendSms, setShowSendSms] = useState(false);
+  const [ownerIdCopied, setOwnerIdCopied] = useState(false);
+
+  const copyOwnerId = async (id: string) => {
+    try {
+      await navigator.clipboard.writeText(id);
+      setOwnerIdCopied(true);
+      setTimeout(() => setOwnerIdCopied(false), 1500);
+    } catch (error) {
+      console.error('Could not copy owner ID:', error);
+    }
+  };
   const senderSignature = `${company?.name || user?.name || 'Property Manager'}, ${user?.phone || ''}`;
 
   useEffect(() => {
@@ -297,6 +311,22 @@ return (
                     <span className="truncate">{property.address}</span>
                   </p>
                 )}
+                <p className="text-xs sm:text-sm text-ink-subtle flex items-center mt-0.5">
+                  Owner ID:&nbsp;
+                  {property.ownerId ? (
+                    <button
+                      type="button"
+                      onClick={() => copyOwnerId(property.ownerId!)}
+                      className="inline-flex items-center gap-1 font-semibold text-ink-soft hover:text-blue-600 select-all"
+                      title="Copy owner ID"
+                    >
+                      {property.ownerId}
+                      {ownerIdCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    </button>
+                  ) : (
+                    <span className="italic">assigned after first sync</span>
+                  )}
+                </p>
               </div>
             </div>
             
@@ -609,6 +639,11 @@ return (
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Units */}
+          <div className="mb-6">
+            <PropertyUnits propertyId={propertyId} refreshKey={property.tenants} />
           </div>
 
           {/* Tenants List Section */}
