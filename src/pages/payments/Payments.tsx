@@ -1,5 +1,6 @@
 // AgentView.tsx - Agent Dashboard (Updated with Multiple Payment Modes)
 import PageHeader, { HeaderAction } from '../../components/ui/PageHeader';
+import SettlementFields, { type SettlementType } from './SettlementFields';
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -48,7 +49,8 @@ const AgentView: React.FC = () => {
 
   // Mobile Money State
   const [businessName, setBusinessName] = useState('');
-  const [settlementBank, setSettlementBank] = useState<'mpesa' | 'airtel-ke'>('mpesa');
+  const [settlementBank, setSettlementBank] = useState<SettlementType>('mpesa');
+  const [bankCode, setBankCode] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -119,7 +121,7 @@ const AgentView: React.FC = () => {
         // Load payment info if available
         if (agent.paymentInfo) {
           setBusinessName(agent.paymentInfo.businessName || '');
-          setSettlementBank(agent.paymentInfo.settlementBank as 'mpesa' | 'airtel-ke' || 'mpesa');
+          setSettlementBank((agent.paymentInfo.settlementType || agent.paymentInfo.settlementBank) as SettlementType || 'mpesa');
           setAccountNumber(agent.paymentInfo.accountNumber || '');
           setEmail(agent.paymentInfo.email || agent.email);
           setName(agent.paymentInfo.name || agent.name);
@@ -303,6 +305,7 @@ const AgentView: React.FC = () => {
       await AgentService.setupPaymentAccount({
         businessName,
         settlementBank,
+        bankCode: settlementBank === 'bank' ? bankCode : undefined,
         accountNumber,
         email,
         name,
@@ -619,37 +622,15 @@ const AgentView: React.FC = () => {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-ink-soft mb-2">
-                    Settlement Bank
-                  </label>
-                  <select
-                    value={settlementBank}
-                    onChange={(e) => setSettlementBank(e.target.value as 'mpesa' | 'airtel-ke')}
-                    required
-                    className="w-full px-4 py-3 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="mpesa">M-Pesa</option>
-                    <option value="airtel-ke">Airtel Money (Kenya)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-ink-soft mb-2">
-                    Account Number / Phone Number
-                  </label>
-                  <input
-                    type="text"
-                    value={accountNumber}
-                    onChange={(e) => setAccountNumber(e.target.value)}
-                    required
-                    className="w-full px-4 py-3 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500"
-                    placeholder="254712345678"
-                  />
-                  <p className="text-xs text-ink-subtle mt-1">
-                    Enter your M-Pesa/Airtel Money registered phone number
-                  </p>
-                </div>
+                <SettlementFields
+                  settlementBank={settlementBank}
+                  setSettlementBank={setSettlementBank}
+                  bankCode={bankCode}
+                  setBankCode={setBankCode}
+                  accountNumber={accountNumber}
+                  setAccountNumber={setAccountNumber}
+                  loadBanks={AgentService.listKenyaBanks}
+                />
 
                 <div>
                   <label className="block text-sm font-medium text-ink-soft mb-2">
