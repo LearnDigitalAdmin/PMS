@@ -11,6 +11,7 @@ import { listTenantsPage } from "./tenantList";
 import { DeskError } from "./errors";
 import { nextRunAt, validateSchedule, type ScheduleSpec } from "./schedule";
 import { toImportRow, validateTenantRows, type ExistingTenant, type ImportError, type ImportRow, type NewTenant, type PropertyRec } from "./tenantRules";
+import { firstName } from '../dear';
 
 export const DELEGATE_ACTIONS = ["entity_info", "validate_records", "commit_records", "schedule_sms", "send_sms_now", "run_report", "export_data", "list_tenants"] as const;
 export type DelegateAction = typeof DELEGATE_ACTIONS[number];
@@ -289,7 +290,7 @@ async function planSend(deps: DelegateDeps, l: Landlord, message: string, audien
   const items: SendItem[] = recipients.map((r) => {
     const nameCheck = sms.validateBody(r.name);
     if (!nameCheck.valid) throw new DeskError("invalid_argument", `Recipient name "${r.name}" contains disallowed characters.`);
-    const full = `Dear ${r.name}, ${message.trim()} - ${signature}`;
+    const full = `Dear ${firstName(r.name)}, ${message.trim()} - ${signature}`;
     const finalCheck = sms.validateBody(full);
     if (!finalCheck.valid) throw new DeskError("invalid_argument", finalCheck.reason || "Composed message is invalid.");
     return { recipient: r, mobile: sms.normalizePhone(r.phone), full, tokens: sms.tokensFor(full) };

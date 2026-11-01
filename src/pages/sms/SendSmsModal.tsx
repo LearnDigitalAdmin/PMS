@@ -4,6 +4,13 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../services/database/FirebaseSync';
 import { useSmsTokens } from '../../hooks/useSmsTokens';
 
+/** "Dear John" from "John Doe": SMS greet by first name only (cut at the first space). */
+const dearFirstName = (full: unknown): string => {
+  const first = (typeof full === 'string' ? full.trim() : '').split(/\s+/)[0] ?? '';
+  const clean = first.replace(/[^\p{L}'’-]/gu, '');
+  return clean ? clean.charAt(0).toUpperCase() + clean.slice(1) : 'Customer';
+};
+
 const CHARS_PER_TOKEN = 140;
 
 // Must mirror the Cloud Function's ALLOWED_SMS_BODY_REGEX / LINK_PATTERN
@@ -56,7 +63,7 @@ const SendSmsModal: React.FC<SendSmsModalProps> = ({
   // length and the token boundary counts the WHOLE composed message.
   const composed = useMemo(() => {
     return validRecipients.map((r) => {
-      const full = `Dear ${r.name}, ${message.trim()} - ${senderSignature}`;
+      const full = `Dear ${dearFirstName(r.name)}, ${message.trim()} - ${senderSignature}`;
       return { recipient: r, full, tokens: Math.max(1, Math.ceil(full.length / CHARS_PER_TOKEN)) };
     });
   }, [validRecipients, message, senderSignature]);

@@ -445,6 +445,11 @@ service cloud.firestore {
       allow read: if signedIn() && resource.data.agentId == request.auth.uid;
       allow write: if false;
     }
+    // Income/team counters: an agent reads only their own month documents (written by server code only).
+    match /desk_stats/{id} {
+      allow read: if request.auth != null && resource.data.agentId == request.auth.uid;
+      allow write: if false;
+    }
     match /desk_config/{id}      { allow read, write: if false; }
     match /desk_customers/{id}   { allow read, write: if false; }
     match /desk_actionOtps/{id}  { allow read, write: if false; }
@@ -458,6 +463,10 @@ service cloud.firestore {
     match /desk_split_codes/{id} { allow read, write: if false; }
     match /desk_requests/{id}    { allow read, write: if false; }
     match /desk_docs/{id}        { allow read, write: if false; }
+    
+    match /desk_invites/{id}     { allow read, write: if false; }
+    match /desk_accruals/{id}    { allow read, write: if false; }
+    match /desk_incentives/{id}  { allow read, write: if false; }
 
     // -------------------------------------------------------------------------
     // SERVER-ONLY collections (Admin SDK). No client in CYBER / PMS / PAY reads

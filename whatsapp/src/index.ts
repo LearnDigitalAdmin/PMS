@@ -18,6 +18,7 @@ import {
   createDeskdelegate, createDeskScheduleRunner, resolveSubscriptionAttribution, firestoreAttributionDeps,
   type DeskSmsWiring,
 } from './desk';
+import { firstName } from './dear';
 
 // Initialize Firebase Admin SDK
 if (getApps().length === 0) {
@@ -273,7 +274,7 @@ export const sendPmsSms = onCall({
     if (!nameCheck.valid) {
       throw new HttpsError("invalid-argument", `Recipient name "${r.name}" contains disallowed characters.`);
     }
-    const fullMessage = `Dear ${r.name}, ${message.trim()} - ${signature}`;
+    const fullMessage = `Dear ${firstName(r.name)}, ${message.trim()} - ${signature}`;
     const finalCheck = validateStrictSmsBody(fullMessage);
     if (!finalCheck.valid) {
       throw new HttpsError("invalid-argument", finalCheck.reason || "Composed message is invalid.");
@@ -396,25 +397,25 @@ function buildSmsMessage(
     switch (type) {
         case SMS_TEMPLATES.NEW_INVOICE:
             // params: tenantName, billingMonth, propertyName, agentName, agentPhone, agentEmail
-            msg = `Dear ${params.tenantName}, your invoice for ${params.billingMonth} at ${params.propertyName} is ready. TOTAL AMOUNT: ${params.totalAmount}` +
+            msg = `Dear ${firstName(params.tenantName, "Tenant")}, your invoice for ${params.billingMonth} at ${params.propertyName} is ready. TOTAL AMOUNT: ${params.totalAmount}` +
                   ` Contact ${params.agentName} on ${params.agentPhone} for queries.`;
-            compact = `Dear ${params.tenantName}, invoice for ${params.billingMonth} at ${params.propertyName}: ${params.totalAmount}.` +
+            compact = `Dear ${firstName(params.tenantName, "Tenant")}, invoice for ${params.billingMonth} at ${params.propertyName}: ${params.totalAmount}.` +
                       ` Queries: ${params.agentPhone}.`;
             break;
 
         case SMS_TEMPLATES.OVERDUE:
             // params: tenantName, outstandingAmount, daysOverdue, propertyName
-            msg = `Dear ${params.tenantName}, your rent at ${params.propertyName} is overdue by ${params.daysOverdue} day(s). ` +
+            msg = `Dear ${firstName(params.tenantName, "Tenant")}, your rent at ${params.propertyName} is overdue by ${params.daysOverdue} day(s). ` +
                   ` Outstanding: ${params.outstandingAmount}. Please pay to avoid late fees.`;
-            compact = `Dear ${params.tenantName}, rent at ${params.propertyName} is ${params.daysOverdue} day(s) overdue.` +
+            compact = `Dear ${firstName(params.tenantName, "Tenant")}, rent at ${params.propertyName} is ${params.daysOverdue} day(s) overdue.` +
                       ` Outstanding: ${params.outstandingAmount}. Pay to avoid late fees.`;
             break;
 
         case SMS_TEMPLATES.PAYMENT_SUCCESS:
             // params: tenantName, amountPaid, propertyUnit, balance (only for a part-payment)
-            msg = `Dear ${params.tenantName}, ${params.agentName} has received your payment of ${params.amountPaid} for ${params.propertyUnit}.` +
+            msg = `Dear ${firstName(params.tenantName, "Tenant")}, ${params.agentName} has received your payment of ${params.amountPaid} for ${params.propertyUnit}.` +
                   (params.balance ? ` Balance due: ${params.balance}.` : '') + ` Thank you!`;
-            compact = `Dear ${params.tenantName}, payment of ${params.amountPaid} for ${params.propertyUnit} received.` +
+            compact = `Dear ${firstName(params.tenantName, "Tenant")}, payment of ${params.amountPaid} for ${params.propertyUnit} received.` +
                   (params.balance ? ` Balance: ${params.balance}.` : '') + ` Thank you!`;
             label = "Receipt:";
             break;
