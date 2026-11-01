@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 
-export type SettlementType = 'mpesa' | 'airtel-ke' | 'till' | 'bank';
+export type SettlementType = 'mpesa' | 'till' | 'bank';
 export interface KenyaBank { name: string; code: string }
 
 interface Props {
   settlementBank: SettlementType;
-  setSettlementBank: (v: SettlementType) => void;
+  setSettlementBank?: (v: SettlementType) => void;
+  hideTypeSelect?: boolean;
   bankCode: string;
   setBankCode: (v: string) => void;
   accountNumber: string;
@@ -18,8 +19,7 @@ const label = 'block text-sm font-medium text-ink-soft mb-2';
 const hint = 'text-xs text-ink-subtle mt-1';
 
 const COPY: Record<SettlementType, { placeholder: string; help: string }> = {
-  mpesa: { placeholder: '254712345678', help: 'Your M-Pesa registered phone number' },
-  'airtel-ke': { placeholder: '254733123456', help: 'Your Airtel Money registered phone number' },
+  mpesa: { placeholder: '254712345678', help: 'Your Safaricom M-Pesa number' },
   till: { placeholder: '5123456', help: 'Your M-Pesa Buy Goods Till number' },
   bank: { placeholder: '0123456789', help: 'Your bank account number' },
 };
@@ -48,20 +48,21 @@ export default function SettlementFields(p: Props) {
 
   return (
     <>
+      {!p.hideTypeSelect && (
       <div>
         <label className={label}>Settle to</label>
         <select
           value={p.settlementBank}
-          onChange={(e) => { p.setSettlementBank(e.target.value as SettlementType); p.setBankCode(''); }}
+          onChange={(e) => { p.setSettlementBank?.(e.target.value as SettlementType); p.setBankCode(''); }}
           required
           className={input}
         >
           <option value="mpesa">M-Pesa (phone number)</option>
           <option value="till">M-Pesa Till</option>
           <option value="bank">Bank account</option>
-          <option value="airtel-ke">Airtel Money (Kenya)</option>
         </select>
       </div>
+      )}
 
       {p.settlementBank === 'bank' && (
         <div>
