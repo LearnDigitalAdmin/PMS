@@ -10,7 +10,6 @@ import crypto from 'crypto';
 import { checkSafaricomPhone, toMsisdn } from './phone/safaricom';
 import { renewedExpiry } from './subscriptionExpiry';
 import { formatOwnerId, OWNER_ID_PATTERN } from './ownerId';
-import { defineSecret } from 'firebase-functions/params';
 import {
   attachShortLink, buildShortUrl, isAllowedRedirectTarget, newShortCode, parseShortCode,
 } from './shortLink';
@@ -19,6 +18,7 @@ import {
   type DeskSmsWiring,
 } from './desk';
 import { firstName } from './dear';
+import { BUNDLE_SECRETS, bundleSecret } from './secretsBundle';
 
 // Initialize Firebase Admin SDK
 if (getApps().length === 0) {
@@ -26,7 +26,7 @@ if (getApps().length === 0) {
 }
 const db = getFirestore();
 
-const PAYSTACK_SECRET_KEY = defineSecret('PAYSTACK_SECRET_KEY');
+const PAYSTACK_SECRET_KEY = bundleSecret('PAYSTACK_SECRET_KEY');
 const PAYSTACK_API_BASE = "https://api.paystack.co";
 
 // Configuration - Replace with your actual values
@@ -115,10 +115,10 @@ interface ProcessWebSubscriptionRequest {
 // HostPinnacle credentials now come from Secret Manager instead of a committed
 // .env file. sendPmsSms and sendSMS below (the only two exported functions that
 // reach sendHostPinnacleSms) each list these four in their `secrets: [...]` array.
-const HP_SMS_USERID   = defineSecret("HP_SMS_USERID");
-const HP_SMS_PASSWORD = defineSecret("HP_SMS_PASSWORD");
-const HP_SMS_APIKEY   = defineSecret("HP_SMS_APIKEY");
-const HP_SMS_SENDERID = defineSecret("HP_SMS_SENDERID");
+const HP_SMS_USERID   = bundleSecret("HP_SMS_USERID");
+const HP_SMS_PASSWORD = bundleSecret("HP_SMS_PASSWORD");
+const HP_SMS_APIKEY   = bundleSecret("HP_SMS_APIKEY");
+const HP_SMS_SENDERID = bundleSecret("HP_SMS_SENDERID");
 
 const SMS_CONFIG = {
     API_URL:   "https://smsportal.hostpinnacle.co.ke/SMSApi/send",
@@ -226,7 +226,7 @@ export const sendPmsSms = onCall({
   memory: "256MiB",
   region: "africa-south1",
   cors: true,
-  secrets: [HP_SMS_USERID, HP_SMS_PASSWORD, HP_SMS_APIKEY, HP_SMS_SENDERID],
+  secrets: BUNDLE_SECRETS,
 }, async (request: CallableRequest<SendPmsSmsRequest>) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "You must be logged in to send SMS.");
@@ -1120,7 +1120,7 @@ export const sendSMS = onCall({
     memory: "256MiB",
     region: "africa-south1",
     cors: true,
-    secrets: [HP_SMS_USERID, HP_SMS_PASSWORD, HP_SMS_APIKEY, HP_SMS_SENDERID],
+    secrets: BUNDLE_SECRETS,
 }, async (request: CallableRequest<SendSmsRequest>) => {
     // Auth required
     if (!request.auth) {
@@ -1452,7 +1452,7 @@ export const processWebSubscription = onCall({
   maxInstances: 10,
   region: "africa-south1",
   cors: true,
-  secrets: [PAYSTACK_SECRET_KEY]
+  secrets: BUNDLE_SECRETS
 }, async (request: CallableRequest<ProcessWebSubscriptionRequest>) => {
   try {
     const { userId, userName, email, phone, planId, billingCycle } = request.data;
@@ -1645,7 +1645,7 @@ export const paystackWebhook = onCall({
   cors: false,
   maxInstances: 10,
   region: "africa-south1",
-  secrets: [PAYSTACK_SECRET_KEY]
+  secrets: BUNDLE_SECRETS
 }, async (request: any) => {
   console.log(`Webhook request received`);
   
@@ -3271,7 +3271,7 @@ const deskSmsWiring: DeskSmsWiring = {
   validateBody: validateStrictSmsBody,
   tokensFor: tokensForMessage,
   send: (mobile, message) => sendHostPinnacleSms({ mobile, message }),
-  secrets: [HP_SMS_USERID, HP_SMS_PASSWORD, HP_SMS_APIKEY, HP_SMS_SENDERID],
+  secrets: BUNDLE_SECRETS,
 };
 export const deskdelegate = createDeskdelegate(deskSmsWiring);
 export const runDeskSmsSchedules = createDeskScheduleRunner(deskSmsWiring);
