@@ -11,6 +11,7 @@ import {
   getDocs, 
   writeBatch,
   serverTimestamp,
+  deleteField,
   orderBy,
   limit,
   onSnapshot,
@@ -1200,10 +1201,18 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
     const userRef = doc(db, 'users', userId.toString());
     const existing = await getDoc(userRef);
     
+    // The password hash is a device-local secret used for offline sign-in. It is
+    // never uploaded, and any hash an older version left in the cloud document is
+    // removed here (deleteField) the next time this user syncs.
+    const { passwordHash: _localHash, password: _localPassword, ...userForCloud } = user as User & { password?: string };
+    const { passwordHash: _cloudHash, password: _cloudPassword, ...existingForCloud } = (existing.exists() ? existing.data() : {}) as Record<string, unknown>;
+    void _localHash; void _localPassword; void _cloudHash; void _cloudPassword;
+    
     batchManager.addOperation((batch) => {
       batch.set(userRef, {
-        ...(existing.exists() ? existing.data() : {}),
-        ...user,
+        ...existingForCloud,
+        ...userForCloud,
+        passwordHash: deleteField(),
         lastSyncTime: serverTimestamp(),
         localId: user.id,
         company: company ? {

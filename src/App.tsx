@@ -3,7 +3,7 @@ import React, { useState, useEffect, Suspense, useCallback, useRef } from 'react
 import { BrowserRouter as Router, Routes, Route, Navigate, NavLink } from 'react-router-dom';
 import PWAPrompts from './pwa/PWAPrompts';
 import InstallButton from './pwa/InstallButton';
-import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, Banknote, MessageSquare, Settings as SettingsIcon, LifeBuoy } from 'lucide-react';
+import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, Banknote, MessageSquare, Settings as SettingsIcon, LifeBuoy, FileCheck2 } from 'lucide-react';
 import { database } from './services/database/Database';
 import { firebaseSyncService } from './services/database/FirebaseSync';
 import Dashboard from './pages/Dashboard';
@@ -13,6 +13,7 @@ import Properties from './pages/properties/PropertyList';
 import Profile from './pages/Profile';
 import Settings from './pages/settings/Settings';
 import DeskRequests from './pages/desk/DeskRequests';
+import ComplianceReports from './pages/compliance/ComplianceReports';
 import type { User } from './services/database/Database';
 
 // Capacitor imports for platform detection and app handling
@@ -217,6 +218,8 @@ const NAV_ITEMS = [
   { path: '/profile', icon: UserIcon, label: 'Profile', color: 'green', restricted: false },
   { path: '/settings', icon: SettingsIcon, label: 'Settings', color: 'indigo', restricted: false },
   // Samuhia Desk requests. Sidebar/rail only: the phone bottom bar is already full (Settings also links here).
+  // MRI / compliance reports. Sidebar/rail only; phones reach it from Properties.
+  { path: '/compliance', icon: FileCheck2, label: 'Compliance', color: 'green', restricted: false, sidebarOnly: true },
   { path: '/desk-requests', icon: LifeBuoy, label: 'Support desk', color: 'green', restricted: false, sidebarOnly: true },
 ];
 
@@ -734,6 +737,11 @@ const AppContent: React.FC = () => {
             <Route path="/settings" element={
               <Suspense fallback={<LoadingSpinner />}>
                 <Settings />
+              </Suspense>
+            } />
+            <Route path="/compliance" element={
+              <Suspense fallback={<LoadingSpinner />}>
+                <ComplianceReports />
               </Suspense>
             } />
             <Route path="/desk-requests" element={

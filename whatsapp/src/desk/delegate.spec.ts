@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { handleDelegate, fingerprintOf, type ClaimResult, type DelegateDeps, type DelegateResponse, type DelegateStore, type Landlord, type ScheduleDoc, type SmsPort } from "./delegate";
+import { handleDelegate, fingerprintOf, type ReportsPort, type ClaimResult, type DelegateDeps, type DelegateResponse, type DelegateStore, type Landlord, type ScheduleDoc, type SmsPort } from "./delegate";
 import type { NewTenant } from "./tenantRules";
 
 // ---- test doubles (test file only) ----
@@ -55,7 +55,7 @@ const good = { name: "Jane Wanjiru", id: "33333333", phone: "0712345678", unitNu
 
 test("an unauthorised desk is refused on every action", async () => {
   const w = world();
-  for (const action of ["entity_info", "validate_records", "commit_records", "send_sms_now", "export_data", "run_report", "schedule_sms"]) {
+  for (const action of ["entity_info", "validate_records", "commit_records", "send_sms_now", "export_data", "run_report", "compliance_report", "schedule_sms"]) {
     const r = await call(w, { action, agentCode: "COG-0002", payload: { rows: [good], source: "manual", message: "Hi", audience: "all_tenants", kind: "tenants" } });
     assert.deepEqual(r.ok === false && r.error.code, "permission_denied", action);
   }
@@ -85,7 +85,7 @@ test("unknown landlord, malformed requests and unknown actions are rejected clea
   assert.ok(!(await call(w, { action: "drop_tables" })).ok);
   assert.ok(!(await handleDelegate(w.deps, null)).ok);
 });
-test("run_report is not_found because PMS has no report engine", async () => {
+test("run_report stays not_found: the free report path offers nothing, so a compliance report can never be made without a paid ticket", async () => {
   const r = await call(world(), { action: "run_report", payload: { reportType: "x", params: {} } });
   assert.ok(!r.ok && r.error.code === "not_found");
 });
@@ -206,4 +206,56 @@ test("list_tenants hides restricted and deactivated tenants", async () => {
   const r = await call(w, { action: "list_tenants", payload: {} });
   assert.ok(r.ok);
   assert.deepEqual((r.ok ? (r.result as { tenants: { tenantId: string }[] }).tenants : []).map((t) => t.tenantId), ["22222222"]);
+});
+
+// ---- compliance reports (paid desk service; made by PAY's report engine) ----
+function reportsWorld() {
+  const w = world();
+  const calls: Record<string, unknown>[] = [];
+  let next: Awaited<ReturnType<ReportsPort["call"]>> = { ok: true, data: { orderId: "abc", state: "ready", url: "https://signed.example/r.pdf", urlExpiresAt: "2026-11-12T08:00:00.000Z", fileName: "mri-working-paper-2026-10-abc.pdf" } };
+  w.deps.reports = { call: async (b) => { calls.push(b); return next; } };
+  return { w, calls, answer: (r: typeof next) => { next = r; } };
+}
+test("entity_info offers no free report types, even when the report engine is wired", async () => {
+  const { w } = reportsWorld();
+  const r = await call(w, { action: "entity_info" });
+  assert.ok(r.ok && (r.result as { reportTypes: string[] }).reportTypes.length === 0);
+});
+test("compliance_report: a dry run lists properties, and previews one property without making anything", async () => {
+  const { w, calls, answer } = reportsWorld();
+  answer({ ok: true, data: { properties: [{ id: "3", name: "Sunrise" }], ready: false } });
+  const list = await call(w, { action: "compliance_report", payload: { dryRun: true } });
+  assert.ok(list.ok && (list.result as { reportTypes: string[] }).reportTypes.includes("mri_monthly"));
+  answer({ ok: true, data: { ready: true, tenants: 12 } });
+  const prev = await call(w, { action: "compliance_report", payload: { dryRun: true, reportType: "mri_monthly", propertyId: "3", month: "2026-10" } });
+  assert.ok(prev.ok);
+  assert.deepEqual(calls.map((c) => c.action), ["deskPreview", "deskPreview"]);
+  assert.equal(w.claims.size, 0);                                            // a dry run is not an effectful request
+});
+test("compliance_report: generating needs the paid ticket (requestId) and is sent to PAY with the agent and ticket", async () => {
+  const { w, calls } = reportsWorld();
+  const p = { reportType: "annual_summary", propertyId: "3", month: "2026-10" };
+  const noTicket = await call(w, { action: "compliance_report", requestId: "tkt-0000000a", payload: p });
+  assert.ok(!noTicket.ok && noTicket.error.code === "invalid_argument"); assert.equal(calls.length, 0);
+  const wrong = await call(w, { action: "compliance_report", requestId: "tkt-0000000b", payload: { ...p, ticketId: "tkt-99999999" } });
+  assert.ok(!wrong.ok && wrong.error.code === "invalid_argument"); assert.equal(calls.length, 0);
+  const done = await call(w, { action: "compliance_report", requestId: "tkt-00000001", payload: { ...p, ticketId: "tkt-00000001" } });
+  assert.ok(done.ok);
+  assert.deepEqual(done.result, { downloadUrl: "https://signed.example/r.pdf", expiresAt: Date.parse("2026-11-12T08:00:00.000Z"), fileName: "mri-working-paper-2026-10-abc.pdf", orderId: "abc" });
+  assert.deepEqual(calls, [{ action: "deskGenerate", uid: "u1", propertyId: "3", month: "2026-10", kind: "annual_summary", ticketId: "tkt-00000001", agentId: "COG-0001" }]);
+  const again = await call(w, { action: "compliance_report", requestId: "tkt-00000001", payload: { ...p, ticketId: "tkt-00000001" } });
+  assert.deepEqual(again, done); assert.equal(calls.length, 1);                // replayed, not made twice
+});
+test("compliance_report: bad input and report-engine refusals become desk errors", async () => {
+  const { w, answer } = reportsWorld();
+  for (const payload of [{ reportType: "everything", propertyId: "3", month: "2026-10" }, { reportType: "mri_monthly", month: "2026-10" }, { reportType: "mri_monthly", propertyId: "3", month: "2026-13" }]) {
+    const r = await call(w, { action: "compliance_report", requestId: "tkt-00000002", payload: { ...payload, ticketId: "tkt-00000002" } });
+    assert.ok(!r.ok && r.error.code === "invalid_argument");
+  }
+  answer({ ok: false, error: { code: "CR_NO_DATA", message: "There are no synced tenant or invoice records for this property." } });
+  const none = await call(w, { action: "compliance_report", requestId: "tkt-00000003", payload: { dryRun: true, reportType: "mri_monthly", propertyId: "3", month: "2026-10" } });
+  assert.ok(!none.ok && none.error.code === "failed_precondition");
+  w.deps.reports = undefined;
+  const off = await call(w, { action: "compliance_report", payload: { dryRun: true } });
+  assert.ok(!off.ok && off.error.code === "not_found");
 });

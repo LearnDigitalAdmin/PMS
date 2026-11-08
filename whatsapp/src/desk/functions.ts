@@ -6,11 +6,12 @@ import { fs } from "./db";
 import { handleDelegate, type DelegateDeps, type SmsPort } from "./delegate";
 import { firestoreDelegateStore, purgeExpiredExports } from "./delegateStore";
 import { runDueSchedules } from "./scheduleRunner";
+import { payReportsPort } from "./reportsPort";
 
 /** PMS's own SMS machinery (validation, phone normalising, token pricing, HostPinnacle sender) and the secrets that sender needs. */
 export interface DeskSmsWiring extends SmsPort { secrets: ReturnType<typeof defineSecret>[] }
 
-const deps = (sms: SmsPort): DelegateDeps => ({ store: firestoreDelegateStore(fs()), sms, now: () => Date.now() });
+const deps = (sms: SmsPort): DelegateDeps => ({ store: firestoreDelegateStore(fs()), sms, now: () => Date.now(), reports: payReportsPort() });
 
 /**
  * `deskdelegate`: private Cloud Run service (invoker "private" => only callers holding run.invoker, i.e. desk's service account,

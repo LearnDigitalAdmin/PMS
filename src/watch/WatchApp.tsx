@@ -1,6 +1,6 @@
 // Landlord Watch shell: property switcher, bottom navigation on phones, side rail on large screens.
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, Check, ChevronDown, Eye, LayoutDashboard, Plus, Receipt, Settings as SettingsIcon, Users, Wallet } from 'lucide-react';
+import { Building2, Check, ChevronDown, Eye, FileCheck2, LayoutDashboard, Plus, Receipt, Settings as SettingsIcon, Users, Wallet } from 'lucide-react';
 import { useWatch } from './useWatch.tsx';
 import { useSnapshot } from './useSnapshot.ts';
 import { Button, ErrorBox, OfflineBar, Sheet, Skeleton } from './components/ui.tsx';
@@ -9,17 +9,19 @@ import Overview from './screens/Overview.tsx';
 import Tenants from './screens/Tenants.tsx';
 import Money from './screens/Money.tsx';
 import Transcripts from './screens/Transcripts.tsx';
+import Reports from './screens/Reports.tsx';
 import Settings from './screens/Settings.tsx';
 import FindProperty from './screens/FindProperty.tsx';
 import { dateTimeLabel } from './format.ts';
 import type { Key } from './i18n.ts';
 
-type View = 'overview' | 'tenants' | 'money' | 'transcripts' | 'settings';
+type View = 'overview' | 'tenants' | 'money' | 'transcripts' | 'reports' | 'settings';
 const NAV: { id: View; label: Key; icon: typeof Eye }[] = [
   { id: 'overview', label: 'nav.overview', icon: LayoutDashboard },
   { id: 'tenants', label: 'nav.tenants', icon: Users },
   { id: 'money', label: 'nav.money', icon: Wallet },
   { id: 'transcripts', label: 'nav.transcripts', icon: Receipt },
+  { id: 'reports', label: 'nav.reports', icon: FileCheck2 },
   { id: 'settings', label: 'nav.settings', icon: SettingsIcon },
 ];
 
@@ -71,11 +73,12 @@ export default function WatchApp() {
   else if (view === 'overview') body = <Overview data={data} month={month} onMonth={setMonth} />;
   else if (view === 'tenants') body = <Tenants data={data} />;
   else if (view === 'money') body = <Money data={data} month={month} onMonth={setMonth} />;
+  else if (view === 'reports' && active) body = <Reports key={active.ownerId} ownerId={active.ownerId} signedPhone={auth.status === 'signedIn' ? auth.phone : null} />;
   else if (view === 'transcripts' && active) body = <Transcripts key={active.ownerId} data={data} ownerId={active.ownerId} signedPhone={auth.status === 'signedIn' ? auth.phone : null} />;
   else body = <Settings data={data} onAdd={() => setAdding(true)} />;
   if (view === 'settings' && data.snapshot) body = <Settings data={data} onAdd={() => setAdding(true)} />;
 
-  const footer = data.snapshot && view !== 'settings' && view !== 'transcripts' ? (
+  const footer = data.snapshot && view !== 'settings' && view !== 'transcripts' && view !== 'reports' ? (
     <p className="mt-6 text-center text-xs text-ink-subtle" aria-live="polite">
       {data.refreshing ? t('shell.updating') : data.lastUpdated ? t('shell.lastUpdated', { time: dateTimeLabel(new Date(data.lastUpdated).toISOString(), lang) }) : ''}
     </p>

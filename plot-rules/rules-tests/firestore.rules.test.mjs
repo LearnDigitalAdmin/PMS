@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
 import {
   doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, collectionGroup,
-  getDocs, query, where, orderBy, limit, serverTimestamp,
+  getDocs, query, where, orderBy, limit, serverTimestamp, deleteField,
 } from 'firebase/firestore';
 
 let env;
@@ -77,6 +77,22 @@ test('users: client-created doc must start free', async () => {
   await assertSucceeds(setDoc(doc(as('333'), 'users/333'), { email: 'n@x.com', tier: 'free', type: 'free' }));
   await assertFails(setDoc(doc(as('444'), 'users/444'), { email: 'n@x.com', tier: 'enterprise', type: 'paid' }));
   await assertFails(setDoc(doc(as('555'), 'users/555'), { email: 'n@x.com', tokens: 99999 }));
+});
+test('compliance report orders, allowance and work list are server-only', async () => {
+  for (const path of ['complianceReports/aaaaaaaaaaaaaaaa', 'complianceQuota/111_3_2026-11', 'complianceAuto/2026-10_111']) {
+    await assertFails(getDoc(doc(as('111'), path)));
+    await assertFails(setDoc(doc(as('111'), path), { entitled: true, used: 0 }));
+  }
+});
+test('users: a client can never write a password hash', async () => {
+  await assertFails(updateDoc(doc(as('111'), 'users/111'), { passwordHash: 'new-hash' }));
+  await assertFails(setDoc(doc(as('111'), 'users/111'), { passwordHash: 'new-hash' }, { merge: true }));
+  await assertFails(setDoc(doc(as('333'), 'users/333'), { email: 'n@x.com', tier: 'free', type: 'free', passwordHash: 'h' }));
+});
+test('users: a client can delete a legacy password hash, and other updates still work while it exists', async () => {
+  await assertSucceeds(updateDoc(doc(as('111'), 'users/111'), { name: 'Renamed' }));            // users/111 is seeded with passwordHash
+  await assertSucceeds(updateDoc(doc(as('111'), 'users/111'), { passwordHash: deleteField() }));
+  await assertSucceeds(updateDoc(doc(as('111'), 'users/111'), { name: 'Renamed again' }));
 });
 test('users: cannot create/overwrite another person\'s doc, cannot delete', async () => {
   await assertFails(setDoc(doc(as('999'), 'users/888'), { email: 'x@x.com', tier: 'free' }));

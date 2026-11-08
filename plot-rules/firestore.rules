@@ -107,14 +107,20 @@ service cloud.firestore {
         && !('cyberId' in request.resource.data);
     }
 
+    // The password hash is a device-local secret (offline sign-in). A client may never write one, but may
+    // delete a legacy one; an unchanged legacy value passes. Pairs with PMS FirebaseSync.uploadUserData
+    // (which scrubs it with deleteField) and PAY/scripts/scrub-password-hashes.mjs.
+    function hashNotWritten() {
+      return !('passwordHash' in request.resource.data)
+        || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['passwordHash']);
+    }
+
     match /users/{userId} {
-      // GAP: any cyber operator can read ANY landlord doc (needed by the walk-in
-      //      rent flow: Terminal.tsx / PaymentsSuccess.tsx read users/{assetId}).
-      //      That doc contains passwordHash. Rules cannot hide one field.
-      // NEXT STEPS: (a) stop writing passwordHash to Firestore (PMS
-      //      FirebaseSync.uploadUserData / AuthWrapper offline login) and delete
-      //      the field from existing docs; (b) move landlord display info
-      //      (name, company, phone) to a separate public doc, e.g.
+      // Any signed-in operator (a doc in agents/{uid}) can read ANY landlord doc (needed by the walk-in
+      // rent flow: Terminal.tsx / PaymentsSuccess.tsx read users/{assetId}). Rules cannot hide one
+      // field, so the doc must not hold secrets: passwordHash is no longer written (hashNotWritten)
+      // and is removed from existing docs.
+      // NEXT STEP: move landlord display info (name, company, phone) to a separate public doc, e.g.
       //      landlordProfiles/{id}, then restrict this get to isLandlord() only.
       allow get: if isLandlord(userId) || isAgent();
 
@@ -125,8 +131,9 @@ service cloud.firestore {
         || (isAgent() && resource.data.cyberId == myPid())
       );
 
-      allow create: if signedIn() && request.auth.uid == userId && startsAsFree();
-      allow update: if isLandlord(userId) && entitlementsUntouched();
+      allow create: if signedIn() && request.auth.uid == userId && startsAsFree()
+        && !('passwordHash' in request.resource.data);
+      allow update: if isLandlord(userId) && entitlementsUntouched() && hashNotWritten();
       allow delete: if false;
 
       // ---- users/{userId}/properties/{propertyId}[/units/{unitId}] ----------
@@ -490,6 +497,10 @@ service cloud.firestore {
     match /allowed/{id}                  { allow read, write: if false; }
     match /deskDelegateRequests/{id}     { allow read, write: if false; }
     match /deskRequestQuota/{id}         { allow read, write: if false; }
+    // Compliance reports (PAY functions only): orders, the free-report allowance and the scheduler's work list.
+    match /complianceReports/{id}        { allow read, write: if false; }
+    match /complianceQuota/{id}          { allow read, write: if false; }
+    match /complianceAuto/{id}           { allow read, write: if false; }
     match /shops/{id}                    { allow read, write: if false; }
     match /bookings/{id}                 { allow read, write: if false; }
     match /photographers/{id}            { allow read, write: if false; }

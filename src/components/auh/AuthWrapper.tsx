@@ -11,8 +11,6 @@ import {
   collection, 
   where, 
   getDocs, 
-  doc,
-  updateDoc,
   limit} from 'firebase/firestore';
 import {
   getAuth,
@@ -23,7 +21,7 @@ import {
   type UserCredential
 } from 'firebase/auth';
 import { initializeApp, type FirebaseApp } from 'firebase/app';
-import { argon2Verify, argon2id } from 'hash-wasm';
+import { argon2id } from 'hash-wasm';
 import { httpsCallable } from 'firebase/functions';
 import HeroSection from './HeroSection';
 import MarketingNav from '../marketing/MarketingNav';
@@ -193,11 +191,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, [user, updateUserState]);
 
   // Password hashing helper - mints a fresh argon2 hash from a password that
-  // Firebase Auth has just verified as correct. Used to resync the Firestore
-  // `passwordHash` field (and, via createLocalUserFromFirestore, the local
-  // `password_hash` column) after a successful Firebase Auth login - this is
-  // what keeps offline auth valid after the user resets their password via
-  // Firebase's forgot-password flow, which only updates Firebase Auth itself.
+  // Firebase Auth has just verified as correct. The hash is stored ONLY in the
+  // local `password_hash` column (see createLocalUserFromFirestore) and is
+  // never written to Firestore. It is what keeps offline sign-in working, and
+  // it is re-minted on every online sign-in, so a password reset through
+  // Firebase's forgot-password flow (which only updates Firebase Auth) is
+  // picked up the next time the user signs in online on this device.
   const hashPassword = async (password: string): Promise<string> => {
     try {
       const salt = crypto.getRandomValues(new Uint8Array(16));
@@ -217,20 +216,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // Password verification helper
-  const verifyPassword = async (password: string, hash: string): Promise<boolean> => {
-    try {
-          const result = await argon2Verify({
-            password: password,
-            hash: hash
-          });
-    
-          return result === true;
-        } catch (error) {
-          console.error('Error verifying password:', error);
-          return false;
-        }
-  };
+
 
 
 
@@ -392,49 +378,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       console.log('Found user in Firestore:', firestoreUser.email);
 
-      if (!firestoreUser.passwordHash) {
-        return { success: false, error: 'Invalid account data' };
-      }
-
-      // Decide how to trust this password:
-      // - If Firebase Auth just signed in successfully, that IS the
-      //   authoritative password check - a stale Firestore hash (e.g. from
-      //   before a "forgot password" reset, which only updates Firebase Auth)
-      //   must not be allowed to override that. Instead of re-verifying
-      //   against it, mint a fresh hash from the password we know is correct.
-      // - If Firebase Auth couldn't be reached (network hiccup while
-      //   navigator.onLine was true), we have no external proof, so fall
-      //   back to verifying against the last-known stored hash.
-      let isValidPassword: boolean;
-      let refreshedHash: string | undefined;
-
-      if (firebaseAuthVerified) {
-        isValidPassword = true;
-        refreshedHash = await hashPassword(password);
-      } else {
-        isValidPassword = await verifyPassword(password, firestoreUser.passwordHash);
-      }
-
-      if (!isValidPassword) {
-        console.log('Invalid password for Firestore user');
-        return { success: false, error: 'Invalid password' };
-      }
-
-      // Persist the refreshed hash so Firestore (and, downstream, the local
-      // DB via createLocalUserFromFirestore) stop relying on the stale one.
-      if (refreshedHash) {
-        try {
-          await updateDoc(doc(db, 'users', userDoc.id), {
-            passwordHash: refreshedHash,
-            updatedAt: new Date().toISOString()
-          });
-          firestoreUser.passwordHash = refreshedHash;
-          console.log('✅ Refreshed Firestore passwordHash after Firebase Auth login');
-        } catch (hashSyncError) {
-          // Non-fatal: the user already authenticated via Firebase Auth.
-          // Worst case, this resync is retried on their next online login.
-          console.error('Failed to refresh Firestore passwordHash:', hashSyncError);
-        }
+      // Firebase Auth is the only authority for the password. The Firestore user
+      // document no longer carries a password hash, so there is nothing to fall
+      // back on when Firebase Auth could not be reached: the user is asked to
+      // retry. Offline sign-in on a device that already has the account is
+      // handled before this point, against the local hash (database.authenticate).
+      if (!firebaseAuthVerified) {
+        return { success: false, error: 'Could not verify your password. Check your connection and try again.' };
       }
 
       console.log('Password verified for Firestore user');
@@ -485,13 +435,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           firestoreUser.storage || false
         );
 
-        // Update password hash to match Firestore
+        // Refresh the LOCAL password hash from the password Firebase Auth just
+        // verified (loginFromFirestore only succeeds after that). This is what
+        // keeps offline sign-in valid on this device; the hash never leaves it.
+        const localHash = await hashPassword(password);
         const updateHashQuery = `
           UPDATE users 
           SET password_hash = ?, updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
         `;
-        await database.db!.run(updateHashQuery, [firestoreUser.passwordHash, existingUser.id]);
+        await database.db!.run(updateHashQuery, [localHash, existingUser.id]);
 
         // Handle company data for paid users
         if (firestoreUser.company && firestoreUser.type === 'paid') {
@@ -539,14 +492,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       const result = await database.createUserWithCompany(userData);
       
-      // Update password hash to match Firestore
+      // createUserWithCompany above already stored a local hash of `password`
+      // (verified by Firebase Auth), so only the entitlements are copied here.
       const updateHashQuery = `
         UPDATE users 
-        SET password_hash = ?, tier = ?, type = ?, storage = ?, updated_at = CURRENT_TIMESTAMP
+        SET tier = ?, type = ?, storage = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `;
       await database.db!.run(updateHashQuery, [
-        firestoreUser.passwordHash,
         firestoreUser.tier || 'free',
         firestoreUser.type || 'free',
         firestoreUser.storage ? 1 : 0,

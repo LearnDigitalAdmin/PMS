@@ -1,0 +1,1385 @@
+diff --git a/package.json b/package.json
+index a5669f1..19e5ea4 100644
+--- a/package.json
++++ b/package.json
+@@ -7,6 +7,7 @@
+     "dev": "vite",
+     "build": "tsc -b && vite build",
+     "lint": "eslint .",
++    "check:no-hash-upload": "node scripts/check-no-hash-upload.mjs",
+     "preview": "vite preview",
+     "brand": "node scripts/generate-brand.mjs"
+   },
+diff --git a/plot-rules/firestore.rules b/plot-rules/firestore.rules
+index 93f3f31..966f307 100644
+--- a/plot-rules/firestore.rules
++++ b/plot-rules/firestore.rules
+@@ -107,14 +107,20 @@ service cloud.firestore {
+         && !('cyberId' in request.resource.data);
+     }
+ 
++    // The password hash is a device-local secret (offline sign-in). A client may never write one, but may
++    // delete a legacy one; an unchanged legacy value passes. Pairs with PMS FirebaseSync.uploadUserData
++    // (which scrubs it with deleteField) and PAY/scripts/scrub-password-hashes.mjs.
++    function hashNotWritten() {
++      return !('passwordHash' in request.resource.data)
++        || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['passwordHash']);
++    }
++
+     match /users/{userId} {
+-      // GAP: any cyber operator can read ANY landlord doc (needed by the walk-in
+-      //      rent flow: Terminal.tsx / PaymentsSuccess.tsx read users/{assetId}).
+-      //      That doc contains passwordHash. Rules cannot hide one field.
+-      // NEXT STEPS: (a) stop writing passwordHash to Firestore (PMS
+-      //      FirebaseSync.uploadUserData / AuthWrapper offline login) and delete
+-      //      the field from existing docs; (b) move landlord display info
+-      //      (name, company, phone) to a separate public doc, e.g.
++      // Any signed-in operator (a doc in agents/{uid}) can read ANY landlord doc (needed by the walk-in
++      // rent flow: Terminal.tsx / PaymentsSuccess.tsx read users/{assetId}). Rules cannot hide one
++      // field, so the doc must not hold secrets: passwordHash is no longer written (hashNotWritten)
++      // and is removed from existing docs.
++      // NEXT STEP: move landlord display info (name, company, phone) to a separate public doc, e.g.
+       //      landlordProfiles/{id}, then restrict this get to isLandlord() only.
+       allow get: if isLandlord(userId) || isAgent();
+ 
+@@ -125,8 +131,9 @@ service cloud.firestore {
+         || (isAgent() && resource.data.cyberId == myPid())
+       );
+ 
+-      allow create: if signedIn() && request.auth.uid == userId && startsAsFree();
+-      allow update: if isLandlord(userId) && entitlementsUntouched();
++      allow create: if signedIn() && request.auth.uid == userId && startsAsFree()
++        && !('passwordHash' in request.resource.data);
++      allow update: if isLandlord(userId) && entitlementsUntouched() && hashNotWritten();
+       allow delete: if false;
+ 
+       // ---- users/{userId}/properties/{propertyId}[/units/{unitId}] ----------
+@@ -490,6 +497,10 @@ service cloud.firestore {
+     match /allowed/{id}                  { allow read, write: if false; }
+     match /deskDelegateRequests/{id}     { allow read, write: if false; }
+     match /deskRequestQuota/{id}         { allow read, write: if false; }
++    // Compliance reports (PAY functions only): orders, the free-report allowance and the scheduler's work list.
++    match /complianceReports/{id}        { allow read, write: if false; }
++    match /complianceQuota/{id}          { allow read, write: if false; }
++    match /complianceAuto/{id}           { allow read, write: if false; }
+     match /shops/{id}                    { allow read, write: if false; }
+     match /bookings/{id}                 { allow read, write: if false; }
+     match /photographers/{id}            { allow read, write: if false; }
+diff --git a/plot-rules/rules-tests/firestore.rules.test.mjs b/plot-rules/rules-tests/firestore.rules.test.mjs
+index 341da32..2a78428 100644
+--- a/plot-rules/rules-tests/firestore.rules.test.mjs
++++ b/plot-rules/rules-tests/firestore.rules.test.mjs
+@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
+ import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
+ import {
+   doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, collectionGroup,
+-  getDocs, query, where, orderBy, limit, serverTimestamp,
++  getDocs, query, where, orderBy, limit, serverTimestamp, deleteField,
+ } from 'firebase/firestore';
+ 
+ let env;
+@@ -78,6 +78,22 @@ test('users: client-created doc must start free', async () => {
+   await assertFails(setDoc(doc(as('444'), 'users/444'), { email: 'n@x.com', tier: 'enterprise', type: 'paid' }));
+   await assertFails(setDoc(doc(as('555'), 'users/555'), { email: 'n@x.com', tokens: 99999 }));
+ });
++test('compliance report orders, allowance and work list are server-only', async () => {
++  for (const path of ['complianceReports/aaaaaaaaaaaaaaaa', 'complianceQuota/111_3_2026-11', 'complianceAuto/2026-10_111']) {
++    await assertFails(getDoc(doc(as('111'), path)));
++    await assertFails(setDoc(doc(as('111'), path), { entitled: true, used: 0 }));
++  }
++});
++test('users: a client can never write a password hash', async () => {
++  await assertFails(updateDoc(doc(as('111'), 'users/111'), { passwordHash: 'new-hash' }));
++  await assertFails(setDoc(doc(as('111'), 'users/111'), { passwordHash: 'new-hash' }, { merge: true }));
++  await assertFails(setDoc(doc(as('333'), 'users/333'), { email: 'n@x.com', tier: 'free', type: 'free', passwordHash: 'h' }));
++});
++test('users: a client can delete a legacy password hash, and other updates still work while it exists', async () => {
++  await assertSucceeds(updateDoc(doc(as('111'), 'users/111'), { name: 'Renamed' }));            // users/111 is seeded with passwordHash
++  await assertSucceeds(updateDoc(doc(as('111'), 'users/111'), { passwordHash: deleteField() }));
++  await assertSucceeds(updateDoc(doc(as('111'), 'users/111'), { name: 'Renamed again' }));
++});
+ test('users: cannot create/overwrite another person\'s doc, cannot delete', async () => {
+   await assertFails(setDoc(doc(as('999'), 'users/888'), { email: 'x@x.com', tier: 'free' }));
+   await assertFails(deleteDoc(doc(as('111'), 'users/111')));
+diff --git a/plot-rules/storage.rules b/plot-rules/storage.rules
+index 1ac8ca8..a8c6b4d 100644
+--- a/plot-rules/storage.rules
++++ b/plot-rules/storage.rules
+@@ -176,6 +176,7 @@ service firebase.storage {
+     // Server-only paths (explicit, also denied by default): desk exports,
+     // passport results written by the passport function, generated forms.
+     match /deskExports/{allPaths=**}      { allow read, write: if false; }
++    match /compliance/{allPaths=**}       { allow read, write: if false; }     // report PDFs: reached only by short-lived signed links, after checkout
+     match /passport-results/{allPaths=**} { allow read, write: if false; }
+     match /forms/{allPaths=**}            { allow read, write: if false; }
+ 
+diff --git a/scripts/check-no-hash-upload.mjs b/scripts/check-no-hash-upload.mjs
+new file mode 100644
+index 0000000..fdfa9be
+--- /dev/null
++++ b/scripts/check-no-hash-upload.mjs
+@@ -0,0 +1,30 @@
++// Guard: the password hash is a device-local secret (offline sign-in). Fails if app code writes it to Firestore.
++// Allowed: reading/storing it in the LOCAL database, and deleteField() to scrub legacy cloud copies.
++import { readFileSync, readdirSync, statSync } from "node:fs";
++import { join } from "node:path";
++
++const root = new URL("../src", import.meta.url).pathname;
++const files = [];
++(function walk(d) {
++  for (const n of readdirSync(d)) {
++    const p = join(d, n);
++    statSync(p).isDirectory() ? walk(p) : /\.(ts|tsx)$/.test(n) && files.push(p);
++  }
++})(root);
++
++const bad = [];
++for (const f of files) {
++  if (f.includes("/pages/legal/")) continue;
++  const lines = readFileSync(f, "utf8").split("\n");
++  lines.forEach((line, i) => {
++    const code = line.replace(/\/\/.*$/, "");
++    if (/^\s*(const|let)\s*\{/.test(code) || /console\.(log|error|warn)/.test(code)) return;   // destructuring / logging, not a write
++    // a passwordHash key being assigned a value in an object literal that is not the scrub
++    if (/passwordHash\s*:/.test(code) && !/deleteField\(\)/.test(code) && /Sync|Auth|firebase|Firestore/i.test(f) && !/^\s*passwordHash\??:\s*string/.test(code)) {
++      bad.push(`${f}:${i + 1}: ${line.trim()}`);
++    }
++    if (/updateDoc\([^)]*'users'/.test(code) && /passwordHash/.test(code)) bad.push(`${f}:${i + 1}: ${line.trim()}`);
++  });
++}
++if (bad.length) { console.error("passwordHash is written to Firestore:\n" + bad.join("\n")); process.exit(1); }
++console.log(`ok: no Firestore write of passwordHash in ${files.length} source files`);
+diff --git a/src/App.tsx b/src/App.tsx
+index 16b5b16..e5e0c04 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -3,7 +3,7 @@ import React, { useState, useEffect, Suspense, useCallback, useRef } from 'react
+ import { BrowserRouter as Router, Routes, Route, Navigate, NavLink } from 'react-router-dom';
+ import PWAPrompts from './pwa/PWAPrompts';
+ import InstallButton from './pwa/InstallButton';
+-import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, Banknote, MessageSquare, Settings as SettingsIcon, LifeBuoy } from 'lucide-react';
++import { Home, Building, FileText, User as UserIcon, Wifi, WifiOff, Crown, AlertCircle, Banknote, MessageSquare, Settings as SettingsIcon, LifeBuoy, FileCheck2 } from 'lucide-react';
+ import { database } from './services/database/Database';
+ import { firebaseSyncService } from './services/database/FirebaseSync';
+ import Dashboard from './pages/Dashboard';
+@@ -13,6 +13,7 @@ import Properties from './pages/properties/PropertyList';
+ import Profile from './pages/Profile';
+ import Settings from './pages/settings/Settings';
+ import DeskRequests from './pages/desk/DeskRequests';
++import ComplianceReports from './pages/compliance/ComplianceReports';
+ import type { User } from './services/database/Database';
+ 
+ // Capacitor imports for platform detection and app handling
+@@ -217,6 +218,8 @@ const NAV_ITEMS = [
+   { path: '/profile', icon: UserIcon, label: 'Profile', color: 'green', restricted: false },
+   { path: '/settings', icon: SettingsIcon, label: 'Settings', color: 'indigo', restricted: false },
+   // Samuhia Desk requests. Sidebar/rail only: the phone bottom bar is already full (Settings also links here).
++  // MRI / compliance reports. Sidebar/rail only; phones reach it from Properties.
++  { path: '/compliance', icon: FileCheck2, label: 'Compliance', color: 'green', restricted: false, sidebarOnly: true },
+   { path: '/desk-requests', icon: LifeBuoy, label: 'Support desk', color: 'green', restricted: false, sidebarOnly: true },
+ ];
+ 
+@@ -736,6 +739,11 @@ const AppContent: React.FC = () => {
+                 <Settings />
+               </Suspense>
+             } />
++            <Route path="/compliance" element={
++              <Suspense fallback={<LoadingSpinner />}>
++                <ComplianceReports />
++              </Suspense>
++            } />
+             <Route path="/desk-requests" element={
+               <Suspense fallback={<LoadingSpinner />}>
+                 <DeskRequests />
+diff --git a/src/compliance/api.ts b/src/compliance/api.ts
+new file mode 100644
+index 0000000..8d02872
+--- /dev/null
++++ b/src/compliance/api.ts
+@@ -0,0 +1,29 @@
++// Callables for compliance reports (PAY functions crQuote / crOrder / crCheckout / crStatus / crList). The server decides every price.
++import { httpsCallable } from 'firebase/functions';
++import { functions } from '../services/database/FirebaseSync';
++import type { ReportKind } from './mapRows';
++
++export type OrderState = 'payment_required' | 'payment_pending' | 'paid' | 'generating' | 'ready' | 'failed' | 'expired';
++export interface Quote { propertyId: string; period: string; tier: string; freeIncluded: boolean; freeUsedThisMonth: number; priceKes: number; listPriceKes: number }
++export interface OrderView {
++  orderId: string; propertyId: string; month: string; kind: ReportKind; title: string; state: OrderState; priceKes: number; entitled: boolean;
++  createdAt: string | null; readyAt: string | null; error: { code: string; message: string } | null; message?: string; url?: string; urlExpiresAt?: string; fileName?: string;
++}
++
++async function call<Res>(name: string, data: object): Promise<Res> {
++  try {
++    return (await httpsCallable<object, Res>(functions, name)(data)).data;
++  } catch (e) {
++    const err = e as { message?: string; code?: string };
++    const message = typeof err.message === 'string' && err.message && !/^internal$/i.test(err.message) ? err.message : 'Something went wrong. Check your connection and try again.';
++    throw new Error(message);
++  }
++}
++
++export const complianceApi = {
++  quote: (propertyId: string) => call<Quote>('crQuote', { propertyId }),
++  order: (p: { propertyId: string; month: string; kind: ReportKind; input: unknown }) => call<OrderView>('crOrder', p),
++  checkout: (orderId: string, phone?: string) => call<OrderView>('crCheckout', { orderId, phone }),
++  status: (orderId: string) => call<OrderView>('crStatus', { orderId }),
++  list: (propertyId?: string) => call<{ items: OrderView[] }>('crList', { propertyId }),
++};
+diff --git a/src/compliance/buildInput.ts b/src/compliance/buildInput.ts
+new file mode 100644
+index 0000000..bc55c02
+--- /dev/null
++++ b/src/compliance/buildInput.ts
+@@ -0,0 +1,33 @@
++// Reads the property's records from the device (works offline, for every plan) and shapes them for the report engine.
++import { database } from '../services/database/Database';
++import { mapRows, type Options, type Rows } from './mapRows';
++
++type Row = Record<string, any>;
++const all = async (sql: string, params: unknown[]): Promise<Row[]> => ((await database.db!.query(sql, params)).values ?? []) as Row[];
++
++export async function buildReportInput(userId: number, propertyId: number, o: Options) {
++  const year = Number(o.month.slice(0, 4));
++  const from = `${year - 1}-07`, to = `${year}-12`;                      // invoices that can carry a payment dated this year
++  const [prop] = await all('SELECT id, name, address, agent_commission_rate FROM properties WHERE id = ? AND user_id = ?', [propertyId, userId]);
++  if (!prop) throw new Error('Property not found on this device.');
++  const [tenants, invoices, items, allTenants, yearInvoices, props] = await Promise.all([
++    all('SELECT id, unit_number, name, rent_amount, is_active, is_restricted FROM tenants WHERE property_id = ?', [propertyId]),
++    all('SELECT id, tenant_id, billing_month, rent_amount, total_amount FROM invoices WHERE property_id = ? AND billing_month >= ? AND billing_month <= ?', [propertyId, from, to]),
++    all("SELECT billing_month, description, amount, type, is_deductible FROM transcript_items WHERE property_id = ? AND billing_month >= ? AND billing_month <= ?", [propertyId, `${year}-01`, o.month]),
++    all('SELECT t.rent_amount, t.is_active, t.is_restricted FROM tenants t JOIN properties p ON p.id = t.property_id WHERE p.user_id = ?', [userId]),
++    all('SELECT i.rent_amount, i.amount_paid FROM invoices i JOIN properties p ON p.id = i.property_id WHERE p.user_id = ? AND i.billing_month >= ? AND i.billing_month <= ?', [userId, `${year}-01`, o.month]),
++    all('SELECT COUNT(*) AS n FROM properties WHERE user_id = ?', [userId]),
++  ]);
++  // payments for those invoices, in chunks (SQLite limits the number of parameters)
++  const ids = invoices.map((i) => Number(i.id));
++  const payments: Row[] = [];
++  for (let k = 0; k < ids.length; k += 400) {
++    const chunk = ids.slice(k, k + 400);
++    payments.push(...(await all(`SELECT invoice_id, amount, payment_date FROM payments WHERE invoice_id IN (${chunk.map(() => '?').join(',')})`, chunk)));
++  }
++  const rows: Rows = {
++    property: prop as Rows['property'], tenants: tenants as Rows['tenants'], invoices: invoices as Rows['invoices'], payments: payments as Rows['payments'],
++    items: items as Rows['items'], allTenants: allTenants as Rows['allTenants'], yearInvoices: yearInvoices as Rows['yearInvoices'], propertyCount: Number(props[0]?.n ?? 1),
++  };
++  return mapRows(rows, o);
++}
+diff --git a/src/compliance/mapRows.test.ts b/src/compliance/mapRows.test.ts
+new file mode 100644
+index 0000000..021cf78
+--- /dev/null
++++ b/src/compliance/mapRows.test.ts
+@@ -0,0 +1,55 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { defaultReportMonth, mapRows, recentMonths, type Rows } from './mapRows.ts';
++
++const rows = (): Rows => ({
++  property: { id: 3, name: 'Block A', address: 'Ruiru', agent_commission_rate: 8 },
++  tenants: [
++    { id: 1, unit_number: 'A1', name: 'Amina', rent_amount: 10000, is_active: 1 },
++    { id: 2, unit_number: 'A2', name: 'Hidden', rent_amount: 9000, is_active: 1, is_restricted: 1 },
++  ],
++  invoices: [
++    { id: 10, tenant_id: 1, billing_month: '2026-10', rent_amount: 10000, total_amount: 10500 },
++    { id: 11, tenant_id: 2, billing_month: '2026-10', rent_amount: 9000, total_amount: 9000 },
++  ],
++  payments: [{ invoice_id: 10, amount: 10500, payment_date: '2026-10-03T09:00:00Z' }, { invoice_id: 10, amount: 5, payment_date: '' }],
++  items: [
++    { billing_month: '2026-10', description: 'Gate repair', amount: 1500.456, type: 'deductible', is_deductible: 1 },
++    { billing_month: '2026-10', description: 'Rent', amount: 5000, type: 'rent', is_deductible: 1 },
++    { billing_month: '2026-10', description: 'Base rent', amount: 5000, type: 'custom', is_deductible: 1 },
++    { billing_month: '2026-10', description: 'Not deductible', amount: 70, type: 'water', is_deductible: 0 },
++  ],
++  allTenants: [{ rent_amount: 10000, is_active: 1 }, { rent_amount: 5000, is_active: 0 }, { rent_amount: 9000, is_active: 1, is_restricted: 1 }],
++  yearInvoices: [{ rent_amount: 10000, amount_paid: 10500 }, { rent_amount: 8000, amount_paid: 3000 }],
++  propertyCount: 2,
++});
++const opts = { kind: 'mri_monthly' as const, month: '2026-10', landlordName: 'Wanjiru', kraPin: null, residential: true };
++
++test('maps the device rows into report records', () => {
++  const m = mapRows(rows(), opts);
++  assert.deepEqual(m.property, { id: '3', name: 'Block A', address: 'Ruiru', commissionRatePct: 8, managed: true, residential: true });
++  assert.deepEqual(m.tenants.map((t) => t.id), ['1']);                        // restricted tenants are never sent
++  assert.deepEqual(m.invoices.map((i) => i.id), ['10']);
++  assert.deepEqual(m.invoices[0].payments, [{ date: '2026-10-03', amount: 10500 }]);
++});
++test('base rent never goes in as a bill; only deductible, non-rent items are sent', () => {
++  const m = mapRows(rows(), opts);
++  assert.deepEqual(m.statementItems, [{ month: '2026-10', description: 'Gate repair', amount: 1500.46 }]);
++});
++test('portfolio totals cover every property: active tenants x 12, and rent received so far (rent first)', () => {
++  const m = mapRows(rows(), opts);
++  assert.equal(m.portfolio.annualRentRoll, 120000);
++  assert.equal(m.portfolio.ytdReceived, 13000);                              // min(10500, 10000) + min(3000, 8000)
++  assert.equal(m.portfolio.propertyCount, 2);
++});
++test('no agent commission rate means the property is not agent managed', () => {
++  const r = rows(); r.property.agent_commission_rate = 0;
++  const m = mapRows(r, opts);
++  assert.equal(m.property.managed, false); assert.equal(m.property.commissionRatePct, 0);
++});
++test('default month is the Nairobi month before today; the list is newest first', () => {
++  assert.equal(defaultReportMonth(new Date('2026-11-05T10:00:00Z')), '2026-10');
++  assert.equal(defaultReportMonth(new Date('2026-01-15T10:00:00Z')), '2025-12');
++  assert.equal(defaultReportMonth(new Date('2026-10-31T21:30:00Z')), '2026-10');   // already 1 November in Nairobi
++  assert.deepEqual(recentMonths(3, new Date('2026-01-10T00:00:00Z')), ['2026-01', '2025-12', '2025-11']);
++});
+diff --git a/src/compliance/mapRows.ts b/src/compliance/mapRows.ts
+new file mode 100644
+index 0000000..cf8c990
+--- /dev/null
++++ b/src/compliance/mapRows.ts
+@@ -0,0 +1,70 @@
++// Pure: turns the rows the app holds on the device into the records the report engine takes. No database, no network.
++// (The server re-validates everything and sets every price; nothing here decides what anyone pays.)
++export type ReportKind = 'mri_monthly' | 'annual_summary';
++
++export interface Rows {
++  property: { id: number; name: string; address: string | null; agent_commission_rate: number | null };
++  tenants: { id: number; unit_number: string | null; name: string; rent_amount: number; is_active: number; is_restricted?: number | null }[];
++  invoices: { id: number; tenant_id: number; billing_month: string; rent_amount: number; total_amount: number }[];
++  payments: { invoice_id: number; amount: number; payment_date: string }[];
++  items: { billing_month: string; description: string; amount: number; type: string; is_deductible: number }[];
++  /** Every tenant of the landlord, for the annual rent band test (it applies to all the landlord's properties together). */
++  allTenants: { rent_amount: number; is_active: number; is_restricted?: number | null }[];
++  /** Invoices of the whole year to date across all properties, for the rent received so far. */
++  yearInvoices: { rent_amount: number; amount_paid: number }[];
++  propertyCount: number;
++}
++export interface Options { kind: ReportKind; month: string; landlordName: string; kraPin: string | null; residential: boolean }
++
++const num = (v: unknown): number => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
++const keepMoney = (v: unknown): number => Math.round(num(v) * 100) / 100;
++
++export function mapRows(r: Rows, o: Options) {
++  const byInvoice = new Map<number, { date: string; amount: number }[]>();
++  for (const p of r.payments) {
++    if (!p.payment_date) continue;
++    const list = byInvoice.get(p.invoice_id) ?? [];
++    list.push({ date: String(p.payment_date).slice(0, 10), amount: keepMoney(p.amount) });
++    byInvoice.set(p.invoice_id, list);
++  }
++  const rate = Math.max(0, Math.min(100, num(r.property.agent_commission_rate)));
++  const tenants = r.tenants.filter((t) => !t.is_restricted);
++  const allowed = new Set(tenants.map((t) => String(t.id)));
++  return {
++    kind: o.kind,
++    month: o.month,
++    landlord: { name: o.landlordName, kraPin: o.kraPin },
++    property: { id: String(r.property.id), name: r.property.name, address: r.property.address, commissionRatePct: rate, managed: rate > 0, residential: o.residential },
++    tenants: tenants.map((t) => ({ id: String(t.id), unit: t.unit_number, name: t.name, rent: keepMoney(t.rent_amount), active: !!t.is_active })),
++    invoices: r.invoices.filter((i) => allowed.has(String(i.tenant_id))).map((i) => ({
++      id: String(i.id), tenantId: String(i.tenant_id), month: i.billing_month, rent: keepMoney(i.rent_amount), total: keepMoney(i.total_amount), payments: byInvoice.get(i.id) ?? [],
++    })),
++    // Base rent is income, never a bill: rent lines are dropped here, and the server drops any that slip through.
++    statementItems: r.items.filter((x) => x.is_deductible && x.type !== 'rent' && !/^\s*(base\s+)?rent\s*$/i.test(x.description))
++      .map((x) => ({ month: x.billing_month, description: x.description, amount: keepMoney(x.amount) })),
++    portfolio: {
++      propertyCount: Math.max(1, r.propertyCount),
++      annualRentRoll: keepMoney(r.allTenants.filter((t) => t.is_active && !t.is_restricted).reduce((s, t) => s + num(t.rent_amount), 0) * 12),
++      ytdReceived: keepMoney(r.yearInvoices.reduce((s, i) => s + Math.min(num(i.amount_paid), num(i.rent_amount)), 0)),
++    },
++  };
++}
++
++/** The Nairobi month before today: the return due on the 20th of the current month. */
++export function defaultReportMonth(now = new Date()): string {
++  const t = new Date(now.getTime() + 3 * 3_600_000);
++  const y = t.getUTCFullYear(), m = t.getUTCMonth();                // m is 0-based: this month
++  return m === 0 ? `${y - 1}-12` : `${y}-${String(m).padStart(2, '0')}`;
++}
++export function currentMonth(now = new Date()): string {
++  const t = new Date(now.getTime() + 3 * 3_600_000);
++  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}`;
++}
++/** The last `count` months, newest first. */
++export function recentMonths(count = 18, now = new Date()): string[] {
++  const t = new Date(now.getTime() + 3 * 3_600_000);
++  let y = t.getUTCFullYear(), m = t.getUTCMonth() + 1;
++  const out: string[] = [];
++  for (let i = 0; i < count; i++) { out.push(`${y}-${String(m).padStart(2, '0')}`); m -= 1; if (m === 0) { m = 12; y -= 1; } }
++  return out;
++}
+diff --git a/src/components/auh/AuthWrapper.tsx b/src/components/auh/AuthWrapper.tsx
+index c86fb00..a3339b3 100644
+--- a/src/components/auh/AuthWrapper.tsx
++++ b/src/components/auh/AuthWrapper.tsx
+@@ -11,8 +11,6 @@ import {
+   collection, 
+   where, 
+   getDocs, 
+-  doc,
+-  updateDoc,
+   limit} from 'firebase/firestore';
+ import {
+   getAuth,
+@@ -23,7 +21,7 @@ import {
+   type UserCredential
+ } from 'firebase/auth';
+ import { initializeApp, type FirebaseApp } from 'firebase/app';
+-import { argon2Verify, argon2id } from 'hash-wasm';
++import { argon2id } from 'hash-wasm';
+ import { httpsCallable } from 'firebase/functions';
+ import HeroSection from './HeroSection';
+ import MarketingNav from '../marketing/MarketingNav';
+@@ -193,11 +191,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+   }, [user, updateUserState]);
+ 
+   // Password hashing helper - mints a fresh argon2 hash from a password that
+-  // Firebase Auth has just verified as correct. Used to resync the Firestore
+-  // `passwordHash` field (and, via createLocalUserFromFirestore, the local
+-  // `password_hash` column) after a successful Firebase Auth login - this is
+-  // what keeps offline auth valid after the user resets their password via
+-  // Firebase's forgot-password flow, which only updates Firebase Auth itself.
++  // Firebase Auth has just verified as correct. The hash is stored ONLY in the
++  // local `password_hash` column (see createLocalUserFromFirestore) and is
++  // never written to Firestore. It is what keeps offline sign-in working, and
++  // it is re-minted on every online sign-in, so a password reset through
++  // Firebase's forgot-password flow (which only updates Firebase Auth) is
++  // picked up the next time the user signs in online on this device.
+   const hashPassword = async (password: string): Promise<string> => {
+     try {
+       const salt = crypto.getRandomValues(new Uint8Array(16));
+@@ -217,20 +216,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+     }
+   };
+ 
+-  // Password verification helper
+-  const verifyPassword = async (password: string, hash: string): Promise<boolean> => {
+-    try {
+-          const result = await argon2Verify({
+-            password: password,
+-            hash: hash
+-          });
+-    
+-          return result === true;
+-        } catch (error) {
+-          console.error('Error verifying password:', error);
+-          return false;
+-        }
+-  };
++
+ 
+ 
+ 
+@@ -392,49 +378,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+       
+       console.log('Found user in Firestore:', firestoreUser.email);
+ 
+-      if (!firestoreUser.passwordHash) {
+-        return { success: false, error: 'Invalid account data' };
+-      }
+-
+-      // Decide how to trust this password:
+-      // - If Firebase Auth just signed in successfully, that IS the
+-      //   authoritative password check - a stale Firestore hash (e.g. from
+-      //   before a "forgot password" reset, which only updates Firebase Auth)
+-      //   must not be allowed to override that. Instead of re-verifying
+-      //   against it, mint a fresh hash from the password we know is correct.
+-      // - If Firebase Auth couldn't be reached (network hiccup while
+-      //   navigator.onLine was true), we have no external proof, so fall
+-      //   back to verifying against the last-known stored hash.
+-      let isValidPassword: boolean;
+-      let refreshedHash: string | undefined;
+-
+-      if (firebaseAuthVerified) {
+-        isValidPassword = true;
+-        refreshedHash = await hashPassword(password);
+-      } else {
+-        isValidPassword = await verifyPassword(password, firestoreUser.passwordHash);
+-      }
+-
+-      if (!isValidPassword) {
+-        console.log('Invalid password for Firestore user');
+-        return { success: false, error: 'Invalid password' };
+-      }
+-
+-      // Persist the refreshed hash so Firestore (and, downstream, the local
+-      // DB via createLocalUserFromFirestore) stop relying on the stale one.
+-      if (refreshedHash) {
+-        try {
+-          await updateDoc(doc(db, 'users', userDoc.id), {
+-            passwordHash: refreshedHash,
+-            updatedAt: new Date().toISOString()
+-          });
+-          firestoreUser.passwordHash = refreshedHash;
+-          console.log('✅ Refreshed Firestore passwordHash after Firebase Auth login');
+-        } catch (hashSyncError) {
+-          // Non-fatal: the user already authenticated via Firebase Auth.
+-          // Worst case, this resync is retried on their next online login.
+-          console.error('Failed to refresh Firestore passwordHash:', hashSyncError);
+-        }
++      // Firebase Auth is the only authority for the password. The Firestore user
++      // document no longer carries a password hash, so there is nothing to fall
++      // back on when Firebase Auth could not be reached: the user is asked to
++      // retry. Offline sign-in on a device that already has the account is
++      // handled before this point, against the local hash (database.authenticate).
++      if (!firebaseAuthVerified) {
++        return { success: false, error: 'Could not verify your password. Check your connection and try again.' };
+       }
+ 
+       console.log('Password verified for Firestore user');
+@@ -485,13 +435,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+           firestoreUser.storage || false
+         );
+ 
+-        // Update password hash to match Firestore
++        // Refresh the LOCAL password hash from the password Firebase Auth just
++        // verified (loginFromFirestore only succeeds after that). This is what
++        // keeps offline sign-in valid on this device; the hash never leaves it.
++        const localHash = await hashPassword(password);
+         const updateHashQuery = `
+           UPDATE users 
+           SET password_hash = ?, updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?
+         `;
+-        await database.db!.run(updateHashQuery, [firestoreUser.passwordHash, existingUser.id]);
++        await database.db!.run(updateHashQuery, [localHash, existingUser.id]);
+ 
+         // Handle company data for paid users
+         if (firestoreUser.company && firestoreUser.type === 'paid') {
+@@ -539,14 +492,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+ 
+       const result = await database.createUserWithCompany(userData);
+       
+-      // Update password hash to match Firestore
++      // createUserWithCompany above already stored a local hash of `password`
++      // (verified by Firebase Auth), so only the entitlements are copied here.
+       const updateHashQuery = `
+         UPDATE users 
+-        SET password_hash = ?, tier = ?, type = ?, storage = ?, updated_at = CURRENT_TIMESTAMP
++        SET tier = ?, type = ?, storage = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?
+       `;
+       await database.db!.run(updateHashQuery, [
+-        firestoreUser.passwordHash,
+         firestoreUser.tier || 'free',
+         firestoreUser.type || 'free',
+         firestoreUser.storage ? 1 : 0,
+diff --git a/src/pages/compliance/ComplianceReports.tsx b/src/pages/compliance/ComplianceReports.tsx
+new file mode 100644
+index 0000000..bba06a1
+--- /dev/null
++++ b/src/pages/compliance/ComplianceReports.tsx
+@@ -0,0 +1,197 @@
++import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
++import { CheckCircle2, Download, FileCheck2, Loader2, Smartphone } from 'lucide-react';
++import { useAuth } from '../../components/auh/AuthWrapper';
++import PageHeader from '../../components/ui/PageHeader';
++import { database } from '../../services/database/Database';
++import { checkSafaricomPhone } from '../../utils/safaricom';
++import { openDownload } from '../../watch/download';
++import { complianceApi, type OrderView, type Quote } from '../../compliance/api';
++import { buildReportInput } from '../../compliance/buildInput';
++import { defaultReportMonth, recentMonths, type ReportKind } from '../../compliance/mapRows';
++
++const KINDS: { id: ReportKind; title: string; blurb: string }[] = [
++  { id: 'mri_monthly', title: 'MRI working paper', blurb: 'The month’s rent received, agent commission, final rental income, the 7.5% MRI and the 288,000 band test. Ready to file on iTax by the 20th.' },
++  { id: 'annual_summary', title: 'Annual rental income summary', blurb: 'Month by month for the year to date, with the annual band test and totals.' },
++];
++const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
++const monthLabel = (m: string) => `${MONTHS[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
++const kes = (n: number) => `KES ${n.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
++const POLL_MS = 3000, POLL_MAX_MS = 120_000;
++const field = 'w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-ink';
++
++interface Prop { id: number; name: string }
++
++const ComplianceReports: React.FC = () => {
++  const { user } = useAuth();
++  const [props, setProps] = useState<Prop[]>([]);
++  const [propertyId, setPropertyId] = useState<number | null>(null);
++  const [month, setMonth] = useState(defaultReportMonth());
++  const [kind, setKind] = useState<ReportKind>('mri_monthly');
++  const [residential, setResidential] = useState(true);
++  const [kraPin, setKraPin] = useState(() => (user ? localStorage.getItem(`plotyangu.kraPin.${user.id}`) ?? '' : ''));
++  const [quote, setQuote] = useState<Quote | null>(null);
++  const [order, setOrder] = useState<OrderView | null>(null);
++  const [phone, setPhone] = useState(() => { const c = checkSafaricomPhone(user?.phone); return c.ok ? c.local : ''; });
++  const [busy, setBusy] = useState(false);
++  const [error, setError] = useState<string | null>(null);
++  const [recent, setRecent] = useState<OrderView[]>([]);
++  const [online, setOnline] = useState(navigator.onLine);
++  const [timedOut, setTimedOut] = useState(false);
++  const startedAt = useRef(0);
++  const months = useMemo(() => recentMonths(24), []);
++
++  useEffect(() => {
++    const on = () => setOnline(true), off = () => setOnline(false);
++    window.addEventListener('online', on); window.addEventListener('offline', off);
++    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
++  }, []);
++  useEffect(() => {
++    if (!user) return;
++    void database.getProperties(Number(user.id)).then((list) => { setProps(list.map((p) => ({ id: p.id, name: p.name }))); setPropertyId((cur) => cur ?? list[0]?.id ?? null); });
++  }, [user]);
++
++  const loadQuote = useCallback(async () => {
++    if (propertyId === null || !online) { setQuote(null); return; }
++    try { setQuote(await complianceApi.quote(String(propertyId))); } catch { setQuote(null); }
++  }, [propertyId, online]);
++  const loadRecent = useCallback(async () => {
++    if (propertyId === null || !online) return;
++    try { setRecent((await complianceApi.list(String(propertyId))).items); } catch { /* the list is a convenience */ }
++  }, [propertyId, online]);
++  useEffect(() => { setOrder(null); setError(null); void loadQuote(); void loadRecent(); }, [propertyId, loadQuote, loadRecent]);
++
++  // poll while a payment is pending or the PDF is being made
++  const orderId = order?.orderId, orderState = order?.state;
++  useEffect(() => {
++    if (!orderId || !(orderState === 'payment_pending' || orderState === 'paid' || orderState === 'generating')) return;
++    startedAt.current = Date.now(); setTimedOut(false);
++    let stop = false;
++    const id = window.setInterval(async () => {
++      if (Date.now() - startedAt.current > POLL_MAX_MS) { window.clearInterval(id); setTimedOut(true); return; }
++      try { const next = await complianceApi.status(orderId); if (!stop) setOrder(next); } catch { /* keep trying */ }
++    }, POLL_MS);
++    void complianceApi.status(orderId).then((n) => { if (!stop) setOrder(n); }).catch(() => undefined);
++    return () => { stop = true; window.clearInterval(id); };
++  }, [orderId, orderState]);
++  useEffect(() => { if (order?.state === 'ready') { void loadQuote(); void loadRecent(); } }, [order?.state, loadQuote, loadRecent]);
++
++  const start = async () => {
++    if (!user || propertyId === null) return;
++    setBusy(true); setError(null); setOrder(null);
++    try {
++      const pin = kraPin.trim().toUpperCase();
++      if (pin) localStorage.setItem(`plotyangu.kraPin.${user.id}`, pin);
++      const input = await buildReportInput(Number(user.id), propertyId, { kind, month, landlordName: user.name, kraPin: pin || null, residential });
++      setOrder(await complianceApi.order({ propertyId: String(propertyId), month, kind, input }));
++    } catch (e) { setError(e instanceof Error ? e.message : 'Could not prepare the report.'); }
++    finally { setBusy(false); }
++  };
++  const checkout = async () => {
++    if (!order) return;
++    setBusy(true); setError(null);
++    try {
++      let p: string | undefined;
++      if (order.priceKes > 0) { const c = checkSafaricomPhone(phone); if (!c.ok) { setError(c.message); setBusy(false); return; } p = c.local; }
++      setOrder(await complianceApi.checkout(order.orderId, p));
++    } catch (e) { setError(e instanceof Error ? e.message : 'Checkout failed.'); }
++    finally { setBusy(false); }
++  };
++  const refresh = async () => { if (!order) return; try { setOrder(await complianceApi.status(order.orderId)); setTimedOut(false); startedAt.current = Date.now(); } catch (e) { setError(e instanceof Error ? e.message : 'Try again.'); } };
++
++  const price = order ? order.priceKes : quote?.priceKes ?? null;
++  const working = order && (order.state === 'payment_pending' || order.state === 'paid' || order.state === 'generating');
++
++  return (
++    <div className="mx-auto max-w-3xl space-y-6 p-4 pb-28">
++      <PageHeader title="Compliance reports" icon={FileCheck2} subtitle="MRI working paper and annual rental income summary, one property at a time" />
++
++      {!online && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">You are offline. Reports are made on our server, so connect to the internet to check out.</p>}
++      {props.length === 0 && <p className="rounded-xl border border-dashed border-line p-6 text-center text-ink-muted">Add a property first. Reports are made from its tenants, invoices and payments.</p>}
++
++      {props.length > 0 && (
++        <section className="space-y-4 rounded-2xl border border-line bg-surface p-4">
++          <div className="grid gap-3 sm:grid-cols-2">
++            <label className="block text-sm text-ink-soft">Property
++              <select value={propertyId ?? ''} onChange={(e) => setPropertyId(Number(e.target.value))} className={`${field} mt-1`}>{props.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
++            </label>
++            <label className="block text-sm text-ink-soft">{kind === 'annual_summary' ? 'Year to month' : 'Month the rent was received'}
++              <select value={month} onChange={(e) => setMonth(e.target.value)} className={`${field} mt-1`}>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</select>
++            </label>
++          </div>
++          <fieldset className="space-y-2">
++            <legend className="text-sm text-ink-soft">Report</legend>
++            {KINDS.map((k) => (
++              <label key={k.id} className={`flex cursor-pointer gap-3 rounded-xl border p-3 ${kind === k.id ? 'border-brand-500 bg-brand-50 dark:bg-brand-500/10' : 'border-line'}`}>
++                <input type="radio" name="kind" checked={kind === k.id} onChange={() => { setKind(k.id); setOrder(null); }} className="mt-1" />
++                <span><span className="block font-semibold text-ink">{k.title}</span><span className="block text-sm text-ink-muted">{k.blurb}</span></span>
++              </label>
++            ))}
++          </fieldset>
++          <div className="grid gap-3 sm:grid-cols-2">
++            <label className="block text-sm text-ink-soft">Your KRA PIN (optional, printed on the report)
++              <input value={kraPin} onChange={(e) => setKraPin(e.target.value)} maxLength={20} placeholder="A001234567Z" className={`${field} mt-1`} />
++            </label>
++            <label className="flex items-center gap-2 self-end pb-2 text-sm text-ink-soft"><input type="checkbox" checked={residential} onChange={(e) => setResidential(e.target.checked)} /> This is residential property (MRI covers residential rent only)</label>
++          </div>
++          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
++            <p className="text-sm text-ink-soft">
++              {price === null ? 'Price shown at checkout.' : price === 0 ? <>Included: <b>1 free report per property each month</b> on your plan.</> : <>Price: <b>{kes(price)}</b> per report{quote && !quote.freeIncluded ? ' (one free report a month comes with Business and above).' : quote?.freeIncluded ? ' (this month’s free report is used).' : '.'}</>}
++            </p>
++            <button type="button" onClick={start} disabled={busy || !online || propertyId === null || !!working} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50">
++              {busy && <Loader2 className="h-4 w-4 animate-spin" />} Continue to checkout
++            </button>
++          </div>
++        </section>
++      )}
++
++      {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">{error}</p>}
++
++      {order && (
++        <section className="space-y-3 rounded-2xl border border-line bg-surface p-4" aria-live="polite">
++          <h2 className="text-lg font-semibold text-ink">Checkout</h2>
++          <p className="text-sm text-ink-soft">{order.title} · {monthLabel(order.month)}</p>
++          {order.state === 'payment_required' && (
++            <>
++              <div className="flex items-baseline justify-between rounded-xl bg-surface-sunken p-3"><span className="text-ink-soft">Total</span><span className="text-xl font-bold text-ink">{order.priceKes === 0 ? 'KES 0 (free)' : kes(order.priceKes)}</span></div>
++              {order.priceKes > 0 && (
++                <label className="block text-sm text-ink-soft">M-Pesa number to pay from
++                  <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="07XX XXX XXX" className={`${field} mt-1`} />
++                </label>
++              )}
++              {order.error && <p className="text-sm text-red-600 dark:text-red-400">{order.error.message}</p>}
++              <button type="button" onClick={checkout} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 font-medium text-white hover:bg-green-700 disabled:opacity-50">
++                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Smartphone className="h-4 w-4" />}{order.priceKes === 0 ? 'Get my free report' : `Pay ${kes(order.priceKes)} with M-Pesa`}
++              </button>
++              <p className="text-xs text-ink-muted">The report downloads only after checkout is confirmed.</p>
++            </>
++          )}
++          {order.state === 'payment_pending' && <p className="flex items-center gap-2 text-ink"><Loader2 className="h-4 w-4 animate-spin" /> {order.message ?? 'Check your phone and enter your M-Pesa PIN.'}</p>}
++          {(order.state === 'paid' || order.state === 'generating') && <p className="flex items-center gap-2 text-ink"><Loader2 className="h-4 w-4 animate-spin" /> Making your report…</p>}
++          {timedOut && working && <p className="text-sm text-ink-soft">Still waiting. <button className="font-semibold underline" onClick={() => void refresh()}>Check again</button></p>}
++          {order.state === 'ready' && order.url && (
++            <div className="space-y-2">
++              <p className="flex items-center gap-2 font-medium text-green-700 dark:text-green-400"><CheckCircle2 className="h-5 w-5" /> Your report is ready.</p>
++              <button type="button" onClick={() => void openDownload(order.url!)} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"><Download className="h-4 w-4" /> Download PDF</button>
++              <p className="text-xs text-ink-muted">You can fetch it again for 7 days without paying. Plot Yangu does not file with KRA: use the report to file on iTax.</p>
++            </div>
++          )}
++          {(order.state === 'failed' || order.state === 'expired') && <p className="text-sm text-red-600 dark:text-red-400">{order.error?.message ?? 'This report is no longer available. Start again.'}</p>}
++        </section>
++      )}
++
++      {recent.length > 0 && (
++        <section className="space-y-2">
++          <h2 className="text-lg font-semibold text-ink">Recent reports for this property</h2>
++          {recent.map((r) => (
++            <div key={r.orderId} className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface p-3 text-sm">
++              <span className="min-w-0 truncate text-ink">{r.title} · {monthLabel(r.month)}</span>
++              {r.state === 'ready' ? <button className="shrink-0 font-semibold text-blue-700 underline dark:text-blue-300" onClick={() => void complianceApi.status(r.orderId).then((o) => { if (o.url) return openDownload(o.url); }).catch((e) => setError(e instanceof Error ? e.message : 'Try again.'))}>Download</button>
++                : <span className="shrink-0 text-ink-muted">{r.state === 'expired' ? 'Expired' : r.state.replace('_', ' ')}</span>}
++            </div>
++          ))}
++        </section>
++      )}
++    </div>
++  );
++};
++export default ComplianceReports;
+diff --git a/src/pages/properties/PropertyList.tsx b/src/pages/properties/PropertyList.tsx
+index 0372542..6e033f1 100644
+--- a/src/pages/properties/PropertyList.tsx
++++ b/src/pages/properties/PropertyList.tsx
+@@ -15,7 +15,8 @@ import {
+   Trash2,
+   RefreshCw,
+   Home,
+-  MapPin} from 'lucide-react';
++  MapPin,
++  FileCheck2} from 'lucide-react';
+ import { database, type PropertyWithUnits, type PropertyInput, type User } from '../../services/database/Database';
+ import Property from './Properties';
+ import PropertyModal from './PropertyModal';
+@@ -23,6 +24,7 @@ import { newUnitSpec } from './UnitsBuilder';
+ import { validateUnitSpecs, type UnitSpec } from '../../services/database/Units';
+ import { checkSafaricomPhone } from '../../utils/safaricom';
+ import { USER_LIMITS, firebaseSyncService } from '../../services/database/FirebaseSync';
++import { useNavigate } from 'react-router-dom';
+ import PricingModal from '../../components/ui/PricingPage';
+ import SummariesModal from './Summaries';
+ import TrialStatsBanner from '../../components/ui/TrialStatsBanner';
+@@ -57,6 +59,7 @@ const Properties: React.FC<PropertyListProps> = ({
+   currentUserId,
+   user 
+ }) => {
++  const navigate = useNavigate();
+   const [properties, setProperties] = useState<EnhancedProperty[]>([]);
+   const [companies, setCompanies] = useState<any[]>([]);
+   const [loading, setLoading] = useState(true);
+@@ -714,6 +717,7 @@ const Properties: React.FC<PropertyListProps> = ({
+               >
+                 <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
+               </button>
++            <HeaderAction icon={FileCheck2} label="Compliance reports" onClick={() => navigate('/compliance')} showLabel />
+             {canAddProperty && <HeaderAction icon={Plus} label="Add property" onClick={() => setShowAddModal(true)} variant="primary" showLabel />}
+           </>
+         }
+diff --git a/src/services/database/FirebaseSync.tsx b/src/services/database/FirebaseSync.tsx
+index ba47d77..e21431e 100644
+--- a/src/services/database/FirebaseSync.tsx
++++ b/src/services/database/FirebaseSync.tsx
+@@ -11,6 +11,7 @@ import {
+   getDocs, 
+   writeBatch,
+   serverTimestamp,
++  deleteField,
+   orderBy,
+   limit,
+   onSnapshot,
+@@ -1200,10 +1201,18 @@ private async upsertPayment(invoiceId: number, data: any): Promise<void> {
+     const userRef = doc(db, 'users', userId.toString());
+     const existing = await getDoc(userRef);
+     
++    // The password hash is a device-local secret used for offline sign-in. It is
++    // never uploaded, and any hash an older version left in the cloud document is
++    // removed here (deleteField) the next time this user syncs.
++    const { passwordHash: _localHash, password: _localPassword, ...userForCloud } = user as User & { password?: string };
++    const { passwordHash: _cloudHash, password: _cloudPassword, ...existingForCloud } = (existing.exists() ? existing.data() : {}) as Record<string, unknown>;
++    void _localHash; void _localPassword; void _cloudHash; void _cloudPassword;
++    
+     batchManager.addOperation((batch) => {
+       batch.set(userRef, {
+-        ...(existing.exists() ? existing.data() : {}),
+-        ...user,
++        ...existingForCloud,
++        ...userForCloud,
++        passwordHash: deleteField(),
+         lastSyncTime: serverTimestamp(),
+         localId: user.id,
+         company: company ? {
+diff --git a/src/watch/WatchApp.tsx b/src/watch/WatchApp.tsx
+index ba147fe..e57c95e 100644
+--- a/src/watch/WatchApp.tsx
++++ b/src/watch/WatchApp.tsx
+@@ -1,6 +1,6 @@
+ // Landlord Watch shell: property switcher, bottom navigation on phones, side rail on large screens.
+ import { useEffect, useMemo, useState } from 'react';
+-import { Building2, Check, ChevronDown, Eye, LayoutDashboard, Plus, Receipt, Settings as SettingsIcon, Users, Wallet } from 'lucide-react';
++import { Building2, Check, ChevronDown, Eye, FileCheck2, LayoutDashboard, Plus, Receipt, Settings as SettingsIcon, Users, Wallet } from 'lucide-react';
+ import { useWatch } from './useWatch.tsx';
+ import { useSnapshot } from './useSnapshot.ts';
+ import { Button, ErrorBox, OfflineBar, Sheet, Skeleton } from './components/ui.tsx';
+@@ -9,17 +9,19 @@ import Overview from './screens/Overview.tsx';
+ import Tenants from './screens/Tenants.tsx';
+ import Money from './screens/Money.tsx';
+ import Transcripts from './screens/Transcripts.tsx';
++import Reports from './screens/Reports.tsx';
+ import Settings from './screens/Settings.tsx';
+ import FindProperty from './screens/FindProperty.tsx';
+ import { dateTimeLabel } from './format.ts';
+ import type { Key } from './i18n.ts';
+ 
+-type View = 'overview' | 'tenants' | 'money' | 'transcripts' | 'settings';
++type View = 'overview' | 'tenants' | 'money' | 'transcripts' | 'reports' | 'settings';
+ const NAV: { id: View; label: Key; icon: typeof Eye }[] = [
+   { id: 'overview', label: 'nav.overview', icon: LayoutDashboard },
+   { id: 'tenants', label: 'nav.tenants', icon: Users },
+   { id: 'money', label: 'nav.money', icon: Wallet },
+   { id: 'transcripts', label: 'nav.transcripts', icon: Receipt },
++  { id: 'reports', label: 'nav.reports', icon: FileCheck2 },
+   { id: 'settings', label: 'nav.settings', icon: SettingsIcon },
+ ];
+ 
+@@ -71,11 +73,12 @@ export default function WatchApp() {
+   else if (view === 'overview') body = <Overview data={data} month={month} onMonth={setMonth} />;
+   else if (view === 'tenants') body = <Tenants data={data} />;
+   else if (view === 'money') body = <Money data={data} month={month} onMonth={setMonth} />;
++  else if (view === 'reports' && active) body = <Reports key={active.ownerId} ownerId={active.ownerId} signedPhone={auth.status === 'signedIn' ? auth.phone : null} />;
+   else if (view === 'transcripts' && active) body = <Transcripts key={active.ownerId} data={data} ownerId={active.ownerId} signedPhone={auth.status === 'signedIn' ? auth.phone : null} />;
+   else body = <Settings data={data} onAdd={() => setAdding(true)} />;
+   if (view === 'settings' && data.snapshot) body = <Settings data={data} onAdd={() => setAdding(true)} />;
+ 
+-  const footer = data.snapshot && view !== 'settings' && view !== 'transcripts' ? (
++  const footer = data.snapshot && view !== 'settings' && view !== 'transcripts' && view !== 'reports' ? (
+     <p className="mt-6 text-center text-xs text-ink-subtle" aria-live="polite">
+       {data.refreshing ? t('shell.updating') : data.lastUpdated ? t('shell.lastUpdated', { time: dateTimeLabel(new Date(data.lastUpdated).toISOString(), lang) }) : ''}
+     </p>
+diff --git a/src/watch/i18n.ts b/src/watch/i18n.ts
+index 94f4b2c..65e1224 100644
+--- a/src/watch/i18n.ts
++++ b/src/watch/i18n.ts
+@@ -64,6 +64,30 @@ const en = {
+   'nav.money': 'Money',
+   'nav.transcripts': 'Statements',
+   'nav.settings': 'Settings',
++  'nav.reports': 'Reports',
++  'rp.title': 'Compliance reports',
++  'rp.subtitle': 'MRI working paper and annual rental income summary for this property.',
++  'rp.kind.mri_monthly': 'MRI working paper',
++  'rp.kind.annual_summary': 'Annual summary',
++  'rp.pickMonth': 'Month rent was received',
++  'rp.price.free': 'Included: 1 free report a month',
++  'rp.price.paid': '{price} per report',
++  'rp.start': 'Continue to checkout',
++  'rp.checkout': 'Checkout',
++  'rp.total': 'Total',
++  'rp.free': 'KES 0 (free)',
++  'rp.phone': 'M-Pesa number to pay from',
++  'rp.payFree': 'Get my free report',
++  'rp.pay': 'Pay {price} with M-Pesa',
++  'rp.pending': 'Check your phone and enter your M-Pesa PIN.',
++  'rp.making': 'Making your report…',
++  'rp.waiting': 'Still waiting.',
++  'rp.check': 'Check again',
++  'rp.ready': 'Your report is ready.',
++  'rp.download': 'Download PDF',
++  'rp.expired': 'Expired',
++  'rp.recent': 'Recent reports',
++  'rp.note': 'The report downloads only after checkout is confirmed. Plot Yangu does not file with KRA: use the report to file on iTax.',
+   'shell.switchProperty': 'Switch property',
+   'shell.addProperty': 'Add another property',
+   'shell.offline': 'You are offline. Showing saved data.',
+@@ -304,6 +328,30 @@ const sw: Record<Key, string> = {
+   'nav.money': 'Fedha',
+   'nav.transcripts': 'Taarifa',
+   'nav.settings': 'Mipangilio',
++  'nav.reports': 'Ripoti',
++  'rp.title': 'Ripoti za utiifu wa kodi',
++  'rp.subtitle': 'Karatasi ya kazi ya MRI na muhtasari wa mapato ya kodi ya mwaka kwa mali hii.',
++  'rp.kind.mri_monthly': 'Karatasi ya MRI',
++  'rp.kind.annual_summary': 'Muhtasari wa mwaka',
++  'rp.pickMonth': 'Mwezi kodi ilipopokelewa',
++  'rp.price.free': 'Imejumuishwa: ripoti 1 bila malipo kila mwezi',
++  'rp.price.paid': '{price} kwa ripoti',
++  'rp.start': 'Endelea kulipa',
++  'rp.checkout': 'Malipo',
++  'rp.total': 'Jumla',
++  'rp.free': 'KES 0 (bure)',
++  'rp.phone': 'Nambari ya M-Pesa ya kulipia',
++  'rp.payFree': 'Pata ripoti yangu bila malipo',
++  'rp.pay': 'Lipa {price} kwa M-Pesa',
++  'rp.pending': 'Angalia simu yako na uweke PIN ya M-Pesa.',
++  'rp.making': 'Inaandaa ripoti yako…',
++  'rp.waiting': 'Bado tunasubiri.',
++  'rp.check': 'Angalia tena',
++  'rp.ready': 'Ripoti yako iko tayari.',
++  'rp.download': 'Pakua PDF',
++  'rp.expired': 'Imeisha muda',
++  'rp.recent': 'Ripoti za hivi karibuni',
++  'rp.note': 'Ripoti hupakuliwa baada ya malipo kuthibitishwa tu. Plot Yangu haiwasilishi kwa KRA: itumie kuwasilisha kwenye iTax.',
+   'shell.switchProperty': 'Badili mali',
+   'shell.addProperty': 'Ongeza mali nyingine',
+   'shell.offline': 'Huna mtandao. Unaona data iliyohifadhiwa.',
+diff --git a/src/watch/reports.ts b/src/watch/reports.ts
+new file mode 100644
+index 0000000..73dd5ea
+--- /dev/null
++++ b/src/watch/reports.ts
+@@ -0,0 +1,40 @@
++// Compliance reports for owners (PAY callables crQuote / crOrder / crCheckout / crStatus / crList, channel "watch"). The owner ID fixes the
++// property; the server checks the connection and the phone unlock, and sets the price.
++import { httpsCallable } from 'firebase/functions';
++import { functions } from './firebase.ts';
++
++export type ReportKind = 'mri_monthly' | 'annual_summary';
++export type ReportState = 'payment_required' | 'payment_pending' | 'paid' | 'generating' | 'ready' | 'failed' | 'expired';
++export interface ReportQuote { period: string; freeIncluded: boolean; freeUsedThisMonth: number; priceKes: number; listPriceKes: number }
++export interface ReportOrder {
++  orderId: string; month: string; kind: ReportKind; title: string; state: ReportState; priceKes: number; entitled: boolean;
++  createdAt: string | null; error: { code: string; message: string } | null; message?: string; url?: string; urlExpiresAt?: string;
++}
++
++async function call<Res>(name: string, ownerId: string, data: object = {}): Promise<Res> {
++  try {
++    return (await httpsCallable<object, Res>(functions, name)({ channel: 'watch', ownerId, ...data })).data;
++  } catch (e) {
++    const m = (e as { message?: unknown }).message;
++    throw new Error(typeof m === 'string' && m && !/^internal$/i.test(m) ? m : 'Something went wrong. Check your connection and try again.');
++  }
++}
++
++export const reportsApi = {
++  quote: (ownerId: string) => call<ReportQuote>('crQuote', ownerId),
++  order: (ownerId: string, month: string, kind: ReportKind) => call<ReportOrder>('crOrder', ownerId, { month, kind }),
++  checkout: (ownerId: string, orderId: string, phone?: string) => call<ReportOrder>('crCheckout', ownerId, { orderId, phone }),
++  status: (ownerId: string, orderId: string) => call<ReportOrder>('crStatus', ownerId, { orderId }),
++  list: (ownerId: string) => call<{ items: ReportOrder[] }>('crList', ownerId),
++};
++
++/** The last `count` months (YYYY-MM), newest first, by Nairobi time. */
++export function reportMonths(count = 18, now = new Date()): string[] {
++  const t = new Date(now.getTime() + 3 * 3_600_000);
++  let y = t.getUTCFullYear(), m = t.getUTCMonth() + 1;
++  const out: string[] = [];
++  for (let i = 0; i < count; i++) { out.push(`${y}-${String(m).padStart(2, '0')}`); if (--m === 0) { m = 12; y -= 1; } }
++  return out;
++}
++/** The month whose MRI is due on the 20th of the current month. */
++export const defaultMonth = (now = new Date()): string => reportMonths(2, now)[1];
+diff --git a/src/watch/screens/Reports.tsx b/src/watch/screens/Reports.tsx
+new file mode 100644
+index 0000000..dbcdf2d
+--- /dev/null
++++ b/src/watch/screens/Reports.tsx
+@@ -0,0 +1,129 @@
++import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
++import { CheckCircle2, Download, FileCheck2, Smartphone } from 'lucide-react';
++import { Button, Card, InlineError, Spinner } from '../components/ui.tsx';
++import { MonthPicker } from '../components/MonthPicker.tsx';
++import { useWatch } from '../useWatch.tsx';
++import { checkSafaricomPhone } from '../../utils/safaricom';
++import { kesLabel, monthLabel } from '../format.ts';
++import { openDownload } from '../download.ts';
++import { defaultMonth, reportMonths, reportsApi, type ReportKind, type ReportOrder, type ReportQuote } from '../reports.ts';
++
++const POLL_MS = 3000, POLL_MAX_MS = 120_000;
++const KINDS: ReportKind[] = ['mri_monthly', 'annual_summary'];
++
++/** Compliance reports for an owner: checkout first (free allowance or M-Pesa), download only after it is confirmed. */
++export default function Reports({ ownerId, signedPhone }: { ownerId: string; signedPhone: string | null }) {
++  const { t, lang } = useWatch();
++  const months = useMemo(() => reportMonths(24), []);
++  const [month, setMonth] = useState(defaultMonth());
++  const [kind, setKind] = useState<ReportKind>('mri_monthly');
++  const [quote, setQuote] = useState<ReportQuote | null>(null);
++  const [order, setOrder] = useState<ReportOrder | null>(null);
++  const [recent, setRecent] = useState<ReportOrder[]>([]);
++  const [busy, setBusy] = useState(false);
++  const [error, setError] = useState<string | null>(null);
++  const [timedOut, setTimedOut] = useState(false);
++  const [phone, setPhone] = useState(() => { const c = checkSafaricomPhone(signedPhone); return c.ok ? c.local : ''; });
++  const startedAt = useRef(0);
++
++  const load = useCallback(async () => {
++    try { setQuote(await reportsApi.quote(ownerId)); } catch { setQuote(null); }
++    try { setRecent((await reportsApi.list(ownerId)).items); } catch { /* convenience only */ }
++  }, [ownerId]);
++  useEffect(() => { setOrder(null); setError(null); void load(); }, [ownerId, load]);
++
++  const orderId = order?.orderId, orderState = order?.state;
++  useEffect(() => {
++    if (!orderId || !(orderState === 'payment_pending' || orderState === 'paid' || orderState === 'generating')) return;
++    startedAt.current = Date.now(); setTimedOut(false);
++    let stop = false;
++    const id = window.setInterval(async () => {
++      if (Date.now() - startedAt.current > POLL_MAX_MS) { window.clearInterval(id); setTimedOut(true); return; }
++      try { const next = await reportsApi.status(ownerId, orderId); if (!stop) setOrder(next); } catch { /* keep trying */ }
++    }, POLL_MS);
++    void reportsApi.status(ownerId, orderId).then((n) => { if (!stop) setOrder(n); }).catch(() => undefined);
++    return () => { stop = true; window.clearInterval(id); };
++  }, [ownerId, orderId, orderState]);
++  useEffect(() => { if (order?.state === 'ready') void load(); }, [order?.state, load]);
++
++  const run = async (fn: () => Promise<void>) => { setBusy(true); setError(null); try { await fn(); } catch (e) { setError(e instanceof Error ? e.message : t('common.retry')); } finally { setBusy(false); } };
++  const start = () => run(async () => { setOrder(await reportsApi.order(ownerId, month, kind)); });
++  const checkout = () => run(async () => {
++    if (!order) return;
++    let p: string | undefined;
++    if (order.priceKes > 0) { const c = checkSafaricomPhone(phone); if (!c.ok) throw new Error(t('auth.err.invalid_number')); p = c.local; }
++    setOrder(await reportsApi.checkout(ownerId, order.orderId, p));
++  });
++  const working = order && (order.state === 'payment_pending' || order.state === 'paid' || order.state === 'generating');
++  const priceNow = quote ? (quote.priceKes === 0 ? t('rp.price.free') : t('rp.price.paid', { price: kesLabel(quote.priceKes) })) : null;
++
++  return (
++    <div className="space-y-4">
++      <div>
++        <h1 className="text-lg font-bold text-ink">{t('rp.title')}</h1>
++        <p className="text-sm text-ink-muted">{t('rp.subtitle')}</p>
++      </div>
++      <Card>
++        <div className="flex flex-wrap items-center justify-between gap-3">
++          <MonthPicker months={months} value={month} onChange={(m) => { setMonth(m); setOrder(null); }} label={t('rp.pickMonth')} />
++          {priceNow ? <span className={`rounded-full px-3 py-1 text-xs font-semibold ${quote?.priceKes === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{priceNow}</span> : null}
++        </div>
++        <fieldset className="mt-3 flex flex-wrap gap-3">
++          {KINDS.map((k) => (
++            <label key={k} className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 text-sm font-medium ${kind === k ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-line text-ink-soft'}`}>
++              <input type="radio" name="rp-kind" checked={kind === k} onChange={() => { setKind(k); setOrder(null); }} />{t(`rp.kind.${k}` as 'rp.kind.mri_monthly')}
++            </label>
++          ))}
++        </fieldset>
++        <Button onClick={start} busy={busy && !order} disabled={!!working} className="mt-4 w-full"><FileCheck2 className="h-4 w-4" aria-hidden="true" />{t('rp.start')} · {monthLabel(month, lang)}</Button>
++      </Card>
++      <InlineError message={error} />
++
++      {order ? (
++        <Card>
++          <h2 className="text-sm font-semibold text-ink">{t('rp.checkout')}</h2>
++          <p className="text-xs text-ink-subtle">{order.title} · {monthLabel(order.month, lang)}</p>
++          {order.state === 'payment_required' ? (
++            <div className="mt-3 space-y-3">
++              <div className="flex items-baseline justify-between rounded-xl bg-surface-sunken p-3"><span className="text-sm text-ink-soft">{t('rp.total')}</span><span className="text-lg font-bold text-ink">{order.priceKes === 0 ? t('rp.free') : kesLabel(order.priceKes)}</span></div>
++              {order.priceKes > 0 ? (
++                <label className="block text-sm text-ink-soft">{t('rp.phone')}
++                  <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="07XX XXX XXX" className="mt-1 min-h-11 w-full rounded-xl border border-line-strong bg-surface px-3 text-ink" />
++                </label>
++              ) : null}
++              {order.error ? <p className="text-sm text-red-600">{order.error.message}</p> : null}
++              <Button onClick={checkout} busy={busy} className="w-full"><Smartphone className="h-4 w-4" aria-hidden="true" />{order.priceKes === 0 ? t('rp.payFree') : t('rp.pay', { price: kesLabel(order.priceKes) })}</Button>
++            </div>
++          ) : null}
++          {order.state === 'payment_pending' ? <p className="mt-3 flex items-center gap-2 text-sm text-ink"><Spinner />{t('rp.pending')}</p> : null}
++          {order.state === 'paid' || order.state === 'generating' ? <p className="mt-3 flex items-center gap-2 text-sm text-ink"><Spinner />{t('rp.making')}</p> : null}
++          {timedOut && working ? <p className="mt-2 text-sm text-ink-soft">{t('rp.waiting')} <button className="font-semibold underline" onClick={() => { setTimedOut(false); void reportsApi.status(ownerId, order.orderId).then(setOrder).catch(() => undefined); }}>{t('rp.check')}</button></p> : null}
++          {order.state === 'ready' && order.url ? (
++            <div className="mt-3 space-y-2">
++              <p className="flex items-center gap-2 text-sm font-medium text-emerald-700"><CheckCircle2 className="h-5 w-5" aria-hidden="true" />{t('rp.ready')}</p>
++              <Button onClick={() => void openDownload(order.url!)}><Download className="h-4 w-4" aria-hidden="true" />{t('rp.download')}</Button>
++            </div>
++          ) : null}
++          {order.state === 'failed' || order.state === 'expired' ? <p className="mt-3 text-sm text-red-600">{order.error?.message ?? t('rp.expired')}</p> : null}
++          <p className="mt-3 text-xs text-ink-subtle">{t('rp.note')}</p>
++        </Card>
++      ) : null}
++
++      {recent.length ? (
++        <Card>
++          <h2 className="mb-2 text-sm font-semibold text-ink">{t('rp.recent')}</h2>
++          <ul className="divide-y divide-line">
++            {recent.map((r) => (
++              <li key={r.orderId} className="flex items-center justify-between gap-3 py-2 text-sm">
++                <span className="min-w-0 truncate text-ink">{r.title} · {monthLabel(r.month, lang)}</span>
++                {r.state === 'ready'
++                  ? <button className="shrink-0 font-semibold text-brand-700 underline" onClick={() => void reportsApi.status(ownerId, r.orderId).then((o) => { if (o.url) return openDownload(o.url); }).catch((e) => setError(e instanceof Error ? e.message : t('common.retry')))}>{t('rp.download')}</button>
++                  : <span className="shrink-0 text-ink-subtle">{r.state === 'expired' ? t('rp.expired') : r.state.replace('_', ' ')}</span>}
++              </li>
++            ))}
++          </ul>
++        </Card>
++      ) : null}
++    </div>
++  );
++}
+diff --git a/whatsapp/src/desk/delegate.spec.ts b/whatsapp/src/desk/delegate.spec.ts
+index 2c28676..5c1e544 100644
+--- a/whatsapp/src/desk/delegate.spec.ts
++++ b/whatsapp/src/desk/delegate.spec.ts
+@@ -1,6 +1,6 @@
+ import test from "node:test";
+ import assert from "node:assert/strict";
+-import { handleDelegate, fingerprintOf, type ClaimResult, type DelegateDeps, type DelegateResponse, type DelegateStore, type Landlord, type ScheduleDoc, type SmsPort } from "./delegate";
++import { handleDelegate, fingerprintOf, type ReportsPort, type ClaimResult, type DelegateDeps, type DelegateResponse, type DelegateStore, type Landlord, type ScheduleDoc, type SmsPort } from "./delegate";
+ import type { NewTenant } from "./tenantRules";
+ 
+ // ---- test doubles (test file only) ----
+@@ -55,7 +55,7 @@ const good = { name: "Jane Wanjiru", id: "33333333", phone: "0712345678", unitNu
+ 
+ test("an unauthorised desk is refused on every action", async () => {
+   const w = world();
+-  for (const action of ["entity_info", "validate_records", "commit_records", "send_sms_now", "export_data", "run_report", "schedule_sms"]) {
++  for (const action of ["entity_info", "validate_records", "commit_records", "send_sms_now", "export_data", "run_report", "compliance_report", "schedule_sms"]) {
+     const r = await call(w, { action, agentCode: "COG-0002", payload: { rows: [good], source: "manual", message: "Hi", audience: "all_tenants", kind: "tenants" } });
+     assert.deepEqual(r.ok === false && r.error.code, "permission_denied", action);
+   }
+@@ -85,7 +85,7 @@ test("unknown landlord, malformed requests and unknown actions are rejected clea
+   assert.ok(!(await call(w, { action: "drop_tables" })).ok);
+   assert.ok(!(await handleDelegate(w.deps, null)).ok);
+ });
+-test("run_report is not_found because PMS has no report engine", async () => {
++test("run_report stays not_found: the free report path offers nothing, so a compliance report can never be made without a paid ticket", async () => {
+   const r = await call(world(), { action: "run_report", payload: { reportType: "x", params: {} } });
+   assert.ok(!r.ok && r.error.code === "not_found");
+ });
+@@ -207,3 +207,55 @@ test("list_tenants hides restricted and deactivated tenants", async () => {
+   assert.ok(r.ok);
+   assert.deepEqual((r.ok ? (r.result as { tenants: { tenantId: string }[] }).tenants : []).map((t) => t.tenantId), ["22222222"]);
+ });
++
++// ---- compliance reports (paid desk service; made by PAY's report engine) ----
++function reportsWorld() {
++  const w = world();
++  const calls: Record<string, unknown>[] = [];
++  let next: Awaited<ReturnType<ReportsPort["call"]>> = { ok: true, data: { orderId: "abc", state: "ready", url: "https://signed.example/r.pdf", urlExpiresAt: "2026-11-12T08:00:00.000Z", fileName: "mri-working-paper-2026-10-abc.pdf" } };
++  w.deps.reports = { call: async (b) => { calls.push(b); return next; } };
++  return { w, calls, answer: (r: typeof next) => { next = r; } };
++}
++test("entity_info offers no free report types, even when the report engine is wired", async () => {
++  const { w } = reportsWorld();
++  const r = await call(w, { action: "entity_info" });
++  assert.ok(r.ok && (r.result as { reportTypes: string[] }).reportTypes.length === 0);
++});
++test("compliance_report: a dry run lists properties, and previews one property without making anything", async () => {
++  const { w, calls, answer } = reportsWorld();
++  answer({ ok: true, data: { properties: [{ id: "3", name: "Sunrise" }], ready: false } });
++  const list = await call(w, { action: "compliance_report", payload: { dryRun: true } });
++  assert.ok(list.ok && (list.result as { reportTypes: string[] }).reportTypes.includes("mri_monthly"));
++  answer({ ok: true, data: { ready: true, tenants: 12 } });
++  const prev = await call(w, { action: "compliance_report", payload: { dryRun: true, reportType: "mri_monthly", propertyId: "3", month: "2026-10" } });
++  assert.ok(prev.ok);
++  assert.deepEqual(calls.map((c) => c.action), ["deskPreview", "deskPreview"]);
++  assert.equal(w.claims.size, 0);                                            // a dry run is not an effectful request
++});
++test("compliance_report: generating needs the paid ticket (requestId) and is sent to PAY with the agent and ticket", async () => {
++  const { w, calls } = reportsWorld();
++  const p = { reportType: "annual_summary", propertyId: "3", month: "2026-10" };
++  const noTicket = await call(w, { action: "compliance_report", requestId: "tkt-0000000a", payload: p });
++  assert.ok(!noTicket.ok && noTicket.error.code === "invalid_argument"); assert.equal(calls.length, 0);
++  const wrong = await call(w, { action: "compliance_report", requestId: "tkt-0000000b", payload: { ...p, ticketId: "tkt-99999999" } });
++  assert.ok(!wrong.ok && wrong.error.code === "invalid_argument"); assert.equal(calls.length, 0);
++  const done = await call(w, { action: "compliance_report", requestId: "tkt-00000001", payload: { ...p, ticketId: "tkt-00000001" } });
++  assert.ok(done.ok);
++  assert.deepEqual(done.result, { downloadUrl: "https://signed.example/r.pdf", expiresAt: Date.parse("2026-11-12T08:00:00.000Z"), fileName: "mri-working-paper-2026-10-abc.pdf", orderId: "abc" });
++  assert.deepEqual(calls, [{ action: "deskGenerate", uid: "u1", propertyId: "3", month: "2026-10", kind: "annual_summary", ticketId: "tkt-00000001", agentId: "COG-0001" }]);
++  const again = await call(w, { action: "compliance_report", requestId: "tkt-00000001", payload: { ...p, ticketId: "tkt-00000001" } });
++  assert.deepEqual(again, done); assert.equal(calls.length, 1);                // replayed, not made twice
++});
++test("compliance_report: bad input and report-engine refusals become desk errors", async () => {
++  const { w, answer } = reportsWorld();
++  for (const payload of [{ reportType: "everything", propertyId: "3", month: "2026-10" }, { reportType: "mri_monthly", month: "2026-10" }, { reportType: "mri_monthly", propertyId: "3", month: "2026-13" }]) {
++    const r = await call(w, { action: "compliance_report", requestId: "tkt-00000002", payload: { ...payload, ticketId: "tkt-00000002" } });
++    assert.ok(!r.ok && r.error.code === "invalid_argument");
++  }
++  answer({ ok: false, error: { code: "CR_NO_DATA", message: "There are no synced tenant or invoice records for this property." } });
++  const none = await call(w, { action: "compliance_report", requestId: "tkt-00000003", payload: { dryRun: true, reportType: "mri_monthly", propertyId: "3", month: "2026-10" } });
++  assert.ok(!none.ok && none.error.code === "failed_precondition");
++  w.deps.reports = undefined;
++  const off = await call(w, { action: "compliance_report", payload: { dryRun: true } });
++  assert.ok(!off.ok && off.error.code === "not_found");
++});
+diff --git a/whatsapp/src/desk/delegate.ts b/whatsapp/src/desk/delegate.ts
+index 887c3e0..f4ca924 100644
+--- a/whatsapp/src/desk/delegate.ts
++++ b/whatsapp/src/desk/delegate.ts
+@@ -8,12 +8,12 @@ import { DESK_CODE_RE, DESK_TOP_CODE, LANDLORD_CODE_RE } from "./constants";
+ import { isAudience, selectRecipients, AUDIENCES, type Audience, type InvoiceRec, type Recipient, type TenantRec } from "./audiences";
+ import { toCsv } from "./csv";
+ import { listTenantsPage } from "./tenantList";
+-import { DeskError } from "./errors";
++import { DeskError, type DeskErrorCode } from "./errors";
+ import { nextRunAt, validateSchedule, type ScheduleSpec } from "./schedule";
+ import { toImportRow, validateTenantRows, type ExistingTenant, type ImportError, type ImportRow, type NewTenant, type PropertyRec } from "./tenantRules";
+ import { firstName } from '../dear';
+ 
+-export const DELEGATE_ACTIONS = ["entity_info", "validate_records", "commit_records", "schedule_sms", "send_sms_now", "run_report", "export_data", "list_tenants"] as const;
++export const DELEGATE_ACTIONS = ["entity_info", "validate_records", "commit_records", "schedule_sms", "send_sms_now", "run_report", "export_data", "list_tenants", "compliance_report"] as const;
+ export type DelegateAction = typeof DELEGATE_ACTIONS[number];
+ export type DelegateResponse<T> = { ok: true; result: T } | { ok: false; error: { code: string; message: string } };
+ 
+@@ -61,7 +61,16 @@ export interface SmsPort {
+   tokensFor(fullMessage: string): number;
+   send(mobile: string, message: string): Promise<{ success: boolean; error?: string }>;
+ }
+-export interface DelegateDeps { store: DelegateStore; sms: SmsPort; now: () => number }
++/**
++ * Compliance reports are made by PAY's report engine (headless Chromium lives there). This port is the server-to-server call:
++ * `deskPreview` checks there is something to report on (before the customer pays), `deskGenerate` makes the PDF once the desk ticket is PAID.
++ */
++export interface ReportsPort {
++  call(body: { action: "deskPreview" | "deskGenerate"; uid: string; propertyId?: string; month?: string; kind?: string; ticketId?: string; agentId?: string }):
++    Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; error: { code: string; message: string } }>;
++}
++export interface DelegateDeps { store: DelegateStore; sms: SmsPort; now: () => number; reports?: ReportsPort }
++export const REPORT_TYPES = ["mri_monthly", "annual_summary"] as const;
+ 
+ const ok = <T>(result: T): DelegateResponse<T> => ({ ok: true, result });
+ const fail = (code: string, message: string): DelegateResponse<never> => ({ ok: false, error: { code, message } });
+@@ -97,7 +106,7 @@ function parseRequest(body: unknown): Parsed {
+   return { action, entityCode, agentCode, requestId, payload: payload as Record<string, unknown> };
+ }
+ 
+-const EFFECTFUL: ReadonlySet<DelegateAction> = new Set(["commit_records", "schedule_sms", "send_sms_now", "export_data"]);
++const EFFECTFUL: ReadonlySet<DelegateAction> = new Set(["commit_records", "schedule_sms", "send_sms_now", "export_data", "compliance_report"]);
+ 
+ export async function handleDelegate(deps: DelegateDeps, body: unknown): Promise<DelegateResponse<unknown>> {
+   let req: Parsed;
+@@ -109,7 +118,7 @@ export async function handleDelegate(deps: DelegateDeps, body: unknown): Promise
+     if (!isAuthorised(landlord, req.agentCode)) throw new DeskError("permission_denied", "This desk is not one of the landlord's support agents");
+     if (req.agentCode !== DESK_TOP_CODE && !(await store.isActiveDesk(req.agentCode))) throw new DeskError("permission_denied", "This desk is not active");
+ 
+-    const dryRun = req.action === "send_sms_now" && req.payload.dryRun === true;
++    const dryRun = (req.action === "send_sms_now" || req.action === "compliance_report") && req.payload.dryRun === true;
+     const effectful = EFFECTFUL.has(req.action) && !dryRun;
+     if (!effectful) return ok(await run(deps, landlord, req));
+ 
+@@ -157,7 +166,7 @@ async function run(deps: DelegateDeps, l: Landlord, req: Parsed): Promise<unknow
+       const out = {
+         displayName: l.company || l.name || l.code, adminName: l.name, adminPhone: l.phone, agentAuthorised: true, plan: l.tier,
+         creditsBalance: l.tokens, audiences: [...AUDIENCES] as string[],
+-        reportTypes: [] as string[], // PMS has no server-side report engine (reports are built inside the app from local data)
++        reportTypes: [] as string[], // the free report path stays empty: compliance reports are PAID desk tickets (action compliance_report)
+         exportKinds: [...EXPORT_KINDS] as string[],
+       };
+       await audit("entity_info", {});
+@@ -245,10 +254,52 @@ async function run(deps: DelegateDeps, l: Landlord, req: Parsed): Promise<unknow
+     }
+ 
+     case "run_report":
+-      throw new DeskError("not_found", "Plot Yangu has no server-side report engine; reports are produced inside the app. No report types are available");
++      throw new DeskError("not_found", "Plot Yangu has no free report types. Compliance reports are a paid desk service (compliance_report)");
++
++    /**
++     * Compliance reports (MRI working paper, annual summary): a PAID desk service, KES 200, never free. Generating is only ever reached from
++     * a settled desk ticket (the requestId is the ticket); PAY makes at most one report per ticket. A dry run lists properties or checks there is
++     * synced data to report on, before the customer pays.
++     */
++    case "compliance_report": {
++      if (!deps.reports) throw new DeskError("not_found", "Reports are not available right now");
++      const p = req.payload;
++      if (p.dryRun === true && !p.propertyId) {
++        const out = await deps.reports.call({ action: "deskPreview", uid: l.uid });
++        if (!out.ok) throw reportFailure(out.error);
++        await audit("compliance_report.list", {});
++        return { reportTypes: [...REPORT_TYPES], ...out.data };
++      }
++      const kind = String(p.reportType ?? "");
++      if (!(REPORT_TYPES as readonly string[]).includes(kind)) throw new DeskError("invalid_argument", `payload.reportType must be one of: ${REPORT_TYPES.join(", ")}`);
++      const propertyId = String(p.propertyId ?? "");
++      const month = String(p.month ?? "");
++      if (!propertyId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new DeskError("invalid_argument", "payload.propertyId and payload.month (YYYY-MM) are required");
++      if (p.dryRun === true) {
++        const out = await deps.reports.call({ action: "deskPreview", uid: l.uid, propertyId, month, kind });
++        if (!out.ok) throw reportFailure(out.error);
++        await audit("compliance_report.preview", { propertyId, month, kind });
++        return out.data;
++      }
++      if (String(p.ticketId ?? "") !== req.requestId) throw new DeskError("invalid_argument", "payload.ticketId must be the paid desk ticket (the requestId)");
++      const out = await deps.reports.call({ action: "deskGenerate", uid: l.uid, propertyId, month, kind, ticketId: req.requestId, agentId: req.agentCode });
++      if (!out.ok) throw reportFailure(out.error);
++      const r = out.data as { url?: unknown; urlExpiresAt?: unknown; fileName?: unknown; orderId?: unknown };
++      const expiresAt = typeof r.urlExpiresAt === "string" ? Date.parse(r.urlExpiresAt) : NaN;
++      if (typeof r.url !== "string" || !r.url.startsWith("https://") || !Number.isFinite(expiresAt)) throw new Error("report engine returned no usable link");
++      await audit("compliance_report", { propertyId, month, kind });
++      // Same shape as the other desk files (downloadUrl + expiresAt in ms): the desk shows it on the ticket once it is PAID and made.
++      return { downloadUrl: r.url, expiresAt, fileName: typeof r.fileName === "string" ? r.fileName : undefined, orderId: String(r.orderId ?? "") };
++    }
+   }
+ }
+ 
++/** PAY's report error codes as desk errors. An unknown code is left to the caller's generic retry path. */
++function reportFailure(e: { code: string; message: string }): Error {
++  const map: Record<string, string> = { CR_BAD_REQUEST: "invalid_argument", CR_TOO_LARGE: "invalid_argument", CR_NOT_FOUND: "not_found", CR_NO_DATA: "failed_precondition", CR_NOT_ALLOWED: "permission_denied" };
++  return map[e.code] ? new DeskError(map[e.code] as DeskErrorCode, e.message) : new Error(`report engine: ${e.code}`);
++}
++
+ function rowsOf(payload: Record<string, unknown>): ImportRow[] {
+   const rows = payload.rows;
+   if (!Array.isArray(rows) || rows.length === 0) throw new DeskError("invalid_argument", "payload.rows must be a non-empty list");
+diff --git a/whatsapp/src/desk/functions.ts b/whatsapp/src/desk/functions.ts
+index 09bb6f0..d75586c 100644
+--- a/whatsapp/src/desk/functions.ts
++++ b/whatsapp/src/desk/functions.ts
+@@ -6,11 +6,12 @@ import { fs } from "./db";
+ import { handleDelegate, type DelegateDeps, type SmsPort } from "./delegate";
+ import { firestoreDelegateStore, purgeExpiredExports } from "./delegateStore";
+ import { runDueSchedules } from "./scheduleRunner";
++import { payReportsPort } from "./reportsPort";
+ 
+ /** PMS's own SMS machinery (validation, phone normalising, token pricing, HostPinnacle sender) and the secrets that sender needs. */
+ export interface DeskSmsWiring extends SmsPort { secrets: ReturnType<typeof defineSecret>[] }
+ 
+-const deps = (sms: SmsPort): DelegateDeps => ({ store: firestoreDelegateStore(fs()), sms, now: () => Date.now() });
++const deps = (sms: SmsPort): DelegateDeps => ({ store: firestoreDelegateStore(fs()), sms, now: () => Date.now(), reports: payReportsPort() });
+ 
+ /**
+  * `deskdelegate`: private Cloud Run service (invoker "private" => only callers holding run.invoker, i.e. desk's service account,
+diff --git a/whatsapp/src/desk/reportsPort.ts b/whatsapp/src/desk/reportsPort.ts
+new file mode 100644
+index 0000000..5a58cd7
+--- /dev/null
++++ b/whatsapp/src/desk/reportsPort.ts
+@@ -0,0 +1,29 @@
++import { bundleSecret } from "../secretsBundle";
++import type { ReportsPort } from "./delegate";
++
++/** CR_SERVER_URL and CR_SERVER_KEY live in the app secrets bundle (the same JSON secret PAY reads). */
++const CR_SERVER_URL = bundleSecret("CR_SERVER_URL");
++const CR_SERVER_KEY = bundleSecret("CR_SERVER_KEY");
++const TIMEOUT_MS = 150_000;                                   // Chromium cold start + PDF
++
++/** Production ReportsPort: POST to PAY's crServerApi with the shared key. Never throws for a refusal; network trouble becomes an error the delegate retries. */
++export function payReportsPort(fetchImpl: typeof fetch = fetch): ReportsPort {
++  return {
++    async call(body) {
++      const url = CR_SERVER_URL.value(), key = CR_SERVER_KEY.value();
++      if (!url || !key) return { ok: false, error: { code: "CR_UNAVAILABLE", message: "Reports are not configured" } };
++      const ctl = new AbortController();
++      const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
++      try {
++        const res = await fetchImpl(url, { method: "POST", headers: { "content-type": "application/json", "x-cr-key": key }, body: JSON.stringify(body), signal: ctl.signal });
++        const json = (await res.json()) as { ok?: boolean; data?: Record<string, unknown>; error?: { code?: string; message?: string } };
++        if (json.ok && json.data) return { ok: true, data: json.data };
++        return { ok: false, error: { code: String(json.error?.code ?? "CR_UNAVAILABLE"), message: String(json.error?.message ?? "The report could not be made") } };
++      } catch (e) {
++        throw new Error(`report engine unreachable: ${e instanceof Error ? e.message : e}`);
++      } finally {
++        clearTimeout(timer);
++      }
++    },
++  };
++}

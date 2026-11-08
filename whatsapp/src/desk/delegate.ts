@@ -8,12 +8,12 @@ import { DESK_CODE_RE, DESK_TOP_CODE, LANDLORD_CODE_RE } from "./constants";
 import { isAudience, selectRecipients, AUDIENCES, type Audience, type InvoiceRec, type Recipient, type TenantRec } from "./audiences";
 import { toCsv } from "./csv";
 import { listTenantsPage } from "./tenantList";
-import { DeskError } from "./errors";
+import { DeskError, type DeskErrorCode } from "./errors";
 import { nextRunAt, validateSchedule, type ScheduleSpec } from "./schedule";
 import { toImportRow, validateTenantRows, type ExistingTenant, type ImportError, type ImportRow, type NewTenant, type PropertyRec } from "./tenantRules";
 import { firstName } from '../dear';
 
-export const DELEGATE_ACTIONS = ["entity_info", "validate_records", "commit_records", "schedule_sms", "send_sms_now", "run_report", "export_data", "list_tenants"] as const;
+export const DELEGATE_ACTIONS = ["entity_info", "validate_records", "commit_records", "schedule_sms", "send_sms_now", "run_report", "export_data", "list_tenants", "compliance_report"] as const;
 export type DelegateAction = typeof DELEGATE_ACTIONS[number];
 export type DelegateResponse<T> = { ok: true; result: T } | { ok: false; error: { code: string; message: string } };
 
@@ -61,7 +61,16 @@ export interface SmsPort {
   tokensFor(fullMessage: string): number;
   send(mobile: string, message: string): Promise<{ success: boolean; error?: string }>;
 }
-export interface DelegateDeps { store: DelegateStore; sms: SmsPort; now: () => number }
+/**
+ * Compliance reports are made by PAY's report engine (headless Chromium lives there). This port is the server-to-server call:
+ * `deskPreview` checks there is something to report on (before the customer pays), `deskGenerate` makes the PDF once the desk ticket is PAID.
+ */
+export interface ReportsPort {
+  call(body: { action: "deskPreview" | "deskGenerate"; uid: string; propertyId?: string; month?: string; kind?: string; ticketId?: string; agentId?: string }):
+    Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; error: { code: string; message: string } }>;
+}
+export interface DelegateDeps { store: DelegateStore; sms: SmsPort; now: () => number; reports?: ReportsPort }
+export const REPORT_TYPES = ["mri_monthly", "annual_summary"] as const;
 
 const ok = <T>(result: T): DelegateResponse<T> => ({ ok: true, result });
 const fail = (code: string, message: string): DelegateResponse<never> => ({ ok: false, error: { code, message } });
@@ -97,7 +106,7 @@ function parseRequest(body: unknown): Parsed {
   return { action, entityCode, agentCode, requestId, payload: payload as Record<string, unknown> };
 }
 
-const EFFECTFUL: ReadonlySet<DelegateAction> = new Set(["commit_records", "schedule_sms", "send_sms_now", "export_data"]);
+const EFFECTFUL: ReadonlySet<DelegateAction> = new Set(["commit_records", "schedule_sms", "send_sms_now", "export_data", "compliance_report"]);
 
 export async function handleDelegate(deps: DelegateDeps, body: unknown): Promise<DelegateResponse<unknown>> {
   let req: Parsed;
@@ -109,7 +118,7 @@ export async function handleDelegate(deps: DelegateDeps, body: unknown): Promise
     if (!isAuthorised(landlord, req.agentCode)) throw new DeskError("permission_denied", "This desk is not one of the landlord's support agents");
     if (req.agentCode !== DESK_TOP_CODE && !(await store.isActiveDesk(req.agentCode))) throw new DeskError("permission_denied", "This desk is not active");
 
-    const dryRun = req.action === "send_sms_now" && req.payload.dryRun === true;
+    const dryRun = (req.action === "send_sms_now" || req.action === "compliance_report") && req.payload.dryRun === true;
     const effectful = EFFECTFUL.has(req.action) && !dryRun;
     if (!effectful) return ok(await run(deps, landlord, req));
 
@@ -157,7 +166,7 @@ async function run(deps: DelegateDeps, l: Landlord, req: Parsed): Promise<unknow
       const out = {
         displayName: l.company || l.name || l.code, adminName: l.name, adminPhone: l.phone, agentAuthorised: true, plan: l.tier,
         creditsBalance: l.tokens, audiences: [...AUDIENCES] as string[],
-        reportTypes: [] as string[], // PMS has no server-side report engine (reports are built inside the app from local data)
+        reportTypes: [] as string[], // the free report path stays empty: compliance reports are PAID desk tickets (action compliance_report)
         exportKinds: [...EXPORT_KINDS] as string[],
       };
       await audit("entity_info", {});
@@ -245,8 +254,50 @@ async function run(deps: DelegateDeps, l: Landlord, req: Parsed): Promise<unknow
     }
 
     case "run_report":
-      throw new DeskError("not_found", "Plot Yangu has no server-side report engine; reports are produced inside the app. No report types are available");
+      throw new DeskError("not_found", "Plot Yangu has no free report types. Compliance reports are a paid desk service (compliance_report)");
+
+    /**
+     * Compliance reports (MRI working paper, annual summary): a PAID desk service, KES 200, never free. Generating is only ever reached from
+     * a settled desk ticket (the requestId is the ticket); PAY makes at most one report per ticket. A dry run lists properties or checks there is
+     * synced data to report on, before the customer pays.
+     */
+    case "compliance_report": {
+      if (!deps.reports) throw new DeskError("not_found", "Reports are not available right now");
+      const p = req.payload;
+      if (p.dryRun === true && !p.propertyId) {
+        const out = await deps.reports.call({ action: "deskPreview", uid: l.uid });
+        if (!out.ok) throw reportFailure(out.error);
+        await audit("compliance_report.list", {});
+        return { reportTypes: [...REPORT_TYPES], ...out.data };
+      }
+      const kind = String(p.reportType ?? "");
+      if (!(REPORT_TYPES as readonly string[]).includes(kind)) throw new DeskError("invalid_argument", `payload.reportType must be one of: ${REPORT_TYPES.join(", ")}`);
+      const propertyId = String(p.propertyId ?? "");
+      const month = String(p.month ?? "");
+      if (!propertyId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new DeskError("invalid_argument", "payload.propertyId and payload.month (YYYY-MM) are required");
+      if (p.dryRun === true) {
+        const out = await deps.reports.call({ action: "deskPreview", uid: l.uid, propertyId, month, kind });
+        if (!out.ok) throw reportFailure(out.error);
+        await audit("compliance_report.preview", { propertyId, month, kind });
+        return out.data;
+      }
+      if (String(p.ticketId ?? "") !== req.requestId) throw new DeskError("invalid_argument", "payload.ticketId must be the paid desk ticket (the requestId)");
+      const out = await deps.reports.call({ action: "deskGenerate", uid: l.uid, propertyId, month, kind, ticketId: req.requestId, agentId: req.agentCode });
+      if (!out.ok) throw reportFailure(out.error);
+      const r = out.data as { url?: unknown; urlExpiresAt?: unknown; fileName?: unknown; orderId?: unknown };
+      const expiresAt = typeof r.urlExpiresAt === "string" ? Date.parse(r.urlExpiresAt) : NaN;
+      if (typeof r.url !== "string" || !r.url.startsWith("https://") || !Number.isFinite(expiresAt)) throw new Error("report engine returned no usable link");
+      await audit("compliance_report", { propertyId, month, kind });
+      // Same shape as the other desk files (downloadUrl + expiresAt in ms): the desk shows it on the ticket once it is PAID and made.
+      return { downloadUrl: r.url, expiresAt, fileName: typeof r.fileName === "string" ? r.fileName : undefined, orderId: String(r.orderId ?? "") };
+    }
   }
+}
+
+/** PAY's report error codes as desk errors. An unknown code is left to the caller's generic retry path. */
+function reportFailure(e: { code: string; message: string }): Error {
+  const map: Record<string, string> = { CR_BAD_REQUEST: "invalid_argument", CR_TOO_LARGE: "invalid_argument", CR_NOT_FOUND: "not_found", CR_NO_DATA: "failed_precondition", CR_NOT_ALLOWED: "permission_denied" };
+  return map[e.code] ? new DeskError(map[e.code] as DeskErrorCode, e.message) : new Error(`report engine: ${e.code}`);
 }
 
 function rowsOf(payload: Record<string, unknown>): ImportRow[] {

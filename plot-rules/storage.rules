@@ -176,6 +176,7 @@ service firebase.storage {
     // Server-only paths (explicit, also denied by default): desk exports,
     // passport results written by the passport function, generated forms.
     match /deskExports/{allPaths=**}      { allow read, write: if false; }
+    match /compliance/{allPaths=**}       { allow read, write: if false; }     // report PDFs: reached only by short-lived signed links, after checkout
     match /passport-results/{allPaths=**} { allow read, write: if false; }
     match /forms/{allPaths=**}            { allow read, write: if false; }
 

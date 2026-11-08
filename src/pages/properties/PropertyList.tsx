@@ -15,7 +15,8 @@ import {
   Trash2,
   RefreshCw,
   Home,
-  MapPin} from 'lucide-react';
+  MapPin,
+  FileCheck2} from 'lucide-react';
 import { database, type PropertyWithUnits, type PropertyInput, type User } from '../../services/database/Database';
 import Property from './Properties';
 import PropertyModal from './PropertyModal';
@@ -23,6 +24,7 @@ import { newUnitSpec } from './UnitsBuilder';
 import { validateUnitSpecs, type UnitSpec } from '../../services/database/Units';
 import { checkSafaricomPhone } from '../../utils/safaricom';
 import { USER_LIMITS, firebaseSyncService } from '../../services/database/FirebaseSync';
+import { useNavigate } from 'react-router-dom';
 import PricingModal from '../../components/ui/PricingPage';
 import SummariesModal from './Summaries';
 import TrialStatsBanner from '../../components/ui/TrialStatsBanner';
@@ -57,6 +59,7 @@ const Properties: React.FC<PropertyListProps> = ({
   currentUserId,
   user 
 }) => {
+  const navigate = useNavigate();
   const [properties, setProperties] = useState<EnhancedProperty[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -714,6 +717,7 @@ const Properties: React.FC<PropertyListProps> = ({
               >
                 <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
               </button>
+            <HeaderAction icon={FileCheck2} label="Compliance reports" onClick={() => navigate('/compliance')} showLabel />
             {canAddProperty && <HeaderAction icon={Plus} label="Add property" onClick={() => setShowAddModal(true)} variant="primary" showLabel />}
           </>
         }
