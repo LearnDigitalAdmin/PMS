@@ -296,7 +296,7 @@ async function run(deps: DelegateDeps, l: Landlord, req: Parsed): Promise<unknow
 
 /** PAY's report error codes as desk errors. An unknown code is left to the caller's generic retry path. */
 function reportFailure(e: { code: string; message: string }): Error {
-  const map: Record<string, string> = { CR_BAD_REQUEST: "invalid_argument", CR_TOO_LARGE: "invalid_argument", CR_NOT_FOUND: "not_found", CR_NO_DATA: "failed_precondition", CR_NOT_ALLOWED: "permission_denied" };
+  const map: Record<string, string> = { CR_BAD_REQUEST: "invalid_argument", CR_TOO_LARGE: "invalid_argument", CR_NOT_FOUND: "not_found", CR_NO_DATA: "failed_precondition", CR_STALE_DATA: "failed_precondition", CR_NOT_ALLOWED: "permission_denied" };
   return map[e.code] ? new DeskError(map[e.code] as DeskErrorCode, e.message) : new Error(`report engine: ${e.code}`);
 }
 

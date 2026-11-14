@@ -255,6 +255,9 @@ test("compliance_report: bad input and report-engine refusals become desk errors
   answer({ ok: false, error: { code: "CR_NO_DATA", message: "There are no synced tenant or invoice records for this property." } });
   const none = await call(w, { action: "compliance_report", requestId: "tkt-00000003", payload: { dryRun: true, reportType: "mri_monthly", propertyId: "3", month: "2026-10" } });
   assert.ok(!none.ok && none.error.code === "failed_precondition");
+  answer({ ok: false, error: { code: "CR_STALE_DATA", message: "This landlord's records were last synced on 2026-11-05 (9 days ago), which is too old for a report. Open Plot Yangu online so it syncs, then try again." } });
+  const stale = await call(w, { action: "compliance_report", payload: { dryRun: true, reportType: "mri_monthly", propertyId: "3", month: "2026-10" } });
+  assert.ok(!stale.ok && stale.error.code === "failed_precondition" && /too old for a report/.test(stale.error.message));   // the desk agent is told why, and nobody is asked to pay
   w.deps.reports = undefined;
   const off = await call(w, { action: "compliance_report", payload: { dryRun: true } });
   assert.ok(!off.ok && off.error.code === "not_found");
